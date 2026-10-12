@@ -14,5 +14,5 @@ pub mod structured;
 pub mod urlutil;
 
 pub use config::CrawlConfig;
-pub use crawler::{CrawlControl, CrawlEvent, Crawler};
+pub use crawler::{CrawlControl, CrawlEvent, Crawler, PendingLink};
 pub use model::{Link, LinkKind, PageData, PageRecord, Progress};

@@ -78,6 +78,17 @@ pub struct Crawler {
     rules: Arc<CustomRules>,
 }
 
+/// A link recorded in an earlier crawl session whose target was never
+/// crawled (input to [`Crawler::resume`]).
+#[derive(Debug, Clone)]
+pub struct PendingLink {
+    pub link: Link,
+    /// Crawl depth of the page the link was found on.
+    pub source_depth: u32,
+    /// The source page had a nofollow directive.
+    pub source_nofollow: bool,
+}
+
 /// Upper bound on sitemap files fetched from indexes, to stop runaway nesting.
 const MAX_SITEMAP_FILES: usize = 1_000;
 
@@ -115,8 +126,64 @@ impl Crawler {
             }
         }
 
+        self.crawl_loop(seen, queue, progress, 0, started, tx, control).await
+    }
+
+    /// Continue a crawl that was stopped or interrupted. `crawled` are the
+    /// URLs already in the crawl file; `pending` are links found from them
+    /// whose targets were never crawled. Each link goes through the same
+    /// follow rules as a fresh crawl, so a changed configuration applies.
+    pub async fn resume(
+        self,
+        crawled: Vec<String>,
+        pending: Vec<PendingLink>,
+        tx: mpsc::Sender<CrawlEvent>,
+        control: CrawlControl,
+    ) -> anyhow::Result<Progress> {
+        let started = Instant::now();
+        let already = crawled.len() as u64;
+        let mut seen: HashSet<String> = crawled.into_iter().collect();
+        let mut queue: VecDeque<QueueItem> = VecDeque::new();
+        let mut progress = Progress { crawled: already, ..Default::default() };
+        let mut pending = pending;
+        // Shallowest first, as a breadth-first crawl would have reached them.
+        pending.sort_by_key(|p| p.source_depth);
+        for p in pending {
+            let depth = p.source_depth + 1;
+            if self.cfg.max_depth.is_some_and(|max| depth > max) {
+                continue;
+            }
+            let item = if p.link.kind == LinkKind::Redirect {
+                let Ok(target) = Url::parse(&p.link.to) else { continue };
+                let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
+                self.allowed(&target, kind == FetchKind::Page).then_some(QueueItem { url: target, depth, kind, redirect_hops: 1 })
+            } else {
+                let nofollow = p.source_nofollow && !self.cfg.follow_internal_nofollow;
+                self.link_item(&p.link, depth, nofollow)
+            };
+            if let Some(item) = item {
+                if seen.insert(item.url.to_string()) {
+                    progress.discovered += 1;
+                    queue.push_back(item);
+                }
+            }
+        }
+        self.crawl_loop(seen, queue, progress, already, started, tx, control).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn crawl_loop(
+        mut self,
+        mut seen: HashSet<String>,
+        mut queue: VecDeque<QueueItem>,
+        mut progress: Progress,
+        already_issued: u64,
+        started: Instant,
+        tx: mpsc::Sender<CrawlEvent>,
+        control: CrawlControl,
+    ) -> anyhow::Result<Progress> {
         let mut tasks: JoinSet<(QueueItem, PageRecord)> = JoinSet::new();
-        let mut issued: u64 = 0;
+        let mut issued: u64 = already_issued;
         let mut ticker = self
             .cfg
             .max_urls_per_sec
@@ -341,32 +408,37 @@ impl Crawler {
         let Some(page) = &record.page else { return out };
         let page_nofollow = record.is_nofollow() && !cfg.follow_internal_nofollow;
 
-        for link in &page.links {
-            let Ok(url) = Url::parse(&link.to) else { continue };
-            let internal = self.scope.is_internal(&url);
-            if !self.should_crawl(link, internal, page_nofollow) {
-                continue;
-            }
-            let mut kind = match link.kind {
-                LinkKind::Hyperlink | LinkKind::Canonical | LinkKind::HttpCanonical | LinkKind::RelNext
-                | LinkKind::RelPrev | LinkKind::Hreflang | LinkKind::Iframe | LinkKind::MetaRefresh
-                | LinkKind::Redirect => FetchKind::Page,
-                LinkKind::Image | LinkKind::Css | LinkKind::JavaScript => FetchKind::CheckOnly,
-            };
-            if !internal {
-                kind = FetchKind::CheckOnly;
-            } else if kind == FetchKind::Page && !cfg.crawl_outside_start_folder && !self.scope.in_start_folder(&url) {
-                if !cfg.check_links_outside_start_folder {
-                    continue;
-                }
-                kind = FetchKind::CheckOnly;
-            }
-            if !self.allowed(&url, internal) {
-                continue;
-            }
-            out.push(QueueItem { url, depth, kind, redirect_hops: 0 });
-        }
+        out.extend(page.links.iter().filter_map(|link| self.link_item(link, depth, page_nofollow)));
         out
+    }
+
+    /// Whether a link found on a page (at `depth` for its target) is queued,
+    /// and how: fetched as a page, or only checked.
+    fn link_item(&self, link: &Link, depth: u32, page_nofollow: bool) -> Option<QueueItem> {
+        let cfg = &self.cfg;
+        let url = Url::parse(&link.to).ok()?;
+        let internal = self.scope.is_internal(&url);
+        if !self.should_crawl(link, internal, page_nofollow) {
+            return None;
+        }
+        let mut kind = match link.kind {
+            LinkKind::Hyperlink | LinkKind::Canonical | LinkKind::HttpCanonical | LinkKind::RelNext
+            | LinkKind::RelPrev | LinkKind::Hreflang | LinkKind::Iframe | LinkKind::MetaRefresh
+            | LinkKind::Redirect => FetchKind::Page,
+            LinkKind::Image | LinkKind::Css | LinkKind::JavaScript => FetchKind::CheckOnly,
+        };
+        if !internal {
+            kind = FetchKind::CheckOnly;
+        } else if kind == FetchKind::Page && !cfg.crawl_outside_start_folder && !self.scope.in_start_folder(&url) {
+            if !cfg.check_links_outside_start_folder {
+                return None;
+            }
+            kind = FetchKind::CheckOnly;
+        }
+        if !self.allowed(&url, internal) {
+            return None;
+        }
+        Some(QueueItem { url, depth, kind, redirect_hops: 0 })
     }
 
     fn should_crawl(&self, link: &Link, internal: bool, page_nofollow: bool) -> bool {

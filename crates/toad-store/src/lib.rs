@@ -3,12 +3,14 @@
 
 mod analysis;
 pub mod compare;
+pub mod crawls;
 mod query;
 mod reports;
 mod schema;
 mod sitemap_gen;
 pub mod tabs;
 
+pub use crawls::{CrawlEntry, CrawlStatus};
 pub use compare::{ChangeElement, CompareConfig, CompareState, Comparison, LinkState, UrlMapping};
 pub use query::{write_csv, IssueRow, OverviewRow, RowQuery, Table};
 pub use reports::{ReportDef, ReportKind};

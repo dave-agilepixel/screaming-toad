@@ -19,6 +19,26 @@ pub enum LinkKind {
 }
 
 impl LinkKind {
+    pub const ALL: [LinkKind; 12] = [
+        LinkKind::Hyperlink,
+        LinkKind::Image,
+        LinkKind::Css,
+        LinkKind::JavaScript,
+        LinkKind::Canonical,
+        LinkKind::HttpCanonical,
+        LinkKind::Hreflang,
+        LinkKind::RelNext,
+        LinkKind::RelPrev,
+        LinkKind::Iframe,
+        LinkKind::MetaRefresh,
+        LinkKind::Redirect,
+    ];
+
+    /// The inverse of [`LinkKind::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.as_str() == s)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             LinkKind::Hyperlink => "Hyperlink",
