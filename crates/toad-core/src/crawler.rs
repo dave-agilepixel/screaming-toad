@@ -1,7 +1,7 @@
 //! The crawl loop: a breadth-first frontier, robots.txt, scope rules,
 //! limits and a fixed number of concurrent fetches.
 
-use crate::config::{CrawlConfig, Mode, RobotsMode};
+use crate::config::{CrawlConfig, RobotsMode};
 use crate::custom::CustomRules;
 use crate::extract::extract;
 use crate::fetch::Fetcher;
@@ -99,15 +99,17 @@ impl Crawler {
         let started = Instant::now();
         let mut seen: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<QueueItem> = VecDeque::new();
-        for seed in seeds {
-            let url = normalize(seed, &self.cfg);
+        for mut url in seeds {
+            // URL Rewriting applies to discovered URLs only; start and List
+            // URLs are crawled as given (minus any fragment).
+            url.set_fragment(None);
             if seen.insert(url.to_string()) {
                 queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0 });
             }
         }
 
         let mut progress = Progress::default();
-        if self.cfg.crawl_linked_sitemaps && self.cfg.mode == Mode::Spider {
+        if self.cfg.crawl_linked_sitemaps {
             if let Some(start) = queue.front().map(|i| i.url.clone()) {
                 self.crawl_sitemaps(&start, &tx, &mut seen, &mut queue, &mut progress).await;
             }
@@ -220,7 +222,7 @@ impl Crawler {
 
     /// Returns a "Blocked by Robots.txt" record if robots.txt disallows the URL.
     async fn robots_block(&mut self, item: &QueueItem) -> Option<PageRecord> {
-        if self.cfg.robots_mode == RobotsMode::Ignore || self.cfg.mode == Mode::List {
+        if self.cfg.robots_mode == RobotsMode::Ignore {
             return None;
         }
         let origin = item.url.origin().ascii_serialization();
@@ -326,8 +328,9 @@ impl Crawler {
         }
 
         // Redirects (HTTP or meta refresh) count as one level of depth.
+        let is_meta_refresh = record.redirect_type.as_deref() == Some("Meta Refresh Redirect");
         if let Some(target) = record.redirect_url.as_deref().and_then(|u| Url::parse(u).ok()) {
-            if item.redirect_hops < cfg.max_redirects {
+            if item.redirect_hops < cfg.max_redirects && (cfg.crawl_meta_refresh || !is_meta_refresh) {
                 let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
                 if self.allowed(&target, kind == FetchKind::Page) {
                     out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1 });
@@ -454,7 +457,9 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
         r.hash = Some(format!("{:x}", md5::compute(&res.body)));
     }
 
-    if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
+    if res.truncated {
+        r.error = Some(format!("Not processed: larger than the Max Page Size ({} KB)", cfg.max_page_size_kb));
+    } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
         let html = String::from_utf8_lossy(&res.body);
         let page = extract(&html, &item.url, cfg, rules);
         if let Some(target) = page.meta_refresh_url.clone() {
@@ -480,4 +485,33 @@ fn http_canonical(link_header: &str) -> Option<String> {
         let end = part.find('>')?;
         Some(part[start..end].trim().to_string())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta_refresh_record() -> PageRecord {
+        PageRecord {
+            url: "https://example.com/old".into(),
+            is_internal: true,
+            status_code: 200,
+            redirect_url: Some("https://example.com/new".into()),
+            redirect_type: Some("Meta Refresh Redirect".into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn meta_refresh_follows_the_crawl_setting() {
+        let start = Url::parse("https://example.com/").unwrap();
+        let item = QueueItem { url: Url::parse("https://example.com/old").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0 };
+        let followed = |crawl_meta_refresh: bool| {
+            let cfg = CrawlConfig { crawl_meta_refresh, ..CrawlConfig::default() };
+            let crawler = Crawler::new(cfg, &start).unwrap();
+            crawler.discover(&item, &meta_refresh_record()).iter().any(|q| q.url.as_str() == "https://example.com/new")
+        };
+        assert!(followed(true));
+        assert!(!followed(false), "Crawl > Meta Refresh off must not follow refresh targets");
+    }
 }

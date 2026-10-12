@@ -51,9 +51,9 @@ impl Default for SitemapOptions {
             include_canonicalised: false,
             include_paginated: false,
             include_pdfs: false,
-            last_mod: LastMod::None,
-            priority: false,
-            change_freq: ChangeFreq::None,
+            last_mod: LastMod::ServerResponse,
+            priority: true,
+            change_freq: ChangeFreq::FromLastModified,
             max_urls_per_file: 49_999,
         }
     }

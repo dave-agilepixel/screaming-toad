@@ -129,7 +129,7 @@ impl Default for CrawlConfig {
             crawl_external_links: true,
             store_canonicals: true,
             crawl_canonicals: true,
-            store_pagination: false,
+            store_pagination: true,
             crawl_pagination: false,
             store_hreflang: true,
             crawl_hreflang: false,
@@ -149,7 +149,7 @@ impl Default for CrawlConfig {
             max_folder_depth: None,
             max_query_params: None,
             max_redirects: 10,
-            max_url_length: 2_000,
+            max_url_length: 10_000,
             max_links_per_url: 10_000,
             max_page_size_kb: 50_000,
             ignore_non_indexable_for_issues: true,
@@ -168,6 +168,7 @@ impl Default for CrawlConfig {
                     "Accept".into(),
                     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8".into(),
                 ),
+                ("Accept-Encoding".into(), "gzip".into()),
                 ("Cache-Control".into(), "no-cache".into()),
                 ("Pragma".into(), "no-cache".into()),
             ],
@@ -188,11 +189,14 @@ impl Default for CrawlConfig {
 }
 
 impl CrawlConfig {
-    /// List mode forces crawl depth 0 and ignores robots.txt, as Screaming Frog does.
+    /// List mode defaults, as Screaming Frog applies them: crawl depth 0,
+    /// robots.txt ignored and no sitemap auto-discovery. Sitemaps listed under
+    /// "Crawl These Sitemaps" are still crawled.
     pub fn for_list_mode(mut self) -> Self {
         self.mode = Mode::List;
         self.max_depth = Some(0);
         self.robots_mode = RobotsMode::Ignore;
+        self.auto_discover_sitemaps_via_robots = false;
         self
     }
 
@@ -280,7 +284,7 @@ impl Default for CustomExtractor {
             kind: ExtractorKind::Css,
             expression: String::new(),
             attribute: None,
-            extract: ExtractWhat::Text,
+            extract: ExtractWhat::InnerHtml,
         }
     }
 }
@@ -297,8 +301,8 @@ pub enum ExtractorKind {
 #[serde(rename_all = "snake_case")]
 pub enum ExtractWhat {
     Element,
-    InnerHtml,
     #[default]
+    InnerHtml,
     Text,
 }
 
@@ -382,7 +386,7 @@ impl Default for Preferences {
             .iter()
             .map(|s| s.to_string())
             .collect(),
-            soft_404_phrases: ["page not found", "404 error", "not found"]
+            soft_404_phrases: ["Page Not Found", "404 Page Can't Be Found"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),

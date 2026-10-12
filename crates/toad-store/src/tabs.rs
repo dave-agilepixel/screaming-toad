@@ -146,12 +146,15 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     let html = "u.is_internal = 1 AND u.is_html = 1 AND u.status_code = 200";
     // Restrict on-page issue filters to indexable pages when configured.
     let ix = if ignore_non_indexable { " AND u.indexable = 1" } else { "" };
-    let dup = |col: &str| {
+    let dup_scoped = |col: &str, ix: &str| {
         format!(
             "u.{col} IS NOT NULL AND u.{col} <> '' AND u.{col} IN (SELECT d.{col} FROM urls d WHERE d.is_internal = 1 AND d.is_html = 1 AND d.status_code = 200{dix} AND d.{col} IS NOT NULL AND d.{col} <> '' GROUP BY d.{col} HAVING COUNT(*) > 1){ix}",
             dix = ix.replace("u.", "d.")
         )
     };
+    let dup = |col: &str| dup_scoped(col, ix);
+    // Exact duplicates follow Content > Duplicates > "Only Check Indexable Pages".
+    let dup_ix = if cfg.near_duplicates_indexable_only { " AND u.indexable = 1" } else { "" };
     let has_link = |cond: &str| format!("EXISTS (SELECT 1 FROM links l WHERE l.source_id = u.id AND {cond})");
     let directive = |d: &str| format!("u.directives LIKE '%,{d},%'");
     let directive_prefix = |d: &str| format!("u.directives LIKE '%,{d}%'");
@@ -360,7 +363,7 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             columns: vec!["Address", "Indexability", "Indexability Status", "Word Count", "Sentence Count", "Average Words Per Sentence", "Flesch Reading Ease Score", "Readability", "Text Ratio", "Closest Similarity Match", "No. Near Duplicates", "Language", "Hash"],
             filters: vec![
                 all(),
-                f("Exact Duplicates", dup("hash"), Some((Issue, High)), "Pages with identical HTML (matching MD5 hash)."),
+                f("Exact Duplicates", dup_scoped("hash", dup_ix), Some((Issue, High)), "Pages with identical HTML (matching MD5 hash)."),
                 f("Near Duplicates", "u.near_duplicate_count > 0".into(), Some((Warning, Medium)), "Content-area text at least as similar as the near-duplicate threshold (MinHash). Needs Near Duplicates enabled and crawl analysis."),
                 f(&format!("Low Content Pages (under {} words)", p.low_content_words), format!("u.word_count < {}{ix}", p.low_content_words), Some((Opportunity, Medium)), "Little text in the content area."),
                 f("Soft 404 Pages", {
@@ -493,7 +496,7 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                     has_link(&format!("l.internal = 1 AND l.kind = 'Hyperlink' AND lower(trim(l.anchor)) IN ({})", if list.is_empty() { "''".into() } else { list.join(",") }))
                 }, Some((Opportunity, Low)), "Anchor text such as 'click here' or 'read more'."),
                 f("Pages With High External Outlinks", format!("u.external_outlinks > {}", p.high_external_outlinks), Some((Warning, Low)), "More external links than the preference."),
-                f("Pages With High Internal Outlinks", format!("u.outlinks >= {}", p.high_internal_outlinks), Some((Warning, Low)), "More internal links than the preference."),
+                f("Pages With High Internal Outlinks", format!("u.outlinks > {}", p.high_internal_outlinks), Some((Warning, Low)), "More internal links than the preference."),
                 f("Follow & Nofollow Internal Inlinks To Page", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.internal = 1 AND l.kind = 'Hyperlink' AND l.follow = 1) AND EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.internal = 1 AND l.kind = 'Hyperlink' AND l.follow = 0)".into(), Some((Warning, Low)), "Linked both with and without nofollow."),
                 f("Internal Nofollow Inlinks Only", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Hyperlink') AND NOT EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Hyperlink' AND l.follow = 1)".into(), Some((Warning, Low)), "Every internal link to the page is nofollow."),
                 f("Outlinks To Localhost", has_link("(l.target LIKE 'http://localhost%' OR l.target LIKE 'https://localhost%' OR l.target LIKE 'http://127.0.0.1%' OR l.target LIKE 'https://127.0.0.1%')"), Some((Issue, High)), "Links to localhost or 127.0.0.1."),

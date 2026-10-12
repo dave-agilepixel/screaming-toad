@@ -60,6 +60,8 @@ What has been verified so far:
   - Structured data extraction is on by default.
   - Link Score uses a log scale.
   - Robots matching uses the configured user-agent token, falling back to `*`.
+  - The default user-agent is branded "Screaming Toad SEO Spider" (robots token "Screaming Toad").
+  - Crawl analysis always runs at the end of a crawl (Screaming Frog's "Auto-analyse at End of Crawl" is off by default).
 
 ## What to build next (once it's green)
 In this order (spec §9–10):

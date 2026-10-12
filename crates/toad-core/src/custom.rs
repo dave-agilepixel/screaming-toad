@@ -109,7 +109,7 @@ pub fn run_extractors(rules: &CustomRules, doc: &Html, html: &str) -> Vec<Vec<St
                     Some(a) => el.value().attr(a).map(|v| v.trim().to_string()),
                     None => Some(match what {
                         ExtractWhat::Element => el.html(),
-                        ExtractWhat::InnerHtml => el.inner_html(),
+                        ExtractWhat::InnerHtml => el.inner_html().trim().to_string(),
                         ExtractWhat::Text => el.text().collect::<Vec<_>>().join(" ").split_whitespace().collect::<Vec<_>>().join(" "),
                     }),
                 })
