@@ -5,5 +5,5 @@
 #   curl https://sh.rustup.rs -sSf | sh -s -- -y && ~/.cargo/bin/rustup default stable
 # Builds go to ~/toad-target inside WSL so they don't clash with the Windows build.
 $repo = (Resolve-Path "$PSScriptRoot\..").Path
-$wslPath = (wsl wslpath -a ($repo -replace '\', '/')).Trim()
+$wslPath = (wsl wslpath -a $repo.Replace('\', '/')).Trim()
 wsl -e bash -lc "cd '$wslPath' && CARGO_TARGET_DIR=~/toad-target ~/.cargo/bin/cargo test --workspace --exclude screaming-toad $args"
