@@ -298,3 +298,53 @@ export interface SourceCompare {
   lines: DiffLine[];
   changed: number;
 }
+
+// ---------------------------------------------------------------- File > Crawls, Settings, List mode
+
+export type CrawlStatus = "Crawling" | "Stopped" | "Complete";
+
+export interface CrawlEntry {
+  path: string;
+  name: string;
+  project: string;
+  start_url: string | null;
+  mode: string;
+  urls: number;
+  queued: number;
+  pct_complete: number;
+  status: CrawlStatus;
+  created: number;
+  modified: number;
+  size_bytes: number;
+  version: string;
+  locked: boolean;
+}
+
+export interface AppSettings {
+  storage_dir: string | null;
+  retention_days: number | null;
+  last_mode: string;
+}
+
+export const crawlsApi = {
+  list: () => invoke<CrawlEntry[]>("crawls_list"),
+  current: () => invoke<string | null>("current_crawl_path"),
+  rename: (path: string, name: string) => invoke<void>("crawl_rename", { path, name }),
+  setProject: (path: string, project: string) => invoke<void>("crawl_set_project", { path, project }),
+  setLocked: (path: string, locked: boolean) => invoke<void>("crawl_set_locked", { path, locked }),
+  duplicate: (path: string) => invoke<string>("crawl_duplicate", { path }),
+  remove: (path: string) => invoke<void>("crawl_delete", { path }),
+  exportTo: (path: string, dest: string) => invoke<void>("crawl_export", { path, dest }),
+  continueCrawl: (path: string) => invoke<void>("continue_crawl", { path }),
+  getSettings: () => invoke<AppSettings>("get_app_settings"),
+  setSettings: (settings: AppSettings) => invoke<void>("set_app_settings", { settings }),
+  fetchSitemapUrls: (urls: string[]) => invoke<string[]>("fetch_sitemap_urls", { urls }),
+  readUrlFile: (path: string) => invoke<string[]>("read_url_file", { path }),
+};
+
+/** Yes/No confirmation: the native dialog in the app, window.confirm in a browser. */
+export async function confirmAction(message: string, title = "Screaming Toad"): Promise<boolean> {
+  if (!inTauri) return window.confirm(message);
+  const { ask } = await import("@tauri-apps/plugin-dialog");
+  return ask(message, { title, kind: "warning" });
+}

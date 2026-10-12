@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   api,
   compareApi,
+  crawlsApi,
   COMPARE_STATES,
   COMPARE_STATE_TEXT,
   events,
@@ -22,9 +23,12 @@ import { SitemapDialog } from "./components/SitemapDialog";
 import { CompareSidePanel } from "./components/CompareSidePanel";
 import { CompareDetailPanel } from "./components/CompareDetailPanel";
 import { CompareConfigDialog } from "./components/CompareConfigDialog";
+import { CrawlsDialog } from "./components/CrawlsDialog";
+import { ListModeDialog } from "./components/ListModeDialog";
+import { SettingsDialog } from "./components/SettingsDialog";
 
 type Status = "idle" | "crawling" | "paused" | "analysing" | "done";
-type Mode = "spider" | "compare";
+type Mode = "spider" | "list" | "compare";
 type CompareStatus = "idle" | "comparing" | "ready";
 
 const BROWSE = "__browse__";
@@ -65,6 +69,13 @@ export default function App() {
   const [changeState, setChangeState] = useState<ChangeState>("Changed");
   const [showCompareConfig, setShowCompareConfig] = useState(false);
 
+  // File > Crawls, File > Settings, List mode.
+  const [showCrawls, setShowCrawls] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showList, setShowList] = useState(false);
+  /** The open crawl was stopped or interrupted, so it can be resumed. */
+  const [resumable, setResumable] = useState(false);
+
   const comparing = mode === "compare";
   const activeTabs = comparing ? compareTabs : tabs;
   const filter = filters[tab] ?? "All";
@@ -74,6 +85,15 @@ export default function App() {
   const previousSide = comparing && !isChangeDetection && ["Previous", "Removed", "Missing"].includes(compareState);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const checkResumable = useCallback(async () => {
+    try {
+      const [current, list] = await Promise.all([crawlsApi.current(), crawlsApi.list()]);
+      setResumable(!!current && list.some((c) => c.path === current && c.status !== "Complete"));
+    } catch {
+      setResumable(false);
+    }
+  }, []);
 
   useEffect(() => {
     api.tabs().then(setTabs).catch(console.error);
@@ -90,12 +110,13 @@ export default function App() {
       events.onFinished(() => {
         setStatus("done");
         refresh();
+        checkResumable();
       }),
     ];
     return () => {
       unlisten.forEach((p) => p.then((f) => f()));
     };
-  }, [refresh]);
+  }, [refresh, checkResumable]);
 
   const loadCrawls = useCallback(async () => {
     const list = await compareApi.listCrawls();
@@ -109,8 +130,14 @@ export default function App() {
     setPreviousPath((prev) => prev || list[1]?.path || "");
   }, []);
 
-  const switchMode = async (m: Mode) => {
+  const switchMode = async (m: Mode, persist = true) => {
     setMode(m);
+    if (persist) {
+      crawlsApi
+        .getSettings()
+        .then((s) => crawlsApi.setSettings({ ...s, last_mode: m }))
+        .catch(console.error);
+    }
     setSelected(null);
     setSort(null);
     setMessage(null);
@@ -127,6 +154,79 @@ export default function App() {
     refresh();
   };
 
+  useEffect(() => {
+    crawlsApi
+      .getSettings()
+      .then((s) => {
+        if (s.last_mode === "list" || s.last_mode === "compare") switchMode(s.last_mode, false);
+      })
+      .catch(console.error);
+    // Only on startup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startList = async (urls: string[]) => {
+    setMessage(null);
+    setSelected(null);
+    await api.startList(urls);
+    setProgress(null);
+    setStatus("crawling");
+    setResumable(false);
+    setTabs(await api.tabs());
+    refresh();
+  };
+
+  const openCrawlAt = async (path: string) => {
+    try {
+      if (comparing) await switchMode("spider");
+      await api.openCrawl(path);
+      setTabs(await api.tabs());
+      setStatus("done");
+      setProgress(null);
+      setSelected(null);
+      setShowCrawls(false);
+      refresh();
+      checkResumable();
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  const resumeCrawl = async (path?: string) => {
+    try {
+      const target = path ?? (await crawlsApi.current());
+      if (!target) return;
+      if (comparing) await switchMode("spider");
+      setShowCrawls(false);
+      setSelected(null);
+      await crawlsApi.continueCrawl(target);
+      setStatus("crawling");
+      setResumable(false);
+      setTabs(await api.tabs());
+      refresh();
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  const compareFromCrawls = async (current: string, previous: string) => {
+    setShowCrawls(false);
+    await switchMode("compare");
+    setCurrentPath(current);
+    setPreviousPath(previous);
+    setCompareStatus("comparing");
+    try {
+      const s = await compareApi.run(current, previous);
+      setSummary(s);
+      setCompareTabs(await compareApi.tabs());
+      setCompareStatus("ready");
+      refresh();
+    } catch (e) {
+      setCompareStatus("idle");
+      setMessage(String(e));
+    }
+  };
+
   const start = async () => {
     setMessage(null);
     setSelected(null);
@@ -134,6 +234,7 @@ export default function App() {
       await api.startCrawl(url);
       setProgress(null);
       setStatus("crawling");
+      setResumable(false);
       setTabs(await api.tabs());
       refresh();
     } catch (e) {
@@ -158,11 +259,7 @@ export default function App() {
   const openCrawl = async () => {
     const path = await open({ filters: [{ name: "Screaming Toad crawl", extensions: ["toad"] }] });
     if (typeof path !== "string") return;
-    await api.openCrawl(path);
-    setTabs(await api.tabs());
-    setStatus("done");
-    setSelected(null);
-    refresh();
+    await openCrawlAt(path);
   };
 
   const saveCrawl = async () => {
@@ -337,11 +434,17 @@ export default function App() {
         <div className="brand">🐸 Screaming Toad</div>
         <select className="mode" value={mode} onChange={(e) => switchMode(e.target.value as Mode)} disabled={crawling} title="Mode">
           <option value="spider">Spider</option>
+          <option value="list">List</option>
           <option value="compare">Compare</option>
         </select>
 
         {!comparing && (
           <>
+            {mode === "list" ? (
+              <button className="url list-upload" onClick={() => setShowList(true)} disabled={crawling}>
+                Upload URLs (enter, paste, file or XML sitemap)…
+              </button>
+            ) : (
             <input
               className="url"
               placeholder="Enter URL to spider"
@@ -350,27 +453,41 @@ export default function App() {
               onKeyDown={(e) => e.key === "Enter" && !crawling && start()}
               spellCheck={false}
             />
+            )}
             {!crawling ? (
-              <button className="primary" onClick={start} disabled={!url.trim()}>
-                Start
-              </button>
+              mode === "list" ? null : (
+                <button className="primary" onClick={start} disabled={!url.trim()}>
+                  Start
+                </button>
+              )
             ) : (
               <>
                 <button onClick={pauseResume}>{status === "paused" ? "Resume" : "Pause"}</button>
                 <button onClick={stop}>Stop</button>
               </>
             )}
+            {resumable && !crawling && (
+              <button className="primary" onClick={() => resumeCrawl()} title="Continue this stopped or interrupted crawl">
+                Resume
+              </button>
+            )}
             <button onClick={() => setShowConfig(true)} disabled={crawling}>
               Configuration
             </button>
-            <button onClick={openCrawl} disabled={crawling}>
-              Open
+            <button onClick={() => setShowCrawls(true)} disabled={crawling} title="File > Crawls: every saved crawl">
+              Crawls
+            </button>
+            <button onClick={openCrawl} disabled={crawling} title="Open a .toad file from anywhere">
+              Open…
             </button>
             <button onClick={saveCrawl} disabled={status !== "done"}>
               Save As
             </button>
             <button onClick={() => setShowSitemap(true)} disabled={status !== "done"}>
               XML Sitemap
+            </button>
+            <button onClick={() => setShowSettings(true)} disabled={crawling} title="File > Settings: storage folder and crawl retention">
+              Settings
             </button>
             <select
               className="reports"
@@ -438,6 +555,9 @@ export default function App() {
               ⚙ Compare Config
             </button>
             <button onClick={openComparison}>Open Comparison</button>
+            <button onClick={() => setShowCrawls(true)} title="File > Crawls: select two crawls to compare">
+              Crawls
+            </button>
             <button onClick={exportCompareOverview} disabled={!summary} title="Reports > Crawl Overview for this comparison">
               Export Overview
             </button>
@@ -554,6 +674,11 @@ export default function App() {
         />
       )}
       {showSitemap && <SitemapDialog onClose={() => setShowSitemap(false)} onDone={setMessage} />}
+      {showCrawls && (
+        <CrawlsDialog onClose={() => setShowCrawls(false)} onOpen={openCrawlAt} onResume={resumeCrawl} onCompare={compareFromCrawls} />
+      )}
+      {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {showList && <ListModeDialog onClose={() => setShowList(false)} onStart={startList} />}
       {showCompareConfig && (
         <CompareConfigDialog
           onClose={(saved) => {

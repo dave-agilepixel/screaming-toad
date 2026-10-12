@@ -135,6 +135,15 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       ];
       return { current: MOCK_HTML_CURRENT, previous: MOCK_HTML_PREVIOUS, lines, changed: 3 } as T;
     }
+    case "crawls_list":
+      return MOCK_CRAWLS as T;
+    case "current_crawl_path":
+      return MOCK_CRAWLS[0].path as T;
+    case "get_app_settings":
+      return { storage_dir: null, retention_days: null, last_mode: "spider" } as T;
+    case "read_url_file":
+    case "fetch_sitemap_urls":
+      return ["https://www.example.com/a", "https://www.example.com/b", "https://www.example.com/a"] as T;
     case "list_crawls":
       return [
         { path: "C:/crawls/example-2.toad", name: "example-2", start_url: "https://www.example.com/", urls: 1250, modified: 1791800000 },
@@ -257,3 +266,10 @@ const MOCK_HTML_CURRENT = `<!doctype html>
 </head>
 <body><h1>Toads</h1></body>
 </html>`;
+
+const MOCK_CRAWLS = [
+  { path: "C:/crawls/www_example_com-1791800000.toad", name: "www.example.com", project: "Example Ltd", start_url: "https://www.example.com/", mode: "spider", urls: 1250, queued: 0, pct_complete: 100, status: "Complete", created: 1791800000, modified: 1791800400, size_bytes: 48_000_000, version: "0.1.0", locked: true },
+  { path: "C:/crawls/staging-1791700000.toad", name: "Staging before launch", project: "Example Ltd", start_url: "https://staging.example.com/", mode: "spider", urls: 812, queued: 431, pct_complete: 65.3, status: "Stopped", created: 1791700000, modified: 1791700300, size_bytes: 31_000_000, version: "0.1.0", locked: false },
+  { path: "C:/crawls/books-1791600000.toad", name: "books.toscrape.com", project: "", start_url: "https://books.toscrape.com/", mode: "spider", urls: 150, queued: 0, pct_complete: 100, status: "Complete", created: 1791600000, modified: 1791600100, size_bytes: 4_200_000, version: "0.1.0", locked: false },
+  { path: "C:/crawls/list-1791500000.toad", name: "Redirect check", project: "", start_url: "https://www.example.com/old", mode: "list", urls: 38, queued: 0, pct_complete: 100, status: "Crawling", created: 1791500000, modified: 1791500050, size_bytes: 900_000, version: "0.1.0", locked: false },
+];

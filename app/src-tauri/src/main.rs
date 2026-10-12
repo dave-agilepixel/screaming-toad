@@ -434,6 +434,7 @@ fn main() {
             settings::crawl_export,
             settings::current_crawl_path,
             settings::fetch_sitemap_urls,
+            settings::read_url_file,
             pause_crawl,
             resume_crawl,
             stop_crawl,

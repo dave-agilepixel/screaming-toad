@@ -173,3 +173,21 @@ pub async fn fetch_sitemap_urls(state: State<'_, AppState>, urls: Vec<String>) -
     }
     Ok(out)
 }
+
+/// List mode > From a File: the URLs in a .txt, .csv or XML sitemap file,
+/// in file order with duplicates kept.
+#[tauri::command]
+pub fn read_url_file(path: String) -> CmdResult<Vec<String>> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(".xml") || lower.ends_with(".xml.gz") {
+        let parsed = sitemap::parse(&bytes);
+        if parsed.kind == SitemapKind::Index {
+            return Err("This is a sitemap index. Use Download XML Sitemap with its URL to fetch the sitemaps it lists.".into());
+        }
+        return Ok(parsed.locs);
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let re = regex::Regex::new(r#"https?://[^\s,;"'<>]+"#).map_err(err)?;
+    Ok(re.find_iter(&text).map(|m| m.as_str().to_string()).collect())
+}

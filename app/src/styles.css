@@ -280,3 +280,24 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
 .detail-tabs button { white-space: nowrap; }
 .detail-tabs .check.inline { white-space: nowrap; }
 .center { overflow: hidden; }
+
+/* ------------------------------------------------------------ File > Crawls, List mode, Settings */
+.crawls-modal { width: min(1100px, 96vw); height: min(680px, 90vh); display: flex; flex-direction: column; }
+.crawls-table-wrap { flex: 1; overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+.crawls-table { font-size: 12px; }
+.crawls-table tbody tr { cursor: default; }
+.crawls-table tbody tr:hover td { background: var(--row-hover); }
+.crawls-table tr.selected td { background: var(--accent-soft); }
+.crawls-table tr.open-crawl td:first-child { font-weight: 600; }
+.crawls-table td.indent { padding-left: 26px; }
+.crawls-table .url-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.crawls-table .group-row td { background: var(--panel); }
+.crawls-table td input { width: 100%; }
+.tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10px; border: 1px solid var(--border); color: var(--muted); }
+.tag.warn { border-color: var(--warning); color: var(--warning); }
+.crawls-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.crawls-actions .sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
+.project-input { width: 160px; }
+button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); }
+.list-upload { text-align: left; color: var(--muted); }
+.button-row .grow { flex: 1; min-width: 120px; }
