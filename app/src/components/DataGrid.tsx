@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, type Table } from "../api";
+import { api, compareApi, type ChangeState, type CompareState, type Table } from "../api";
 
 const ROW_HEIGHT = 24;
 const BLOCK = 200;
@@ -14,14 +14,18 @@ interface Props {
   onSelect: (address: string) => void;
   /** Bump to re-query (live crawl updates, finished analysis). */
   refreshKey: number;
+  /** Compare mode: which URLs of the filter to show. */
+  compareState?: CompareState | ChangeState;
 }
 
 /** Column widths by header, so URLs get room and numbers stay narrow. */
 function widthFor(column: string): number {
-  if (column === "Address" || column.endsWith("URL") || column.startsWith("Canonical") || column === "Final Destination") return 360;
-  if (/^(Title|Meta Description|H1-|H2-|Meta Keywords)/.test(column) && !/Length|Width|Occurrences/.test(column)) return 280;
-  if (/Status$|Indexability Status|Content Type|Readability|Redirect Type|Matched/.test(column)) return 150;
-  if (column === "Hash") return 260;
+  // Compare mode shows "Current X" / "Previous X" side by side.
+  const base = column.replace(/^(Current|Previous) /, "");
+  if (base === "Address" || base.endsWith("URL") || base.startsWith("Canonical") || base === "Final Destination") return 360;
+  if (/^(Title|Page Title|Meta Description|H1|H2-|Meta Keywords|Structured Data Unique Types)/.test(base) && !/Length|Width|Occurrences/.test(base)) return 280;
+  if (/Status$|Indexability|Content Type|Readability|Redirect Type|Matched/.test(base)) return 150;
+  if (base === "Hash") return 260;
   return 110;
 }
 
@@ -29,7 +33,7 @@ function widthFor(column: string): number {
  * Virtualised grid: only visible rows are rendered, and rows are fetched
  * from the store in blocks of 200 as the user scrolls.
  */
-export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect, refreshKey }: Props) {
+export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect, refreshKey, compareState }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(400);
   const [scrollTop, setScrollTop] = useState(0);
@@ -53,7 +57,7 @@ export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect
       if (pending.current.has(block)) return;
       pending.current.add(block);
       try {
-        const t: Table = await api.rows({
+        const req = {
           tab,
           filter,
           search: search || undefined,
@@ -61,7 +65,8 @@ export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect
           sortDesc: sort?.desc,
           offset: block * BLOCK,
           limit: BLOCK,
-        });
+        };
+        const t: Table = compareState ? await compareApi.rows({ ...req, state: compareState }) : await api.rows(req);
         if (gen !== generation.current) return;
         setColumns(t.columns);
         setTotal(t.total);
@@ -72,7 +77,7 @@ export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect
         pending.current.delete(block);
       }
     },
-    [tab, filter, search, sort],
+    [tab, filter, search, sort, compareState],
   );
 
   // New query: drop cached rows. A refresh keeps rows on screen until replaced.

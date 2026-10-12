@@ -2,12 +2,14 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod compare;
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use toad_core::{CrawlConfig, CrawlControl, CrawlEvent, Crawler, PageRecord, Progress};
-use toad_store::{IssueRow, OverviewRow, ReportDef, RowQuery, SitemapOptions, Store, Table, TabDef};
+use toad_store::{CompareConfig, Comparison, IssueRow, OverviewRow, ReportDef, RowQuery, SitemapOptions, Store, Table, TabDef};
 use url::Url;
 
 #[derive(Default)]
@@ -16,6 +18,9 @@ struct AppState {
     crawl_path: Arc<Mutex<Option<PathBuf>>>,
     control: Mutex<Option<CrawlControl>>,
     config: Mutex<CrawlConfig>,
+    /// The open comparison (Compare mode) and Config > Compare.
+    compare: Arc<Mutex<Option<Comparison>>>,
+    compare_config: Mutex<CompareConfig>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -360,6 +365,24 @@ fn main() {
             get_config,
             set_config,
             reset_config,
+            compare::list_crawls,
+            compare::crawl_info_for,
+            compare::get_compare_config,
+            compare::set_compare_config,
+            compare::test_url_mapping,
+            compare::run_compare,
+            compare::open_comparison,
+            compare::close_comparison,
+            compare::compare_summary,
+            compare::compare_tabs,
+            compare::compare_overview,
+            compare::compare_issues,
+            compare::compare_rows,
+            compare::compare_export,
+            compare::compare_export_overview,
+            compare::compare_url_details,
+            compare::compare_links,
+            compare::compare_site_structure,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Screaming Toad");

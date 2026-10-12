@@ -161,3 +161,150 @@ export const events = {
   onAnalysing: (cb: () => void): Promise<UnlistenFn> => listen("crawl-analysing", () => cb()),
   onFinished: (cb: () => void): Promise<UnlistenFn> => listen("crawl-finished", () => cb()),
 };
+
+// ---------------------------------------------------------------- Compare mode
+
+export type CompareState = "Current" | "Previous" | "Added" | "New" | "Removed" | "Missing";
+export type ChangeState = "Changed" | "Not Changed";
+export type LinkState = "Current" | "Previous" | "Added" | "Removed";
+
+export const COMPARE_STATES: CompareState[] = ["Current", "Previous", "Added", "New", "Removed", "Missing"];
+
+/** Status-bar text for each grid state, as Screaming Frog words it. */
+export const COMPARE_STATE_TEXT: Record<CompareState, string> = {
+  Current: "URLs in current crawl",
+  Previous: "URLs in previous crawl",
+  Added: "URLs in previous crawl that moved to filter of current crawl",
+  New: "New URLs found in current crawl and filter",
+  Removed: "URLs in filter for previous crawl, but not in filter for current crawl",
+  Missing: "URLs not found in the current crawl, that previously were in filter",
+};
+
+export const CHANGE_ELEMENTS = [
+  "Indexability",
+  "PageTitles",
+  "MetaDescription",
+  "H1",
+  "WordCount",
+  "CrawlDepth",
+  "Inlinks",
+  "UniqueInlinks",
+  "InternalOutlinks",
+  "UniqueInternalOutlinks",
+  "ExternalOutlinks",
+  "UniqueExternalOutlinks",
+  "StructuredDataUniqueTypes",
+  "Content",
+] as const;
+export type ChangeElement = (typeof CHANGE_ELEMENTS)[number];
+
+/** Display names for Change Detection elements (match the tab's filter names). */
+export const CHANGE_ELEMENT_NAMES: Record<ChangeElement, string> = {
+  Indexability: "Indexability",
+  PageTitles: "Page Titles",
+  MetaDescription: "Meta Description",
+  H1: "H1",
+  WordCount: "Word Count",
+  CrawlDepth: "Crawl Depth",
+  Inlinks: "Inlinks",
+  UniqueInlinks: "Unique Inlinks",
+  InternalOutlinks: "Internal Outlinks",
+  UniqueInternalOutlinks: "Unique Internal Outlinks",
+  ExternalOutlinks: "External Outlinks",
+  UniqueExternalOutlinks: "Unique External Outlinks",
+  StructuredDataUniqueTypes: "Structured Data Unique Types",
+  Content: "Content",
+};
+
+export interface UrlMapping {
+  regex: string;
+  replace: string;
+}
+
+export interface CompareConfig {
+  elements: ChangeElement[];
+  similarity_change_pct: number;
+  ignore_non_indexable: boolean;
+  url_mapping: UrlMapping[];
+}
+
+export interface CompareSummary {
+  current_path: string;
+  previous_path: string;
+  current_start_url: string | null;
+  previous_start_url: string | null;
+  current_urls: number;
+  previous_urls: number;
+  in_both: number;
+  content_available: boolean;
+  config: CompareConfig;
+}
+
+export interface CompareOverviewRow {
+  tab: string;
+  filter: string;
+  current: number;
+  previous: number;
+  change: number;
+  change_pct: number | null;
+  added: number | null;
+  new: number | null;
+  removed: number | null;
+  missing: number | null;
+}
+
+export interface CompareIssueRow {
+  tab: string;
+  filter: string;
+  issue_type: IssueType;
+  priority: Priority;
+  current: number;
+  previous: number;
+  change: number;
+  change_pct: number | null;
+  added: number;
+  new: number;
+  removed: number;
+  missing: number;
+  description: string;
+}
+
+export interface CrawlInfo {
+  path: string;
+  name: string;
+  start_url: string | null;
+  urls: number;
+  modified: number;
+}
+
+export interface CompareRowsRequest {
+  tab: string;
+  filter: string;
+  state: CompareState | ChangeState;
+  search?: string;
+  sortColumn?: string;
+  sortDesc?: boolean;
+  offset: number;
+  limit?: number;
+}
+
+export const compareApi = {
+  listCrawls: () => invoke<CrawlInfo[]>("list_crawls"),
+  crawlInfo: (path: string) => invoke<CrawlInfo>("crawl_info_for", { path }),
+  getConfig: () => invoke<CompareConfig>("get_compare_config"),
+  setConfig: (config: CompareConfig) => invoke<void>("set_compare_config", { config }),
+  testMapping: (rules: UrlMapping[], url: string) => invoke<string>("test_url_mapping", { rules, url }),
+  run: (current: string, previous: string) => invoke<CompareSummary>("run_compare", { current, previous }),
+  open: (path: string) => invoke<CompareSummary>("open_comparison", { path }),
+  close: () => invoke<void>("close_comparison"),
+  summary: () => invoke<CompareSummary | null>("compare_summary"),
+  tabs: () => invoke<TabDef[]>("compare_tabs"),
+  overview: () => invoke<CompareOverviewRow[]>("compare_overview"),
+  issues: () => invoke<CompareIssueRow[]>("compare_issues"),
+  rows: (req: CompareRowsRequest) => invoke<Table>("compare_rows", { req }),
+  exportCsv: (req: CompareRowsRequest, path: string) => invoke<number>("compare_export", { req, path }),
+  exportOverview: (path: string) => invoke<number>("compare_export_overview", { path }),
+  urlDetails: (url: string) => invoke<Table>("compare_url_details", { url }),
+  links: (url: string, outlinks: boolean, linkState: LinkState) => invoke<Table>("compare_links", { url, outlinks, linkState }),
+  siteStructure: (depth: number) => invoke<Table>("compare_site_structure", { depth }),
+};
