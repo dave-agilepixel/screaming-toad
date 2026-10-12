@@ -28,6 +28,7 @@ type Mode = "spider" | "compare";
 type CompareStatus = "idle" | "comparing" | "ready";
 
 const BROWSE = "__browse__";
+const PAGE_SOURCE = "__page_source__";
 
 function crawlLabel(c: CrawlInfo): string {
   const when = c.modified ? new Date(c.modified * 1000).toLocaleString() : "";
@@ -193,6 +194,17 @@ export default function App() {
 
   const runReport = async (name: string) => {
     if (!name) return;
+    if (name === PAGE_SOURCE) {
+      const dir = await open({ directory: true, title: "Choose a folder for the page source files" });
+      if (typeof dir !== "string") return;
+      try {
+        const n = await api.exportPageSource(dir);
+        setMessage(n ? `All Page Source: ${n.toLocaleString()} pages → ${dir}` : "No page source stored. Switch on Configuration > Spider > Extraction > Store HTML and crawl again.");
+      } catch (e) {
+        setMessage(String(e));
+      }
+      return;
+    }
     const path = await save({
       defaultPath: `${name}.csv`.replace(/[^\w.-]+/g, "_").toLowerCase(),
       filters: [{ name: "CSV", extensions: ["csv"] }],
@@ -253,7 +265,7 @@ export default function App() {
       setCompareStatus("ready");
       setSelected(null);
       if (s.config.elements.includes("Content") && !s.content_available) {
-        setMessage("Content change detection needs Near Duplicates switched on in both crawls.");
+        setMessage("Content change detection needs Store HTML (or Near Duplicates) switched on in both crawls.");
       }
       refresh();
     } catch (e) {
@@ -376,6 +388,9 @@ export default function App() {
                 ))}
               </optgroup>
               <optgroup label="Bulk Export">
+                <option value={PAGE_SOURCE} title="One .html file per page, plus index.csv (needs Store HTML)">
+                  All Page Source (to folder)
+                </option>
                 {reports.filter((r) => r.kind === "BulkExport").map((r) => (
                   <option key={r.name} value={r.name} title={r.description}>
                     {r.name}

@@ -172,6 +172,10 @@ impl Store {
                     }
                 }
             }
+            if let Some(html) = &rec.html {
+                tx.prepare_cached("INSERT OR REPLACE INTO html (url_id, body) VALUES (?1, ?2)")?
+                    .execute(params![source_id, compress(html.as_bytes())?])?;
+            }
             if let Some(c) = &rec.http_canonical {
                 link_stmt.execute(params![
                     source_id, c, internal(c), LinkKind::HttpCanonical.as_str(),
@@ -214,9 +218,62 @@ impl Store {
         Ok(())
     }
 
+    /// The stored HTML of a URL (View Source), if Store HTML was on.
+    pub fn page_source(&self, address: &str) -> anyhow::Result<Option<String>> {
+        let blob: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT h.body FROM html h JOIN urls u ON u.id = h.url_id WHERE u.address = ?1",
+                params![address],
+                |r| r.get(0),
+            )
+            .optional()?;
+        blob.map(|b| decompress(&b)).transpose()
+    }
+
+    /// Whether any page source was stored in this crawl.
+    pub fn has_html(&self) -> anyhow::Result<bool> {
+        Ok(self.conn.query_row("SELECT EXISTS (SELECT 1 FROM html)", [], |r| r.get(0))?)
+    }
+
+    /// Bulk Export > Web > All Page Source: one `.html` file per stored page
+    /// in `dir`, plus `index.csv` mapping files to addresses. Returns the count.
+    pub fn export_page_source(&self, dir: &Path) -> anyhow::Result<u64> {
+        std::fs::create_dir_all(dir)?;
+        let mut stmt = self.conn.prepare("SELECT u.address, h.body FROM html h JOIN urls u ON u.id = h.url_id ORDER BY u.crawl_order")?;
+        let mut rows = stmt.query([])?;
+        let mut index = csv::Writer::from_path(dir.join("index.csv"))?;
+        index.write_record(["File", "Address"])?;
+        let mut n = 0u64;
+        while let Some(row) = rows.next()? {
+            let address: String = row.get(0)?;
+            let body: Vec<u8> = row.get(1)?;
+            n += 1;
+            let file = format!("{n:06}.html");
+            std::fs::write(dir.join(&file), decompress(&body)?)?;
+            index.write_record([file.as_str(), address.as_str()])?;
+        }
+        index.flush()?;
+        Ok(n)
+    }
+
     pub fn url_count(&self) -> anyhow::Result<u64> {
         Ok(self.conn.query_row("SELECT COUNT(*) FROM urls", [], |r| r.get::<_, i64>(0))? as u64)
     }
+}
+
+fn compress(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+    use std::io::Write;
+    let mut enc = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(bytes)?;
+    Ok(enc.finish()?)
+}
+
+fn decompress(bytes: &[u8]) -> anyhow::Result<String> {
+    use std::io::Read;
+    let mut out = String::new();
+    flate2::read::DeflateDecoder::new(bytes).read_to_string(&mut out)?;
+    Ok(out)
 }
 
 fn text(s: &str) -> Value {

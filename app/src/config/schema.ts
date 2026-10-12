@@ -110,6 +110,7 @@ export interface CrawlConfig {
   lowercase_urls: boolean;
   content_area: ContentArea;
   extract_structured_data: boolean;
+  store_html: boolean;
   near_duplicates: boolean;
   near_duplicate_threshold: number;
   near_duplicates_indexable_only: boolean;
@@ -230,10 +231,21 @@ export const NODES: Node[] = [
         ],
       },
       {
+        title: "HTML",
+        fields: [
+          {
+            kind: "bool",
+            key: "store_html",
+            label: "Store HTML",
+            help: "Keep the HTML of internal pages: View Source in the lower window, Bulk Export > All Page Source, and Content / View Source in Compare mode.",
+          },
+        ],
+      },
+      {
         fields: [
           {
             kind: "note",
-            text: "Page details (title, meta description, H1/H2, indexability, word count, readability, hash, size, response time, meta robots, X-Robots-Tag) are always extracted. Per-element toggles, Store HTML and PDF extraction are planned.",
+            text: "Page details (title, meta description, H1/H2, indexability, word count, readability, hash, size, response time, meta robots, X-Robots-Tag) are always extracted. Per-element toggles, Store Rendered HTML and PDF extraction are planned.",
           },
         ],
       },

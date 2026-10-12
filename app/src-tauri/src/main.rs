@@ -283,6 +283,18 @@ fn generate_sitemap(state: State<'_, AppState>, dir: String, options: SitemapOpt
     })
 }
 
+/// View Source: the stored HTML, or None when Store HTML was off.
+#[tauri::command]
+fn get_page_source(state: State<'_, AppState>, url: String) -> CmdResult<Option<String>> {
+    with_store(&state, |s| s.page_source(&url))
+}
+
+/// Bulk Export > Web > All Page Source.
+#[tauri::command]
+fn export_page_source(state: State<'_, AppState>, dir: String) -> CmdResult<u64> {
+    with_store(&state, |s| s.export_page_source(std::path::Path::new(&dir)))
+}
+
 #[tauri::command]
 fn get_url_details(state: State<'_, AppState>, url: String) -> CmdResult<Vec<(String, String)>> {
     with_store(&state, |s| s.url_details(&url))
@@ -366,6 +378,8 @@ fn main() {
             get_inlinks,
             get_outlinks,
             get_url_details,
+            get_page_source,
+            export_page_source,
             get_near_duplicates,
             get_reports,
             export_report,
@@ -403,6 +417,7 @@ fn main() {
             compare::compare_url_details,
             compare::compare_links,
             compare::compare_site_structure,
+            compare::compare_source,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Screaming Toad");

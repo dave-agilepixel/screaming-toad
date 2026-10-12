@@ -96,7 +96,7 @@ export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => 
                   />
                 </label>
                 <p className="hint">
-                  Content compares a MinHash of each page's text, so it needs Near Duplicates switched on in both crawls.
+                  Content compares a MinHash of each page's content area, so it needs Store HTML (or Near Duplicates) switched on in both crawls.
                 </p>
                 <label className="check wide">
                   <input type="checkbox" checked={cfg.ignore_non_indexable} onChange={(e) => set("ignore_non_indexable", e.target.checked)} />

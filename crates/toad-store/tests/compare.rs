@@ -72,8 +72,9 @@ async fn serve(listener: TcpListener, version: Arc<AtomicU8>) {
 }
 
 async fn crawl(start: &Url, db: &Path) {
-    // Content change detection needs a content signature in both crawls.
-    let cfg = CrawlConfig { near_duplicates: true, ..CrawlConfig::default() };
+    // Store HTML gives View Source and the content signature that Content
+    // change detection needs.
+    let cfg = CrawlConfig { store_html: true, ..CrawlConfig::default() };
     let mut store = Store::create(db, start, &cfg).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
     let crawler = Crawler::new(cfg, start).unwrap();
@@ -178,6 +179,19 @@ async fn compare_two_crawls() {
     assert_eq!(added.rows.iter().map(|r| r[2].clone()).collect::<Vec<_>>(), vec![u("/new")]);
     let removed = cmp.links(&u("/"), true, LinkState::Removed).unwrap();
     assert_eq!(removed.rows.iter().map(|r| r[2].clone()).collect::<Vec<_>>(), vec![u("/gone")]);
+
+    // View Source compare: /a's paragraph changed, line by line.
+    assert!(cmp.current().page_source(&u("/a")).unwrap().unwrap().contains("Frogs have smooth"));
+    let src = cmp.source_compare(&u("/a")).unwrap();
+    assert!(src.previous.as_deref().unwrap().contains("Toads are amphibians"));
+    assert!(src.changed > 0);
+    assert!(src.lines.iter().any(|l| l.tag == "delete" && l.text.contains("Toads")));
+    assert!(src.lines.iter().any(|l| l.tag == "insert" && l.text.contains("Frogs")));
+    let missing_src = cmp.source_compare(&u("/gone/")).unwrap();
+    assert!(missing_src.current.is_none() && missing_src.previous.is_some());
+    let pages = dir.join("source");
+    assert_eq!(cmp.current().export_page_source(&pages).unwrap(), 5);
+    assert!(std::fs::read_to_string(pages.join("index.csv")).unwrap().contains(&u("/new")));
 
     // Issues carry both sides.
     let issues = cmp.issues().unwrap();

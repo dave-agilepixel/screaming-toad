@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type Table } from "../api";
+import { SourceView } from "./SourceView";
 
-type View = "details" | "inlinks" | "outlinks" | "duplicates" | "structured";
+type View = "details" | "inlinks" | "outlinks" | "duplicates" | "structured" | "source";
 
 const LABELS: Record<View, string> = {
   details: "URL Details",
@@ -9,6 +10,7 @@ const LABELS: Record<View, string> = {
   outlinks: "Outlinks",
   duplicates: "Duplicate Details",
   structured: "Structured Data Details",
+  source: "View Source",
 };
 
 /** Lower window: URL Details, Inlinks and Outlinks for the selected URL. */
@@ -16,12 +18,16 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
   const [view, setView] = useState<View>("details");
   const [details, setDetails] = useState<[string, string][]>([]);
   const [links, setLinks] = useState<Table | null>(null);
+  const [source, setSource] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!url) return;
     let live = true;
     if (view === "details") {
       api.urlDetails(url).then((d) => live && setDetails(d)).catch(console.error);
+    } else if (view === "source") {
+      setSource(undefined);
+      api.pageSource(url).then((s) => live && setSource(s)).catch(console.error);
     } else {
       const load =
         view === "inlinks"
@@ -66,7 +72,8 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
             </tbody>
           </table>
         )}
-        {url && view !== "details" && links && (
+        {url && view === "source" && source !== undefined && <SourceView source={source} />}
+        {url && view !== "details" && view !== "source" && links && (
           <table className="links">
             <thead>
               <tr>

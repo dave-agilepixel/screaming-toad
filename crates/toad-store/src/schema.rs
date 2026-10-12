@@ -85,6 +85,12 @@ CREATE TABLE IF NOT EXISTS urls (
 );
 
 -- Structured data items and validation issues per URL.
+-- Store HTML: deflate-compressed page source, one row per URL.
+CREATE TABLE IF NOT EXISTS html (
+    url_id INTEGER PRIMARY KEY,
+    body BLOB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sd_items (
     url_id INTEGER NOT NULL,
     format TEXT NOT NULL,

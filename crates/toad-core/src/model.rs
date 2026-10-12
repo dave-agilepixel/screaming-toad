@@ -129,6 +129,9 @@ pub struct PageRecord {
     pub sitemap_url_count: Option<u64>,
     pub indexable: bool,
     pub indexability_status: String,
+    /// The page's HTML, when Store HTML is on (internal HTML pages only).
+    #[serde(skip)]
+    pub html: Option<String>,
 }
 
 impl PageRecord {

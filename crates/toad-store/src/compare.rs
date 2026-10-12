@@ -258,10 +258,31 @@ pub struct CompareSummary {
     pub previous_urls: u64,
     /// URLs present in both crawls (after URL Mapping).
     pub in_both: u64,
-    /// Content change detection needs a content signature (Near Duplicates,
-    /// later Store HTML) in both crawls.
+    /// Content change detection needs a content signature (Store HTML or
+    /// Near Duplicates) in both crawls.
     pub content_available: bool,
     pub config: CompareConfig,
+}
+
+/// One line of a View Source comparison (previous → current).
+#[derive(Debug, Clone, Serialize)]
+pub struct DiffLine {
+    /// "equal", "delete" (only in previous) or "insert" (only in current).
+    pub tag: &'static str,
+    /// 1-based line numbers in the previous and current source.
+    pub old: Option<usize>,
+    pub new: Option<usize>,
+    pub text: String,
+}
+
+/// View Source > Compare: both sources and their line diff.
+#[derive(Debug, Clone, Serialize)]
+pub struct SourceCompare {
+    pub current: Option<String>,
+    pub previous: Option<String>,
+    pub lines: Vec<DiffLine>,
+    /// Lines inserted plus lines deleted.
+    pub changed: usize,
 }
 
 /// Applies URL Mapping rules, in order, to previous-crawl URLs.
@@ -998,6 +1019,41 @@ impl Comparison {
             }
         };
         Ok(Table { columns: template.columns, total: rows.len() as u64, rows })
+    }
+
+    /// View Source compare for a URL shown in any compare view. Needs Store
+    /// HTML in the crawls; a side without stored HTML comes back as None.
+    pub fn source_compare(&self, address: &str) -> anyhow::Result<SourceCompare> {
+        let (cur, prev) = self.pair(address)?;
+        let current = match &cur {
+            Some(a) => self.current.page_source(a)?,
+            None => None,
+        };
+        let previous = match &prev {
+            Some(a) => self.previous.page_source(a)?,
+            None => None,
+        };
+        let (old, new) = (previous.as_deref().unwrap_or(""), current.as_deref().unwrap_or(""));
+        let diff = similar::TextDiff::from_lines(old, new);
+        let mut lines = Vec::new();
+        let mut changed = 0;
+        for change in diff.iter_all_changes() {
+            let tag = match change.tag() {
+                similar::ChangeTag::Equal => "equal",
+                similar::ChangeTag::Delete => "delete",
+                similar::ChangeTag::Insert => "insert",
+            };
+            if tag != "equal" {
+                changed += 1;
+            }
+            lines.push(DiffLine {
+                tag,
+                old: change.old_index().map(|i| i + 1),
+                new: change.new_index().map(|i| i + 1),
+                text: change.value().trim_end_matches(['\r', '\n']).to_string(),
+            });
+        }
+        Ok(SourceCompare { current, previous, lines, changed })
     }
 
     /// Site Structure compare: URL counts per top-level path segment (to

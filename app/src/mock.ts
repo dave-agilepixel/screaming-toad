@@ -121,6 +121,20 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
       return false as T;
+    case "get_page_source":
+      return MOCK_HTML_CURRENT as T;
+    case "compare_source": {
+      const a = MOCK_HTML_PREVIOUS.split(/\r?\n/);
+      const b = MOCK_HTML_CURRENT.split(/\r?\n/);
+      const lines = [
+        ...a.slice(0, 3).map((t, i) => ({ tag: "equal", old: i + 1, new: i + 1, text: t })),
+        { tag: "delete", old: 4, new: null, text: a[3] },
+        { tag: "insert", old: null, new: 4, text: b[3] },
+        { tag: "insert", old: null, new: 5, text: b[4] },
+        ...a.slice(4).map((t, i) => ({ tag: "equal", old: i + 5, new: i + 6, text: t })),
+      ];
+      return { current: MOCK_HTML_CURRENT, previous: MOCK_HTML_PREVIOUS, lines, changed: 3 } as T;
+    }
     case "list_crawls":
       return [
         { path: "C:/crawls/example-2.toad", name: "example-2", start_url: "https://www.example.com/", urls: 1250, modified: 1791800000 },
@@ -224,3 +238,22 @@ const DEFAULT_CONFIG = {
     soft_404_phrases: ["Page Not Found", "404 Page Can't Be Found"],
   },
 };
+
+const MOCK_HTML_PREVIOUS = `<!doctype html>
+<html lang="en">
+<head>
+<title>Example page – toads</title>
+<meta name="description" content="All about toads">
+</head>
+<body><h1>Toads</h1></body>
+</html>`;
+
+const MOCK_HTML_CURRENT = `<!doctype html>
+<html lang="en">
+<head>
+<title>Example page – toads and frogs</title>
+<link rel="canonical" href="https://www.example.com/page">
+<meta name="description" content="All about toads">
+</head>
+<body><h1>Toads</h1></body>
+</html>`;

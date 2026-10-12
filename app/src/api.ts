@@ -105,6 +105,8 @@ export const api = {
   nearDuplicates: (url: string) => invoke<Table>("get_near_duplicates", { url }),
   generateSitemap: (dir: string, options: SitemapOptions) => invoke<string[]>("generate_sitemap", { dir, options }),
   urlDetails: (url: string) => invoke<[string, string][]>("get_url_details", { url }),
+  pageSource: (url: string) => invoke<string | null>("get_page_source", { url }),
+  exportPageSource: (dir: string) => invoke<number>("export_page_source", { dir }),
   exportCsv: (tab: string, filter: string, search: string | undefined, path: string) =>
     invoke<number>("export_csv", { req: { tab, filter, search, path } }),
   openCrawl: (path: string) => invoke<void>("open_crawl", { path }),
@@ -280,4 +282,19 @@ export const compareApi = {
   urlDetails: (url: string) => invoke<Table>("compare_url_details", { url }),
   links: (url: string, outlinks: boolean, linkState: LinkState) => invoke<Table>("compare_links", { url, outlinks, linkState }),
   siteStructure: (depth: number) => invoke<Table>("compare_site_structure", { depth }),
+  source: (url: string) => invoke<SourceCompare>("compare_source", { url }),
 };
+
+export interface DiffLine {
+  tag: "equal" | "delete" | "insert";
+  old: number | null;
+  new: number | null;
+  text: string;
+}
+
+export interface SourceCompare {
+  current: string | null;
+  previous: string | null;
+  lines: DiffLine[];
+  changed: number;
+}

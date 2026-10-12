@@ -462,6 +462,9 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
     } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
         let html = String::from_utf8_lossy(&res.body);
         let page = extract(&html, &item.url, cfg, rules);
+        if cfg.store_html {
+            r.html = Some(html.clone().into_owned());
+        }
         if let Some(target) = page.meta_refresh_url.clone() {
             if target != r.url {
                 r.redirect_url = Some(target);

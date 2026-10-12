@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { compareApi, type LinkState, type Table } from "../api";
+import { compareApi, type LinkState, type SourceCompare, type Table } from "../api";
+import { SourceCompareView, SourceView } from "./SourceView";
 
-type View = "details" | "inlinks" | "outlinks";
+type View = "details" | "inlinks" | "outlinks" | "source";
+type SourceChoice = "Auto" | "Current" | "Previous" | "Compare";
 type LinkChoice = "Auto" | LinkState;
 
 const LABELS: Record<View, string> = {
   details: "URL Details",
   inlinks: "Inlinks",
   outlinks: "Outlinks",
+  source: "View Source",
 };
 
 const LINK_TEXT: Record<LinkState, string> = {
@@ -30,6 +33,11 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
   const [linkChoice, setLinkChoice] = useState<LinkChoice>("Auto");
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [table, setTable] = useState<Table | null>(null);
+  const [src, setSrc] = useState<SourceCompare | null>(null);
+  const [sourceChoice, setSourceChoice] = useState<SourceChoice>("Auto");
+  const [showDifferences, setShowDifferences] = useState(true);
+  const [onlyChanges, setOnlyChanges] = useState(false);
+  const sourceMode = sourceChoice === "Auto" ? (previousSide ? "Previous" : "Current") : sourceChoice;
 
   // Auto follows the master view: previous-crawl rows show previous links.
   const linkState: LinkState = linkChoice === "Auto" ? (previousSide ? "Previous" : "Current") : linkChoice;
@@ -37,6 +45,13 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
   useEffect(() => {
     if (!url) return;
     let live = true;
+    if (view === "source") {
+      setSrc(null);
+      compareApi.source(url).then((s) => live && setSrc(s)).catch(console.error);
+      return () => {
+        live = false;
+      };
+    }
     const load = view === "details" ? compareApi.urlDetails(url) : compareApi.links(url, view === "outlinks", linkState);
     load.then((t) => live && setTable(t)).catch((e) => {
       console.error(e);
@@ -60,7 +75,28 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
             {LABELS[v]}
           </button>
         ))}
-        {view !== "details" ? (
+        {view === "source" ? (
+          <>
+            <select value={sourceChoice} onChange={(e) => setSourceChoice(e.target.value as SourceChoice)} title="Compare: side-by-side comparison of current and previous URL">
+              {(["Auto", "Current", "Previous", "Compare"] as SourceChoice[]).map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            {sourceMode === "Compare" && (
+              <>
+                <label className="check inline">
+                  <input type="checkbox" checked={showDifferences} onChange={(e) => setShowDifferences(e.target.checked)} /> Show Differences
+                </label>
+                <label className="check inline">
+                  <input type="checkbox" checked={onlyChanges} onChange={(e) => setOnlyChanges(e.target.checked)} /> Only changed lines
+                </label>
+                {src && <span className="muted">{src.changed} line{src.changed === 1 ? "" : "s"} changed</span>}
+              </>
+            )}
+          </>
+        ) : view !== "details" ? (
           <select value={linkChoice} onChange={(e) => setLinkChoice(e.target.value as LinkChoice)} title={LINK_TEXT[linkState]}>
             {(["Auto", "Current", "Previous", "Added", "Removed"] as LinkChoice[]).map((s) => (
               <option key={s} value={s}>
@@ -74,11 +110,15 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
           </label>
         )}
         <span className="detail-url" title={url ?? ""}>
-          {url ? (view === "details" ? url : `${LINK_TEXT[linkState]} · ${url}`) : "Select a URL"}
+          {url ? (view === "details" || view === "source" ? url : `${LINK_TEXT[linkState]} · ${url}`) : "Select a URL"}
         </span>
       </div>
       <div className="detail-body">
         {!url && <p className="empty">Select a URL in the table above.</p>}
+        {url && view === "source" && src && sourceMode === "Compare" && (
+          <SourceCompareView current={src.current} previous={src.previous} lines={src.lines} showDifferences={showDifferences} onlyChanges={onlyChanges} />
+        )}
+        {url && view === "source" && src && sourceMode !== "Compare" && <SourceView source={sourceMode === "Current" ? src.current : src.previous} />}
         {url && table && view === "details" && (
           <table className="kv compare-kv">
             <thead>
@@ -99,7 +139,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
             </tbody>
           </table>
         )}
-        {url && table && view !== "details" && (
+        {url && table && (view === "inlinks" || view === "outlinks") && (
           <table className="links">
             <thead>
               <tr>
@@ -121,7 +161,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
             </tbody>
           </table>
         )}
-        {url && table && rows.length === 0 && <p className="empty">Nothing to show.</p>}
+        {url && table && view !== "source" && rows.length === 0 && <p className="empty">Nothing to show.</p>}
       </div>
     </section>
   );

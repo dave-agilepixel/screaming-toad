@@ -101,6 +101,10 @@ pub struct CrawlConfig {
     // Screaming Frog has it off.
     pub extract_structured_data: bool,
 
+    // Configuration > Spider > Extraction > Store HTML: keep the HTML of
+    // internal pages (View Source, page-source exports, Compare "Content").
+    pub store_html: bool,
+
     // Configuration > Content > Duplicates
     pub near_duplicates: bool,
     pub near_duplicate_threshold: f64,
@@ -178,6 +182,7 @@ impl Default for CrawlConfig {
             lowercase_urls: false,
             content_area: ContentArea::default(),
             extract_structured_data: true,
+            store_html: false,
             near_duplicates: false,
             near_duplicate_threshold: 0.90,
             near_duplicates_indexable_only: true,

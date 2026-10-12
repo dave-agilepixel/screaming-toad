@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
 use toad_store::compare::{
     test_mapping, ChangeElement, CompareConfig, CompareIssueRow, CompareOverviewRow, CompareState, CompareSummary, LinkState,
-    UrlMapping,
+    SourceCompare, UrlMapping,
 };
 use toad_store::{Comparison, FilterDef, RowQuery, Store, TabDef, Table};
 
@@ -231,4 +231,10 @@ pub fn compare_links(state: State<'_, AppState>, url: String, outlinks: bool, li
 #[tauri::command]
 pub fn compare_site_structure(state: State<'_, AppState>, depth: usize) -> CmdResult<Table> {
     with_cmp(&state, |c| c.site_structure(depth))
+}
+
+/// View Source in Compare mode: both sources and their line diff.
+#[tauri::command]
+pub fn compare_source(state: State<'_, AppState>, url: String) -> CmdResult<SourceCompare> {
+    with_cmp(&state, |c| c.source_compare(&url))
 }

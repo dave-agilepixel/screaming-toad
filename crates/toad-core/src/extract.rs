@@ -222,7 +222,8 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         p.flesch_reading_ease = Some((score.clamp(0.0, 100.0) * 10.0).round() / 10.0);
     }
     p.lorem_ipsum = content.to_ascii_lowercase().contains("lorem ipsum");
-    if cfg.near_duplicates {
+    // The content signature feeds near duplicates and Compare > Content.
+    if cfg.near_duplicates || cfg.store_html {
         p.minhash = minhash::signature(&content);
     }
     if cfg.extract_structured_data {

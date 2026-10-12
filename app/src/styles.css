@@ -267,3 +267,16 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
 .button-row { display: flex; gap: 6px; margin-top: 6px; }
 .rule-buttons { display: inline-flex; gap: 2px; margin-left: auto; }
 .rule-buttons button { padding: 2px 7px; }
+
+/* ------------------------------------------------------------ View Source */
+.source { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-size: 12px; border-collapse: collapse; width: 100%; }
+.source td { border: none; padding: 0 8px; white-space: pre; vertical-align: top; }
+.source td.ln { width: 1%; text-align: right; color: var(--muted); user-select: none; border-right: 1px solid var(--border); }
+.source-compare td.code { width: 50%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.source-compare td.blank { background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--panel) 4px, var(--panel) 8px); }
+.diff-insert { background: color-mix(in srgb, var(--good) 18%, transparent); }
+.diff-delete { background: color-mix(in srgb, var(--bad) 18%, transparent); }
+.detail-tabs { flex-wrap: wrap; row-gap: 4px; }
+.detail-tabs button { white-space: nowrap; }
+.detail-tabs .check.inline { white-space: nowrap; }
+.center { overflow: hidden; }
