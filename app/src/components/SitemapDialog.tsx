@@ -7,16 +7,18 @@ const DEFAULTS: SitemapOptions = {
   include_canonicalised: false,
   include_paginated: false,
   include_pdfs: false,
-  last_mod: "none",
-  priority: false,
-  change_freq: "none",
+  // Screaming Frog includes lastmod (from the server response), priority and
+  // changefreq by default.
+  last_mod: "server_response",
+  priority: true,
+  change_freq: "from_last_modified",
   max_urls_per_file: 49999,
 };
 
 /** Sitemaps > XML Sitemap: choose what to include, then a folder to write to. */
 export function SitemapDialog({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
   const [opts, setOpts] = useState<SitemapOptions>(DEFAULTS);
-  const [lastModMode, setLastModMode] = useState<"none" | "server" | "custom">("none");
+  const [lastModMode, setLastModMode] = useState<"none" | "server" | "custom">("server");
   const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10));
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof SitemapOptions>(key: K, value: SitemapOptions[K]) => setOpts({ ...opts, [key]: value });
