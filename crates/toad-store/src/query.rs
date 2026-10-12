@@ -51,7 +51,7 @@ impl Store {
         tabs::tabs(&self.cfg)
     }
 
-    fn resolve(&self, tab: &str, filter: &str) -> anyhow::Result<(TabDef, String)> {
+    pub(crate) fn resolve(&self, tab: &str, filter: &str) -> anyhow::Result<(TabDef, String)> {
         let tab_def = self
             .tabs()
             .into_iter()
@@ -77,7 +77,16 @@ impl Store {
     }
 
     pub fn rows(&self, q: &RowQuery) -> anyhow::Result<Table> {
+        self.rows_where(q, None)
+    }
+
+    /// Grid rows, optionally restricted by an extra predicate on `urls u`
+    /// (Compare mode uses this to show only Added, New, Removed or Missing URLs).
+    pub(crate) fn rows_where(&self, q: &RowQuery, extra: Option<&str>) -> anyhow::Result<Table> {
         let (tab, mut predicate) = self.resolve(&q.tab, &q.filter)?;
+        if let Some(extra) = extra {
+            predicate = format!("{predicate} AND ({extra})");
+        }
         let mut args: Vec<Value> = Vec::new();
         if let Some(s) = q.search.as_deref().filter(|s| !s.is_empty()) {
             predicate = format!("{predicate} AND u.address LIKE ?1 ESCAPE '\\'");
@@ -265,7 +274,7 @@ pub fn write_csv(table: &Table, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn value_string(v: Value) -> String {
+pub(crate) fn value_string(v: Value) -> String {
     match v {
         Value::Null => String::new(),
         Value::Integer(i) => i.to_string(),

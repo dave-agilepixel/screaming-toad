@@ -2,12 +2,14 @@
 //! every link, and the configuration the crawl ran with.
 
 mod analysis;
+pub mod compare;
 mod query;
 mod reports;
 mod schema;
 mod sitemap_gen;
 pub mod tabs;
 
+pub use compare::{ChangeElement, CompareConfig, CompareState, Comparison, LinkState, UrlMapping};
 pub use query::{write_csv, IssueRow, OverviewRow, RowQuery, Table};
 pub use reports::{ReportDef, ReportKind};
 pub use sitemap_gen::{ChangeFreq, LastMod, SitemapOptions};
