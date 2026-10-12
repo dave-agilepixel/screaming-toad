@@ -6,6 +6,18 @@
 
 > **Compare mode was not audited.** Work on it began while this audit ran (`crates/toad-store/src/compare.rs` is untracked, and `docs/COMPARE_MODE.md` exists). §1.34 is scored against HEAD, where Compare does not exist. Re-score it once that branch lands.
 
+## Progress since the audit
+
+The scores below are as audited. Since then:
+
+- **Compare mode (§1.34):** built. It covers Change Detection (14 elements, similarity %, ignore non-indexable), URL Mapping (Regex Replace and Test), the six grid states, overview, issues, site-structure deltas, URL details and link diffs, exports and the CLI. Not built yet: the URL Mapping Options and Remove Parameters tabs, View Source and Rendered Page compare (they need WP2 and WP9), and Auto Compare (WP13). See `docs/COMPARE_MODE.md`.
+- **WP1, Config foundation:** done.
+  - The tree dialog exposes every honoured control: all of Spider > Crawl, Limits, Advanced and Preferences, plus Content Area, Duplicates, robots.txt, URL Rewriting, Speed, User-Agent, HTTP Header, and Custom with case sensitivity, move and duplicate. Store boxes that are not yet honoured are shown disabled. That moves those Partials to Done.
+  - Also added: search, "Changed from default" (Ctrl+Shift+C), live validation, and the profiles Load, Load Recent, Save As, Save as Default and Clear Default. The app starts with the saved default.
+  - §2.2 rows 1–5, 11 and 13–19 are fixed. Row 17 (the meta-refresh bug) has a regression test. Rows 10 and 12 are recorded as deliberate in HANDOVER.md.
+  - `scripts/check_config_schema.py` guards against drift between the UI type and the Rust struct, and runs in CI.
+  - Still open from WP1: none. Rows 6–9 move to WP3, as planned.
+
 ## How to read this
 
 | Status | Meaning |
