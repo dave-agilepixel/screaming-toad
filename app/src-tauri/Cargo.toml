@@ -1,0 +1,20 @@
+[package]
+name = "screaming-toad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Screaming Toad desktop app"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+toad-core.workspace = true
+toad-store.workspace = true
+url.workspace = true
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"

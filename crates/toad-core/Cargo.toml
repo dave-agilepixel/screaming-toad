@@ -1,0 +1,18 @@
+[package]
+name = "toad-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Crawl engine: fetching, robots.txt, URL handling and HTML extraction"
+
+[dependencies]
+anyhow.workspace = true
+flate2.workspace = true
+md5.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+url.workspace = true

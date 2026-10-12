@@ -1,0 +1,18 @@
+[package]
+name = "toad-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "SQLite crawl store, issue filters, crawl analysis and exports"
+
+[dependencies]
+anyhow.workspace = true
+csv.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toad-core.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "io-util"] }
