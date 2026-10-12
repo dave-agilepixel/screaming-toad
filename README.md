@@ -61,6 +61,30 @@ Generate an XML sitemap from a crawl:
 cargo run --release -p toad-cli -- sitemap crawl.toad --out-dir sitemaps --lastmod server --priority
 ```
 
+Keep page source (View Source, Bulk Export > All Page Source, Compare > Content), and continue a crawl that stopped early:
+
+```bash
+cargo run --release -p toad-cli -- crawl https://example.com --store-html --max-urls 1000 -o example.toad
+```
+
+```bash
+cargo run --release -p toad-cli -- resume example.toad --max-urls 5000
+```
+
+List the crawls in a folder, with status and % completed:
+
+```bash
+cargo run --release -p toad-cli -- crawls .
+```
+
+Compare two crawls (the newer first), mapping staging URLs onto live ones:
+
+```bash
+cargo run --release -p toad-cli -- compare new.toad old.toad --map "staging\.example\.com=>www.example.com"
+```
+
+If Windows Smart App Control blocks freshly built test binaries ("An Application Control policy has blocked this file"), run the tests in WSL with `scripts/test-wsl.ps1`.
+
 Inspect a saved crawl:
 
 ```bash

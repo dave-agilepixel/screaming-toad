@@ -28,6 +28,21 @@ enum Command {
     },
     /// Show every tab and filter with its URL count.
     Overview { crawl: PathBuf },
+    /// List the crawls in a folder (File > Crawls), newest first.
+    Crawls {
+        /// Folder to list (default: the current folder).
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Continue a stopped or interrupted crawl.
+    Resume {
+        crawl: PathBuf,
+        /// Raise the URL limit the crawl was started with.
+        #[arg(long)]
+        max_urls: Option<u64>,
+        #[arg(long)]
+        threads: Option<usize>,
+    },
     /// Compare two crawls (Compare mode) and save the comparison.
     Compare(CompareArgs),
     /// Show a saved comparison: overview, issues or Change Detection.
@@ -201,6 +216,9 @@ struct CrawlArgs {
     /// Detect near-duplicate content (MinHash, 90% by default).
     #[arg(long)]
     near_duplicates: bool,
+    /// Store HTML (View Source, page-source export, Compare > Content).
+    #[arg(long)]
+    store_html: bool,
     /// Custom search, "Name=text" (case-insensitive). Prefix the text with
     /// "!" for Does Not Contain. Repeatable.
     #[arg(long)]
@@ -220,6 +238,8 @@ async fn main() -> anyhow::Result<()> {
         Command::Crawl(args) => crawl(args).await,
         Command::Issues { crawl, json } => issues(&crawl, json),
         Command::Compare(args) => compare(args),
+        Command::Crawls { dir } => list_crawls(&dir),
+        Command::Resume { crawl, max_urls, threads } => resume(&crawl, max_urls, threads).await,
         Command::CompareShow { comparison, issues, change_detection, out } => {
             let cmp = Comparison::open(&comparison)?;
             if let Some(path) = out {
@@ -390,20 +410,23 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
         None => CrawlConfig::default(),
     };
 
+    let mut list_inputs: Option<Vec<String>> = None;
     let seeds: Vec<Url> = match (&args.url, &args.list) {
         (Some(u), None) => vec![parse_start_url(u)?],
         (None, Some(path)) => {
             cfg = cfg.for_list_mode();
             let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-            let urls: Vec<Url> = text
+            let inputs: Vec<String> = text
                 .lines()
                 .map(str::trim)
                 .filter(|l| l.starts_with("http://") || l.starts_with("https://"))
-                .filter_map(|l| Url::parse(l).ok())
+                .map(str::to_string)
                 .collect();
+            let urls: Vec<Url> = inputs.iter().filter_map(|l| Url::parse(l).ok()).collect();
             if urls.is_empty() {
                 bail!("no http(s) URLs found in {}", path.display());
             }
+            list_inputs = Some(inputs);
             urls
         }
         _ => bail!("give a start URL, or --list <file>"),
@@ -419,46 +442,22 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     if args.sitemaps || !args.sitemap_url.is_empty() { cfg.crawl_linked_sitemaps = true; }
     cfg.sitemap_urls.extend(args.sitemap_url.iter().cloned());
     if args.near_duplicates { cfg.near_duplicates = true; }
+    if args.store_html { cfg.store_html = true; }
     custom_rules(&args, &mut cfg)?;
     cfg.include.extend(args.include.iter().cloned());
     cfg.exclude.extend(args.exclude.iter().cloned());
 
     let start = seeds[0].clone();
     let mut store = Store::create(&args.out, &start, &cfg)?;
-    let crawler = Crawler::new(cfg, &start)?;
-    let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
-    let control = CrawlControl::default();
-    let handle = tokio::spawn(crawler.run(seeds, tx, control));
-
-    println!("Crawling {start} → {}", args.out.display());
-    let started = Instant::now();
-    let mut batch: Vec<PageRecord> = Vec::with_capacity(200);
-    while let Some(event) = rx.recv().await {
-        match event {
-            CrawlEvent::Page(rec) => {
-                batch.push(*rec);
-                if batch.len() >= 200 {
-                    store.insert_batch(&batch)?;
-                    batch.clear();
-                }
-            }
-            CrawlEvent::Sitemap { sitemap, urls } => {
-                store.insert_batch(&batch)?;
-                batch.clear();
-                store.insert_sitemap(&sitemap, &urls)?;
-            }
-            CrawlEvent::Progress(p) => {
-                eprint!("\r  crawled {:>7}  queued {:>7}  {:>6.1} URL/s   ", p.crawled, p.queued, p.crawled as f64 / started.elapsed().as_secs_f64().max(0.001));
-            }
-            CrawlEvent::Finished(_) => break,
-        }
+    store.mark_started(start.host_str().unwrap_or("crawl"), if list_inputs.is_some() { "list" } else { "spider" })?;
+    if let Some(inputs) = &list_inputs {
+        store.set_list_inputs(inputs)?;
     }
-    store.insert_batch(&batch)?;
-    let progress = handle.await??;
-    eprintln!();
-    println!("Crawled {} URLs in {:.1}s. Running crawl analysis…", progress.crawled, started.elapsed().as_secs_f64());
-    store.analyse()?;
-    store.set_meta("finished", &progress.crawled.to_string())?;
+    let crawler = Crawler::new(cfg, &start)?;
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    let handle = tokio::spawn(crawler.run(seeds, tx, CrawlControl::default()));
+    println!("Crawling {start} → {}", args.out.display());
+    drive(&mut store, rx, handle).await?;
 
     print_issues(&store, 15)?;
 
@@ -621,6 +620,93 @@ fn print_compare_issues(cmp: &Comparison, limit: usize) -> anyhow::Result<()> {
     }
     if issues.len() > limit {
         println!("… and {} more (toad compare-show <comparison> --issues)", issues.len() - limit);
+    }
+    Ok(())
+}
+
+/// Write a crawl's events to the store, show progress, then record how it
+/// ended and run crawl analysis.
+async fn drive(
+    store: &mut Store,
+    mut rx: tokio::sync::mpsc::Receiver<CrawlEvent>,
+    handle: tokio::task::JoinHandle<anyhow::Result<toad_core::Progress>>,
+) -> anyhow::Result<toad_core::Progress> {
+    let started = Instant::now();
+    let mut batch: Vec<PageRecord> = Vec::with_capacity(200);
+    while let Some(event) = rx.recv().await {
+        match event {
+            CrawlEvent::Page(rec) => {
+                batch.push(*rec);
+                if batch.len() >= 200 {
+                    store.insert_batch(&batch)?;
+                    batch.clear();
+                }
+            }
+            CrawlEvent::Sitemap { sitemap, urls } => {
+                store.insert_batch(&batch)?;
+                batch.clear();
+                store.insert_sitemap(&sitemap, &urls)?;
+            }
+            CrawlEvent::Progress(p) => {
+                eprint!("\r  crawled {:>7}  queued {:>7}  {:>6.1} URL/s   ", p.crawled, p.queued, p.crawled as f64 / started.elapsed().as_secs_f64().max(0.001));
+            }
+            CrawlEvent::Finished(_) => break,
+        }
+    }
+    store.insert_batch(&batch)?;
+    let progress = handle.await??;
+    eprintln!();
+    println!("Crawled {} URLs in {:.1}s. Running crawl analysis…", progress.crawled, started.elapsed().as_secs_f64());
+    store.mark_finished(progress.queued)?;
+    if progress.queued > 0 {
+        println!("Stopped with {} URLs still queued; continue with `toad resume`.", progress.queued);
+    }
+    store.analyse()?;
+    Ok(progress)
+}
+
+async fn resume(path: &Path, max_urls: Option<u64>, threads: Option<usize>) -> anyhow::Result<()> {
+    let mut store = Store::open(path)?;
+    let start = store
+        .meta("start_url")?
+        .and_then(|u| Url::parse(&u).ok())
+        .ok_or_else(|| anyhow::anyhow!("{} has no start URL", path.display()))?;
+    if store.status()? == toad_store::CrawlStatus::Complete {
+        bail!("{} is already complete", path.display());
+    }
+    let mut cfg = store.config().clone();
+    if let Some(v) = max_urls { cfg.max_urls = v; }
+    if let Some(v) = threads { cfg.threads = v; }
+    let (crawled, pending) = store.resume_state()?;
+    println!("Resuming {start}: {} URLs crawled, {} links to follow up", crawled.len(), pending.len());
+    let mode = store.meta("mode")?.unwrap_or_else(|| "spider".into());
+    store.mark_started("", &mode)?;
+    let crawler = Crawler::new(cfg, &start)?;
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    let handle = tokio::spawn(crawler.resume(crawled, pending, tx, CrawlControl::default()));
+    drive(&mut store, rx, handle).await?;
+    print_issues(&store, 15)
+}
+
+fn list_crawls(dir: &Path) -> anyhow::Result<()> {
+    let entries = toad_store::crawls::list(dir);
+    if entries.is_empty() {
+        println!("No crawls in {}", dir.display());
+        return Ok(());
+    }
+    println!("{:<30} {:<10} {:<8} {:>8} {:>7}  {:<20} Path", "Name", "Status", "Mode", "URLs", "Done", "Project");
+    for e in entries {
+        println!(
+            "{:<30} {:<10} {:<8} {:>8} {:>6.1}%  {:<20} {}{}",
+            e.name.chars().take(30).collect::<String>(),
+            format!("{:?}", e.status),
+            e.mode,
+            e.urls,
+            e.pct_complete,
+            e.project.chars().take(20).collect::<String>(),
+            e.path,
+            if e.locked { "  [locked]" } else { "" }
+        );
     }
     Ok(())
 }

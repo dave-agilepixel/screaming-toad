@@ -17,6 +17,14 @@ The scores below are as audited. Since then:
   - §2.2 rows 1–5, 11 and 13–19 are fixed. Row 17 (the meta-refresh bug) has a regression test. Rows 10 and 12 are recorded as deliberate in HANDOVER.md.
   - `scripts/check_config_schema.py` guards against drift between the UI type and the Rust struct, and runs in CI.
   - Still open from WP1: none. Rows 6–9 move to WP3, as planned.
+- **WP2, Storage and crawl management:** done.
+  - **Store HTML** (§1.2): a deflate-compressed `html` table. It drives View Source, Bulk Export > All Page Source, and Compare's View Source (side-by-side diff) and Content.
+  - **File > Crawls** (§2.4): a browser grouped by project, with name, URL, mode, URLs, % completed, modified, size, version and lock. Actions: open, resume, Select To Compare, rename, duplicate, export, lock, delete (refused when locked) and project.
+  - **Resume:** stopped or crashed crawls are rebuilt from the recorded links (`tests/resume.rs`).
+  - **§2.1:** Storage Directory and Crawl Retention (Never / 7 / 30 / custom; locked, open and running crawls are exempt). Storage Mode is N/A.
+  - **§2.2:** List mode in the app (enter or paste, from a file, Download XML Sitemap), the last mode persisted, and Reports > List Mode Export (upload order and duplicates kept).
+  - **§3.1:** `toad crawls`, `toad resume` and `--store-html`.
+  - Not done: .xlsx upload, Google Sheets input, crawl IDs (Toad addresses crawls by file path), and "Copy DB ID".
 
 ## How to read this
 
