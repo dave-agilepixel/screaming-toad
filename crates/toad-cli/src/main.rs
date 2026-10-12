@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use toad_core::config::{CustomExtractor, CustomSearch, ExtractorKind, QueryKind, RobotsMode, SearchMode};
 use toad_core::{CrawlConfig, CrawlControl, CrawlEvent, Crawler, PageRecord};
-use toad_store::{ChangeFreq, LastMod, RowQuery, SitemapOptions, Store};
+use toad_store::{ChangeElement, ChangeFreq, CompareConfig, CompareState, Comparison, LastMod, RowQuery, SitemapOptions, Store, UrlMapping};
 use url::Url;
 
 #[derive(Parser)]
@@ -28,6 +28,36 @@ enum Command {
     },
     /// Show every tab and filter with its URL count.
     Overview { crawl: PathBuf },
+    /// Compare two crawls (Compare mode) and save the comparison.
+    Compare(CompareArgs),
+    /// Show a saved comparison: overview, issues or Change Detection.
+    CompareShow {
+        comparison: PathBuf,
+        /// Show the Issues panel with deltas instead of the Overview.
+        #[arg(long)]
+        issues: bool,
+        /// Show only the Change Detection tab.
+        #[arg(long)]
+        change_detection: bool,
+        /// Write the Overview (Reports > Crawl Overview) to CSV instead of printing.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Export one filter in one compare state from a saved comparison.
+    CompareExport {
+        comparison: PathBuf,
+        #[arg(long)]
+        tab: String,
+        #[arg(long, default_value = "All")]
+        filter: String,
+        /// Current, Previous, Added, New, Removed or Missing.
+        #[arg(long, default_value = "Current")]
+        state: String,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// List the tabs, filters and columns available.
     Tabs { crawl: PathBuf },
     /// Export a tab and filter to CSV.
@@ -92,6 +122,33 @@ struct SitemapArgs {
     /// "lastmod" or "depth".
     #[arg(long)]
     changefreq: Option<String>,
+}
+
+#[derive(Args)]
+struct CompareArgs {
+    /// The current (newer) crawl.
+    current: PathBuf,
+    /// The previous (older) crawl.
+    previous: PathBuf,
+    /// Comparison file to write.
+    #[arg(long, short, default_value = "comparison.toadcmp")]
+    out: PathBuf,
+    /// Pick current and previous by file date instead of argument order.
+    #[arg(long)]
+    by_date: bool,
+    /// URL Mapping for previous-crawl URLs, "REGEX=>REPLACEMENT" ($1 groups
+    /// allowed). Repeatable; applied in order.
+    #[arg(long)]
+    map: Vec<String>,
+    /// Change Detection elements to compare, comma-separated (default: all).
+    #[arg(long, value_delimiter = ',')]
+    elements: Vec<String>,
+    /// Content: flag pages whose content changed by more than this %.
+    #[arg(long, default_value_t = 10.0)]
+    similarity_change: f64,
+    /// Ignore non-indexable URLs for Change Detection.
+    #[arg(long)]
+    ignore_non_indexable: bool,
 }
 
 #[derive(Args)]
@@ -162,6 +219,28 @@ async fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Crawl(args) => crawl(args).await,
         Command::Issues { crawl, json } => issues(&crawl, json),
+        Command::Compare(args) => compare(args),
+        Command::CompareShow { comparison, issues, change_detection, out } => {
+            let cmp = Comparison::open(&comparison)?;
+            if let Some(path) = out {
+                let table = cmp.overview_table()?;
+                toad_store::write_csv(&table, &path)?;
+                println!("Wrote {} rows to {}", table.rows.len(), path.display());
+            } else if issues {
+                print_compare_issues(&cmp, usize::MAX)?;
+            } else {
+                print_compare_overview(&cmp, change_detection)?;
+            }
+            Ok(())
+        }
+        Command::CompareExport { comparison, tab, filter, state, search, out } => {
+            let cmp = Comparison::open(&comparison)?;
+            let state = CompareState::from_name(&state)
+                .ok_or_else(|| anyhow::anyhow!("--state must be Current, Previous, Added, New, Removed or Missing"))?;
+            let n = cmp.export_csv(&RowQuery { tab, filter, search, ..Default::default() }, state, &out)?;
+            println!("Wrote {n} rows to {}", out.display());
+            Ok(())
+        }
         Command::Overview { crawl } => {
             let store = Store::open(&crawl)?;
             let mut last_tab = String::new();
@@ -443,4 +522,105 @@ fn slug(s: &str) -> String {
         }
     }
     out.trim_matches('_').to_string()
+}
+
+fn compare(args: CompareArgs) -> anyhow::Result<()> {
+    let (mut current, mut previous) = (args.current, args.previous);
+    if args.by_date {
+        let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).with_context(|| format!("reading {}", p.display()));
+        if modified(&current)? < modified(&previous)? {
+            std::mem::swap(&mut current, &mut previous);
+        }
+    }
+    let url_mapping = args
+        .map
+        .iter()
+        .map(|m| match m.split_once("=>") {
+            Some((regex, replace)) => Ok(UrlMapping { regex: regex.to_string(), replace: replace.to_string() }),
+            None => bail!("--map expects REGEX=>REPLACEMENT, got '{m}'"),
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let elements = if args.elements.is_empty() {
+        ChangeElement::ALL.to_vec()
+    } else {
+        args.elements
+            .iter()
+            .map(|e| ChangeElement::from_name(e.trim()).ok_or_else(|| anyhow::anyhow!("unknown Change Detection element '{e}'")))
+            .collect::<anyhow::Result<Vec<_>>>()?
+    };
+    let cfg = CompareConfig {
+        elements,
+        similarity_change_pct: args.similarity_change,
+        ignore_non_indexable: args.ignore_non_indexable,
+        url_mapping,
+    };
+    let started = Instant::now();
+    let cmp = Comparison::build(&current, &previous, &args.out, &cfg)?;
+    let s = cmp.summary()?;
+    println!("Current:  {} ({} URLs)", current.display(), s.current_urls);
+    println!("Previous: {} ({} URLs)", previous.display(), s.previous_urls);
+    println!("URLs in both crawls: {}", s.in_both);
+    if !s.content_available && cfg.elements.contains(&ChangeElement::Content) {
+        println!("Note: Content change detection needs Near Duplicates (content signatures) in both crawls.");
+    }
+    println!("Compared in {:.1}s; saved to {}\n", started.elapsed().as_secs_f64(), args.out.display());
+    print_compare_issues(&cmp, 25)?;
+    println!();
+    print_compare_overview(&cmp, true)
+}
+
+fn signed(n: i64) -> String {
+    if n > 0 { format!("+{n}") } else { n.to_string() }
+}
+
+fn print_compare_overview(cmp: &Comparison, change_detection_only: bool) -> anyhow::Result<()> {
+    println!(
+        "{:<55} {:>8} {:>8} {:>7} {:>8} {:>6} {:>6} {:>8} {:>8}",
+        "", "Current", "Previous", "Change", "Change%", "Added", "New", "Removed", "Missing"
+    );
+    let dash = |v: Option<u64>| v.map(|n| n.to_string()).unwrap_or_else(|| "-".into());
+    let mut last_tab = String::new();
+    for r in cmp.overview()? {
+        if change_detection_only && r.tab != "Change Detection" {
+            continue;
+        }
+        if r.tab != last_tab {
+            println!("{}", r.tab);
+            last_tab = r.tab.clone();
+        }
+        println!(
+            "  {:<53} {:>8} {:>8} {:>7} {:>8} {:>6} {:>6} {:>8} {:>8}",
+            r.filter,
+            r.current,
+            r.previous,
+            signed(r.change),
+            r.change_pct.map(|p| format!("{p:.2}%")).unwrap_or_default(),
+            dash(r.added),
+            dash(r.new),
+            dash(r.removed),
+            dash(r.missing)
+        );
+    }
+    Ok(())
+}
+
+fn print_compare_issues(cmp: &Comparison, limit: usize) -> anyhow::Result<()> {
+    let issues = cmp.issues()?;
+    println!("{:<12} {:<7} {:>8} {:>8} {:>7}  Issue", "Type", "Prio", "Current", "Previous", "Change");
+    for i in issues.iter().take(limit) {
+        println!(
+            "{:<12} {:<7} {:>8} {:>8} {:>7}  {}: {}",
+            format!("{:?}", i.issue_type),
+            format!("{:?}", i.priority),
+            i.current,
+            i.previous,
+            signed(i.change),
+            i.tab,
+            i.filter
+        );
+    }
+    if issues.len() > limit {
+        println!("… and {} more (toad compare-show <comparison> --issues)", issues.len() - limit);
+    }
+    Ok(())
 }
