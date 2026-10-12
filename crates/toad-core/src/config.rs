@@ -32,7 +32,22 @@ pub struct CrawlConfig {
     pub crawl_css: bool,
     pub store_js: bool,
     pub crawl_js: bool,
+    pub store_internal_links: bool,
     pub crawl_internal_links: bool,
+    pub store_media: bool,
+    pub crawl_media: bool,
+    pub store_swf: bool,
+    pub crawl_swf: bool,
+    pub store_amp: bool,
+    pub crawl_amp: bool,
+    pub store_meta_refresh: bool,
+    pub store_iframes: bool,
+    pub store_mobile_alternate: bool,
+    pub crawl_mobile_alternate: bool,
+    /// Store only: there is no Crawl option for uncrawlable links.
+    pub store_uncrawlable_links: bool,
+    /// Report malformed hrefs such as `hppts://` as No Response.
+    pub crawl_invalid_links: bool,
     pub store_external_links: bool,
     pub crawl_external_links: bool,
     pub store_canonicals: bool,
@@ -128,7 +143,20 @@ impl Default for CrawlConfig {
             crawl_css: true,
             store_js: true,
             crawl_js: true,
+            store_internal_links: true,
             crawl_internal_links: true,
+            store_media: false,
+            crawl_media: false,
+            store_swf: true,
+            crawl_swf: true,
+            store_amp: false,
+            crawl_amp: false,
+            store_meta_refresh: true,
+            store_iframes: true,
+            store_mobile_alternate: false,
+            crawl_mobile_alternate: false,
+            store_uncrawlable_links: false,
+            crawl_invalid_links: false,
             store_external_links: true,
             crawl_external_links: true,
             store_canonicals: true,
@@ -203,6 +231,36 @@ impl CrawlConfig {
         self.robots_mode = RobotsMode::Ignore;
         self.auto_discover_sitemaps_via_robots = false;
         self
+    }
+
+    /// Spider > Crawl: whether a link of this kind is recorded. Crawl implies
+    /// Store; external links also need External Links. HTTP redirects are
+    /// always recorded.
+    pub fn stores_link(&self, kind: crate::model::LinkKind, internal: bool) -> bool {
+        use crate::model::LinkKind::*;
+        let (store, crawl) = match kind {
+            Redirect => return true,
+            Uncrawlable => return self.store_uncrawlable_links,
+            Hyperlink => (self.store_internal_links, self.crawl_internal_links),
+            Image => (self.store_images, self.crawl_images),
+            Css => (self.store_css, self.crawl_css),
+            JavaScript => (self.store_js, self.crawl_js),
+            Canonical | HttpCanonical => (self.store_canonicals, self.crawl_canonicals),
+            RelNext | RelPrev => (self.store_pagination, self.crawl_pagination),
+            Hreflang => (self.store_hreflang, self.crawl_hreflang),
+            Iframe => (self.store_iframes, self.crawl_iframes),
+            MetaRefresh => (self.store_meta_refresh, self.crawl_meta_refresh),
+            Media => (self.store_media, self.crawl_media),
+            Swf => (self.store_swf, self.crawl_swf),
+            Amp => (self.store_amp, self.crawl_amp),
+            MobileAlternate => (self.store_mobile_alternate, self.crawl_mobile_alternate),
+        };
+        if internal {
+            store || crawl
+        } else {
+            let external = self.store_external_links || self.crawl_external_links;
+            external && (kind == Hyperlink || store || crawl)
+        }
     }
 
     /// Problems that would stop a crawl starting, or make a setting
@@ -459,6 +517,23 @@ impl Default for Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn store_follows_crawl_and_external() {
+        use crate::model::LinkKind::*;
+        let cfg = CrawlConfig::default();
+        assert!(cfg.stores_link(Image, true));
+        assert!(!cfg.stores_link(Media, true), "Media is off by default");
+        assert!(!cfg.stores_link(Uncrawlable, true));
+        assert!(cfg.stores_link(Redirect, false));
+        let no_store = CrawlConfig { store_images: false, ..CrawlConfig::default() };
+        assert!(no_store.stores_link(Image, true), "Crawl implies Store");
+        let neither = CrawlConfig { store_images: false, crawl_images: false, ..CrawlConfig::default() };
+        assert!(!neither.stores_link(Image, true));
+        let no_external = CrawlConfig { store_external_links: false, crawl_external_links: false, ..CrawlConfig::default() };
+        assert!(!no_external.stores_link(Hyperlink, false) && !no_external.stores_link(Image, false));
+        assert!(no_external.stores_link(Hyperlink, true));
+    }
 
     #[test]
     fn default_config_is_valid() {

@@ -21,6 +21,16 @@ pub fn resolve(base: &Url, href: &str) -> Option<Url> {
     matches!(url.scheme(), "http" | "https").then_some(url)
 }
 
+/// Crawl Invalid Links: an absolute href whose scheme looks like a typo of
+/// http(s), such as `hppts://` or `htp://`. Returned as parsed so it can be
+/// reported as a malformed URL.
+pub fn malformed(href: &str) -> Option<Url> {
+    let url = Url::parse(href.trim()).ok()?;
+    let scheme = url.scheme();
+    let typo = scheme.starts_with('h') && (3..=6).contains(&scheme.len()) && !matches!(scheme, "http" | "https");
+    (typo && url.host_str().is_some()).then_some(url)
+}
+
 /// Apply URL Rewriting settings and fragment handling.
 pub fn normalize(mut url: Url, cfg: &CrawlConfig) -> Url {
     if !cfg.crawl_fragment_identifiers {

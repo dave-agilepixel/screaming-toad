@@ -61,25 +61,29 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     }
 
     case "pair": {
+      const crawl = f.crawl ? Boolean(getPath(cfg, f.crawl)) : false;
+      const store = f.store ? Boolean(getPath(cfg, f.store)) : false;
       return (
-        <div className="field pair-row">
-          <span className="pair-label">
-            <Label text={f.label} highlight={highlight} />
-            <Changed cfg={cfg} defaults={defaults} keys={[f.crawl, ...(f.store ? [f.store] : [])]} />
-          </span>
-          <label className="check" title={f.storePending}>
-            <input
-              type="checkbox"
-              checked={f.store ? Boolean(getPath(cfg, f.store)) : true}
-              disabled={!f.store || !!f.storePending}
-              onChange={(e) => f.store && set(f.store, e.target.checked)}
-            />
-            Store
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={Boolean(getPath(cfg, f.crawl))} onChange={(e) => set(f.crawl, e.target.checked)} />
-            Crawl
-          </label>
+        <div className="field">
+          <div className="pair-row">
+            <span className="pair-label">
+              <Label text={f.label} highlight={highlight} />
+              <Changed cfg={cfg} defaults={defaults} keys={[...(f.crawl ? [f.crawl] : []), ...(f.store ? [f.store] : [])]} />
+            </span>
+            <label className="check" title={crawl ? "Crawl implies Store" : "Record the link and report the URL, without requesting it"}>
+              <input type="checkbox" checked={store || crawl} disabled={!f.store || crawl} onChange={(e) => f.store && set(f.store, e.target.checked)} />
+              Store
+            </label>
+            {f.storeOnly ? (
+              <span />
+            ) : (
+              <label className="check">
+                <input type="checkbox" checked={crawl} onChange={(e) => f.crawl && set(f.crawl, e.target.checked)} />
+                Crawl
+              </label>
+            )}
+          </div>
+          <Help text={f.help} />
         </div>
       );
     }

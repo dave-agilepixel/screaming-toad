@@ -64,7 +64,20 @@ export interface CrawlConfig {
   crawl_css: boolean;
   store_js: boolean;
   crawl_js: boolean;
+  store_internal_links: boolean;
   crawl_internal_links: boolean;
+  store_media: boolean;
+  crawl_media: boolean;
+  store_swf: boolean;
+  crawl_swf: boolean;
+  store_amp: boolean;
+  crawl_amp: boolean;
+  store_meta_refresh: boolean;
+  store_iframes: boolean;
+  store_mobile_alternate: boolean;
+  crawl_mobile_alternate: boolean;
+  store_uncrawlable_links: boolean;
+  crawl_invalid_links: boolean;
   store_external_links: boolean;
   crawl_external_links: boolean;
   store_canonicals: boolean;
@@ -132,7 +145,8 @@ export type Field =
   | { kind: "select"; key: string; label: string; help?: string; options: [string, string][] }
   | { kind: "lines"; key: string; label: string; help?: string; placeholder?: string; rows?: number; disabledIf?: Pred }
   /** A Store / Crawl pair, as in Spider > Crawl. */
-  | { kind: "pair"; label: string; store?: string; crawl: string; help?: string; storePending?: string }
+  /** Store / Crawl, as in Spider > Crawl. Crawl implies Store; storeOnly rows have no Crawl box. */
+  | { kind: "pair"; label: string; store?: string; crawl?: string; help?: string; storeOnly?: boolean }
   | { kind: "headers"; key: string; label: string; help?: string }
   | { kind: "custom-search" }
   | { kind: "custom-extraction" }
@@ -153,8 +167,6 @@ export interface Node {
   planned?: string;
 }
 
-const STORE_PENDING = "Store is not honoured yet: every link is recorded. It arrives with the Spider work package.";
-
 export const NODES: Node[] = [
   { id: "spider", label: "Spider", groups: [] },
   {
@@ -165,21 +177,26 @@ export const NODES: Node[] = [
       {
         title: "Resource Links",
         fields: [
-          { kind: "pair", label: "Images", store: "store_images", crawl: "crawl_images", storePending: STORE_PENDING },
-          { kind: "pair", label: "CSS", store: "store_css", crawl: "crawl_css", storePending: STORE_PENDING },
-          { kind: "pair", label: "JavaScript", store: "store_js", crawl: "crawl_js", storePending: STORE_PENDING },
+          { kind: "pair", label: "Images", store: "store_images", crawl: "crawl_images" },
+          { kind: "pair", label: "Media", store: "store_media", crawl: "crawl_media", help: "<video>, <audio> and <source> files." },
+          { kind: "pair", label: "CSS", store: "store_css", crawl: "crawl_css" },
+          { kind: "pair", label: "JavaScript", store: "store_js", crawl: "crawl_js" },
+          { kind: "pair", label: "SWF", store: "store_swf", crawl: "crawl_swf", help: "<embed> and <object> files." },
         ],
       },
       {
         title: "Page Links",
         fields: [
-          { kind: "pair", label: "Internal Hyperlinks", crawl: "crawl_internal_links" },
-          { kind: "pair", label: "External Links", store: "store_external_links", crawl: "crawl_external_links", storePending: STORE_PENDING },
-          { kind: "pair", label: "Canonicals", store: "store_canonicals", crawl: "crawl_canonicals", storePending: STORE_PENDING },
-          { kind: "pair", label: "Pagination (Rel Next/Prev)", store: "store_pagination", crawl: "crawl_pagination", storePending: STORE_PENDING },
-          { kind: "pair", label: "Hreflang", store: "store_hreflang", crawl: "crawl_hreflang", storePending: STORE_PENDING },
-          { kind: "pair", label: "Meta Refresh", crawl: "crawl_meta_refresh" },
-          { kind: "pair", label: "iframes", crawl: "crawl_iframes" },
+          { kind: "pair", label: "Internal Hyperlinks", store: "store_internal_links", crawl: "crawl_internal_links" },
+          { kind: "pair", label: "External Links", store: "store_external_links", crawl: "crawl_external_links", help: "Also governs external images, CSS, JavaScript, hreflang and canonicals." },
+          { kind: "pair", label: "Canonicals", store: "store_canonicals", crawl: "crawl_canonicals" },
+          { kind: "pair", label: "Pagination (Rel Next/Prev)", store: "store_pagination", crawl: "crawl_pagination" },
+          { kind: "pair", label: "Hreflang", store: "store_hreflang", crawl: "crawl_hreflang" },
+          { kind: "pair", label: "AMP", store: "store_amp", crawl: "crawl_amp", help: '<link rel="amphtml">.' },
+          { kind: "pair", label: "Meta Refresh", store: "store_meta_refresh", crawl: "crawl_meta_refresh" },
+          { kind: "pair", label: "iframes", store: "store_iframes", crawl: "crawl_iframes" },
+          { kind: "pair", label: "Mobile Alternate", store: "store_mobile_alternate", crawl: "crawl_mobile_alternate", help: '<link rel="alternate" media="…"> separate mobile URLs.' },
+          { kind: "pair", label: "Uncrawlable Links", store: "store_uncrawlable_links", storeOnly: true, help: "span/div hrefs, onclick navigation and javascript: hrefs: Links > Pages With Uncrawlable Internal Outlinks." },
         ],
       },
       {
@@ -190,6 +207,7 @@ export const NODES: Node[] = [
           { kind: "bool", key: "crawl_all_subdomains", label: "Crawl All Subdomains" },
           { kind: "bool", key: "follow_internal_nofollow", label: 'Follow Internal "nofollow"' },
           { kind: "bool", key: "follow_external_nofollow", label: 'Follow External "nofollow"' },
+          { kind: "bool", key: "crawl_invalid_links", label: "Crawl Invalid Links", help: "Report malformed hrefs such as hppts:// under Response Codes > No Response." },
         ],
       },
       {
@@ -503,7 +521,7 @@ export function allFields(): { key: string; label: string; node: Node; group?: s
       for (const f of g.fields) {
         const label = "label" in f ? f.label : f.kind === "custom-search" ? "Custom Search" : f.kind === "custom-extraction" ? "Custom Extraction" : "";
         if (f.kind === "pair") {
-          out.push({ key: f.crawl, label: `${f.label}: Crawl`, node, group: g.title });
+          if (f.crawl) out.push({ key: f.crawl, label: `${f.label}: Crawl`, node, group: g.title });
           if (f.store) out.push({ key: f.store, label: `${f.label}: Store`, node, group: g.title });
         } else if ("key" in f) {
           out.push({ key: f.key, label, node, group: g.title });

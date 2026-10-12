@@ -424,8 +424,9 @@ impl Crawler {
         let mut kind = match link.kind {
             LinkKind::Hyperlink | LinkKind::Canonical | LinkKind::HttpCanonical | LinkKind::RelNext
             | LinkKind::RelPrev | LinkKind::Hreflang | LinkKind::Iframe | LinkKind::MetaRefresh
-            | LinkKind::Redirect => FetchKind::Page,
-            LinkKind::Image | LinkKind::Css | LinkKind::JavaScript => FetchKind::CheckOnly,
+            | LinkKind::Redirect | LinkKind::Amp | LinkKind::MobileAlternate => FetchKind::Page,
+            LinkKind::Image | LinkKind::Css | LinkKind::JavaScript | LinkKind::Media | LinkKind::Swf => FetchKind::CheckOnly,
+            LinkKind::Uncrawlable => return None,
         };
         if !internal {
             kind = FetchKind::CheckOnly;
@@ -461,7 +462,13 @@ impl Crawler {
             LinkKind::RelNext | LinkKind::RelPrev => cfg.crawl_pagination,
             LinkKind::Hreflang => cfg.crawl_hreflang,
             LinkKind::Iframe => cfg.crawl_iframes,
-            LinkKind::MetaRefresh | LinkKind::Redirect => cfg.crawl_meta_refresh,
+            LinkKind::MetaRefresh => cfg.crawl_meta_refresh,
+            LinkKind::Redirect => true,
+            LinkKind::Media => cfg.crawl_media,
+            LinkKind::Swf => cfg.crawl_swf,
+            LinkKind::Amp => cfg.crawl_amp,
+            LinkKind::MobileAlternate => cfg.crawl_mobile_alternate,
+            LinkKind::Uncrawlable => false,
         }
     }
 
@@ -491,6 +498,19 @@ impl Crawler {
 }
 
 async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item: &QueueItem, is_internal: bool) -> PageRecord {
+    if !matches!(item.url.scheme(), "http" | "https") {
+        let mut r = PageRecord {
+            url: item.url.to_string(),
+            depth: item.depth,
+            is_internal,
+            status_code: 0,
+            status: "Malformed URL".into(),
+            error: Some(format!("Malformed URL: unknown scheme '{}'", item.url.scheme())),
+            ..Default::default()
+        };
+        r.compute_indexability();
+        return r;
+    }
     let res = fetcher.fetch(&item.url).await;
     let mut r = PageRecord {
         url: item.url.to_string(),

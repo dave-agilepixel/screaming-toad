@@ -4,7 +4,7 @@ use crate::config::{ContentArea, CrawlConfig};
 use crate::custom::{run_extractors, run_searches, CustomRules, SearchTargets};
 use crate::minhash;
 use crate::model::{Link, LinkKind, PageData};
-use crate::urlutil::{normalize, resolve, PathType};
+use crate::urlutil::{malformed, normalize, resolve, PathType};
 use regex::Regex;
 use scraper::{ElementRef, Html, Node};
 use std::sync::OnceLock;
@@ -124,6 +124,14 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                         p.hreflang.push((lang, link.to.clone()));
                         p.links.push(link);
                     }
+                } else if rels.contains(&"amphtml") {
+                    if let Some(link) = make_link(LinkKind::Amp, href, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
+                } else if rels.contains(&"alternate") && v.attr("media").is_some() {
+                    if let Some(link) = make_link(LinkKind::MobileAlternate, href, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
                 } else if rels.contains(&"stylesheet") {
                     if let Some(link) = make_link(LinkKind::Css, href, &el, &base, cfg) {
                         p.links.push(link);
@@ -131,7 +139,24 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                 }
             }
             "a" | "area" => {
-                if let Some(href) = v.attr("href") {
+                let href = v.attr("href");
+                let js = href.is_some_and(|h| h.trim().to_ascii_lowercase().starts_with("javascript:"));
+                if cfg.store_uncrawlable_links && (js || (href.is_none() && v.attr("onclick").is_some())) {
+                    let raw = href.or(v.attr("onclick")).unwrap_or("");
+                    p.links.push(uncrawlable_link(raw, &el, &base, cfg));
+                    continue;
+                }
+                if let Some(href) = href {
+                    if cfg.crawl_invalid_links {
+                        if let Some(bad) = malformed(href) {
+                            let mut link = uncrawlable_link(href, &el, &base, cfg);
+                            link.kind = LinkKind::Hyperlink;
+                            link.to = bad.to_string();
+                            link.anchor = clean_text(&el);
+                            p.links.push(link);
+                            continue;
+                        }
+                    }
                     if let Some(mut link) = make_link(LinkKind::Hyperlink, href, &el, &base, cfg) {
                         link.anchor = clean_text(&el);
                         if link.anchor.is_empty() {
@@ -159,6 +184,31 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                         p.links.push(link);
                     }
                 }
+            }
+            "video" | "audio" => {
+                if let Some(src) = v.attr("src") {
+                    if let Some(link) = make_link(LinkKind::Media, src, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
+                }
+            }
+            "source" => {
+                let in_media = el.parent().and_then(ElementRef::wrap).is_some_and(|m| matches!(m.value().name(), "video" | "audio"));
+                if let (true, Some(src)) = (in_media, v.attr("src")) {
+                    if let Some(link) = make_link(LinkKind::Media, src, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
+                }
+            }
+            "embed" | "object" => {
+                if let Some(src) = v.attr(if v.name() == "embed" { "src" } else { "data" }) {
+                    if let Some(link) = make_link(LinkKind::Swf, src, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
+                }
+            }
+            "span" | "div" if cfg.store_uncrawlable_links && v.attr("href").is_some() => {
+                p.links.push(uncrawlable_link(v.attr("href").unwrap_or(""), &el, &base, cfg));
             }
             "iframe" => {
                 if let Some(src) = v.attr("src") {
@@ -292,6 +342,26 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
     })
 }
 
+/// A link the spider cannot follow: kept as written (resolved when it is a
+/// URL), with the anchor text, for Links > Uncrawlable Internal Outlinks.
+fn uncrawlable_link(raw: &str, el: &ElementRef, base: &Url, cfg: &CrawlConfig) -> Link {
+    let to = resolve(base, raw).map(|u| normalize(u, cfg).to_string()).unwrap_or_else(|| raw.trim().to_string());
+    Link {
+        kind: LinkKind::Uncrawlable,
+        to,
+        href: raw.trim().to_string(),
+        anchor: clean_text(el),
+        alt: None,
+        follow: false,
+        rel: el.value().attr("rel").unwrap_or("").to_string(),
+        target: String::new(),
+        path_type: PathType::of(raw).as_str().to_string(),
+        link_path: link_path(el),
+        position: "Content".into(),
+        hreflang: None,
+    }
+}
+
 fn in_head(el: &ElementRef) -> bool {
     el.ancestors().any(|a| matches!(a.value(), Node::Element(e) if e.name() == "head"))
 }
@@ -390,6 +460,42 @@ mod tests {
 <a href="/img-link"><img src="/t.png"></a><img src="/t2.png" alt="A toad">
 <a href="https://other.com/" rel="nofollow sponsored" target="_blank">Other</a>
 <a href="mailto:x@y.com">mail</a><footer><a href="/privacy">Privacy</a></footer></body></html>"#;
+
+    #[test]
+    fn extracts_new_link_kinds() {
+        let html = r#"<html><head>
+            <link rel="amphtml" href="/amp">
+            <link rel="alternate" media="only screen and (max-width: 640px)" href="https://m.x.com/">
+          </head><body>
+            <video src="/v.mp4"></video><audio><source src="/a.mp3"></audio>
+            <embed src="/f.swf"><object data="/o.swf"></object>
+            <span href="/span-link">S</span><div href="/div-link">D</div>
+            <a onclick="go()">Click</a><a href="javascript:void(0)">JS</a>
+            <a href="hppts://x.com/typo">Typo</a><a href="/ok">OK</a>
+          </body></html>"#;
+        let url = Url::parse("https://x.com/").unwrap();
+        let kinds = |cfg: &CrawlConfig| {
+            let p = extract(html, &url, cfg, &CustomRules::default());
+            p.links.iter().map(|l| (l.kind.as_str(), l.to.clone())).collect::<Vec<_>>()
+        };
+        let base = kinds(&CrawlConfig::default());
+        let has = |v: &[(&str, String)], k: &str, to: &str| v.iter().any(|(kk, t)| *kk == k && t == to);
+        assert!(has(&base, "AMP", "https://x.com/amp"));
+        assert!(has(&base, "Mobile Alternate", "https://m.x.com/"));
+        assert!(has(&base, "Media", "https://x.com/v.mp4") && has(&base, "Media", "https://x.com/a.mp3"));
+        assert!(has(&base, "SWF", "https://x.com/f.swf") && has(&base, "SWF", "https://x.com/o.swf"));
+        assert!(!base.iter().any(|(k, _)| *k == "Uncrawlable"), "uncrawlable links are off by default");
+        assert!(!base.iter().any(|(_, t)| t.starts_with("hppts")), "invalid links are off by default");
+        assert!(has(&base, "Hyperlink", "https://x.com/ok"));
+
+        let on = CrawlConfig { store_uncrawlable_links: true, crawl_invalid_links: true, ..CrawlConfig::default() };
+        let all = kinds(&on);
+        let uncrawlable: Vec<&String> = all.iter().filter(|(k, _)| *k == "Uncrawlable").map(|(_, t)| t).collect();
+        assert_eq!(uncrawlable.len(), 4, "{all:?}");
+        assert!(uncrawlable.contains(&&"https://x.com/span-link".to_string()));
+        assert!(uncrawlable.contains(&&"javascript:void(0)".to_string()));
+        assert!(has(&all, "Hyperlink", "hppts://x.com/typo"));
+    }
 
     #[test]
     fn extracts_core_elements() {

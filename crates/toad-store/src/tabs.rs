@@ -178,9 +178,10 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             f("CSS", "u.content_type LIKE '%css%'".into(), None, "Stylesheets."),
             f("Images", "u.content_type LIKE 'image/%'".into(), None, "Images."),
             f("PDF", "u.content_type LIKE '%pdf%'".into(), None, "PDF documents."),
+            f("Media", "(u.content_type LIKE 'audio/%' OR u.content_type LIKE 'video/%')".into(), None, "Audio and video files."),
             f(
                 "Other",
-                "u.is_html = 0 AND u.content_type <> '' AND u.content_type NOT LIKE '%javascript%' AND u.content_type NOT LIKE '%css%' AND u.content_type NOT LIKE 'image/%' AND u.content_type NOT LIKE '%pdf%'".into(),
+                "u.is_html = 0 AND u.content_type <> '' AND u.content_type NOT LIKE '%javascript%' AND u.content_type NOT LIKE '%css%' AND u.content_type NOT LIKE 'image/%' AND u.content_type NOT LIKE '%pdf%' AND u.content_type NOT LIKE 'audio/%' AND u.content_type NOT LIKE 'video/%'".into(),
                 None,
                 "Any other content type.",
             ),
@@ -489,6 +490,7 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 all(),
                 f("Pages With High Crawl Depth", format!("u.depth > {}{ix}", p.high_crawl_depth), Some((Opportunity, Medium)), "Pages many clicks from the start page."),
                 f("Pages Without Internal Outlinks", "u.outlinks = 0".into(), Some((Warning, High)), "No internal hyperlinks on the page."),
+                f("Pages With Uncrawlable Internal Outlinks", has_link("l.kind = 'Uncrawlable'"), Some((Warning, High)), "Links the spider can't follow: span/div hrefs, onclick navigation or javascript: hrefs (needs Spider > Crawl > Uncrawlable Links: Store)."),
                 f("Internal Nofollow Outlinks", has_link("l.internal = 1 AND l.kind = 'Hyperlink' AND l.follow = 0"), Some((Warning, Low)), "Internal links marked nofollow."),
                 f("Internal Outlinks With No Anchor Text", has_link("l.internal = 1 AND l.kind = 'Hyperlink' AND l.anchor = '' AND coalesce(l.alt, '') = ''"), Some((Opportunity, Low)), "Internal links with no anchor text or image alt."),
                 f("Non-Descriptive Anchor Text In Internal Outlinks", {

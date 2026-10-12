@@ -16,10 +16,20 @@ pub enum LinkKind {
     Iframe,
     MetaRefresh,
     Redirect,
+    /// `<video>` / `<audio>` / `<source>` media.
+    Media,
+    /// `<embed>` / `<object>` (Flash and other plugins).
+    Swf,
+    /// `<link rel="amphtml">`.
+    Amp,
+    /// `<link rel="alternate" media="…">` (separate mobile URL).
+    MobileAlternate,
+    /// `span`/`div` hrefs, `onclick` navigation, `javascript:` hrefs (stored only, never crawled).
+    Uncrawlable,
 }
 
 impl LinkKind {
-    pub const ALL: [LinkKind; 12] = [
+    pub const ALL: [LinkKind; 17] = [
         LinkKind::Hyperlink,
         LinkKind::Image,
         LinkKind::Css,
@@ -32,6 +42,11 @@ impl LinkKind {
         LinkKind::Iframe,
         LinkKind::MetaRefresh,
         LinkKind::Redirect,
+        LinkKind::Media,
+        LinkKind::Swf,
+        LinkKind::Amp,
+        LinkKind::MobileAlternate,
+        LinkKind::Uncrawlable,
     ];
 
     /// The inverse of [`LinkKind::as_str`].
@@ -53,6 +68,11 @@ impl LinkKind {
             LinkKind::Iframe => "Iframe",
             LinkKind::MetaRefresh => "Meta Refresh",
             LinkKind::Redirect => "Redirect",
+            LinkKind::Media => "Media",
+            LinkKind::Swf => "SWF",
+            LinkKind::Amp => "AMP",
+            LinkKind::MobileAlternate => "Mobile Alternate",
+            LinkKind::Uncrawlable => "Uncrawlable",
         }
     }
 }

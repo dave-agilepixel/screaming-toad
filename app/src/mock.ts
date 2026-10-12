@@ -222,7 +222,10 @@ const COMPARE_OVERVIEW: CompareOverviewRow[] = [
 const DEFAULT_CONFIG = {
   mode: "spider" as const,
   store_images: true, crawl_images: true, store_css: true, crawl_css: true, store_js: true, crawl_js: true,
-  crawl_internal_links: true, store_external_links: true, crawl_external_links: true, store_canonicals: true, crawl_canonicals: true,
+  store_internal_links: true, crawl_internal_links: true, store_external_links: true,
+  store_media: false, crawl_media: false, store_swf: true, crawl_swf: true, store_amp: false, crawl_amp: false,
+  store_meta_refresh: true, store_iframes: true, store_mobile_alternate: false, crawl_mobile_alternate: false,
+  store_uncrawlable_links: false, crawl_invalid_links: false, crawl_external_links: true, store_canonicals: true, crawl_canonicals: true,
   store_pagination: true, crawl_pagination: false, store_hreflang: true, crawl_hreflang: false, crawl_meta_refresh: true, crawl_iframes: true,
   check_links_outside_start_folder: true, crawl_outside_start_folder: false, crawl_all_subdomains: false,
   follow_internal_nofollow: false, follow_external_nofollow: false, crawl_fragment_identifiers: false,

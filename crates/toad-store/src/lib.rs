@@ -116,7 +116,7 @@ impl Store {
                 Url::parse(target).ok().zip(self.scope.as_ref()).is_some_and(|(u, s)| s.is_internal(&u))
             };
             if let Some(page) = &rec.page {
-                for l in &page.links {
+                for l in page.links.iter().filter(|l| self.cfg.stores_link(l.kind, internal(&l.to))) {
                     link_stmt.execute(params![
                         source_id,
                         l.to,
