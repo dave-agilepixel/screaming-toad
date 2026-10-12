@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
+import { HEADER_NAMES, USER_AGENT_PRESETS, validHeaderName } from "./presets";
+import type { RobotsTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomSearch, type Field } from "./schema";
 
 interface Props {
@@ -318,6 +320,46 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
       );
     }
 
+    case "custom-robots":
+      return <CustomRobotsField cfg={cfg} set={set} fieldKey={f.key} label={f.label} help={f.help} highlight={highlight} />;
+
+    case "ua-preset": {
+      const current = USER_AGENT_PRESETS.find((p) => p.userAgent === cfg.user_agent && p.robots === cfg.robots_user_agent);
+      const isDefault = defaults && cfg.user_agent === defaults.user_agent && cfg.robots_user_agent === defaults.robots_user_agent;
+      return (
+        <div className="field">
+          <label className="row">
+            <Label text={f.label} highlight={highlight} />
+            <select
+              value={isDefault ? "__default__" : (current?.name ?? "__custom__")}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__default__" && defaults) {
+                  set("user_agent", defaults.user_agent);
+                  set("robots_user_agent", defaults.robots_user_agent);
+                  return;
+                }
+                const p = USER_AGENT_PRESETS.find((x) => x.name === v);
+                if (p) {
+                  set("user_agent", p.userAgent);
+                  set("robots_user_agent", p.robots);
+                }
+              }}
+            >
+              <option value="__default__">Screaming Toad SEO Spider</option>
+              {USER_AGENT_PRESETS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+              {!isDefault && !current && <option value="__custom__">Custom</option>}
+            </select>
+          </label>
+          <p className="hint">A preset fills both fields below. Use Chrome for sites that block bots (403, 406, 429); Googlebot for cookie walls.</p>
+        </div>
+      );
+    }
+
     case "url-test":
       return <UrlTestBox cfg={cfg} show={f.show} label={f.label} />;
 
@@ -327,6 +369,144 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     case "custom-extraction":
       return <ExtractionEditor rules={cfg.custom_extraction} onChange={(v) => set("custom_extraction", v)} />;
   }
+}
+
+/** robots.txt > Custom Robots: subdomain list, editor (Download / Clear) and URL tester. */
+function CustomRobotsField({
+  cfg,
+  set,
+  fieldKey,
+  label,
+  help,
+  highlight,
+}: {
+  cfg: CrawlConfig;
+  set: (key: string, value: unknown) => void;
+  fieldKey: string;
+  label: string;
+  help?: string;
+  highlight: string;
+}) {
+  const rows = (getPath(cfg, fieldKey) as { host: string; enabled: boolean; txt: string }[]) ?? [];
+  const [selected, setSelected] = useState(0);
+  const [testUrl, setTestUrl] = useState("");
+  const [result, setResult] = useState<RobotsTest | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const row = rows[selected];
+  const update = (patch: Partial<{ host: string; enabled: boolean; txt: string }>) =>
+    set(fieldKey, rows.map((r, j) => (j === selected ? { ...r, ...patch } : r)));
+
+  useEffect(() => {
+    if (!row || !testUrl.trim()) {
+      setResult(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .testRobots(row.txt, cfg.robots_user_agent, testUrl.trim())
+        .then((r) => {
+          setResult(r);
+          setMessage(null);
+        })
+        .catch((e) => {
+          setResult(null);
+          setMessage(String(e));
+        });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [row, testUrl, cfg.robots_user_agent]);
+
+  const download = async () => {
+    if (!row?.host.trim()) return;
+    try {
+      update({ txt: await api.downloadRobots(row.host) });
+      setMessage(`Downloaded robots.txt for ${row.host}.`);
+    } catch (e) {
+      setMessage(String(e));
+    }
+  };
+
+  const lines = (row?.txt ?? "").split(/\r?\n/);
+  const matchedNo = result?.line ? Number(/^Line (\d+):/.exec(result.line)?.[1] ?? 0) : 0;
+
+  return (
+    <div className="field">
+      <span>
+        <Label text={label} highlight={highlight} />
+      </span>
+      <div className="robots-layout">
+        <div className="robots-list">
+          {rows.map((r, i) => (
+            <div key={i} className={`robots-row${i === selected ? " selected" : ""}`} onClick={() => setSelected(i)}>
+              <input type="checkbox" checked={r.enabled} title="Override Enabled" onChange={(e) => set(fieldKey, rows.map((x, j) => (j === i ? { ...x, enabled: e.target.checked } : x)))} />
+              <span>{r.host || "(new subdomain)"}</span>
+            </div>
+          ))}
+          <div className="button-row">
+            <button
+              onClick={() => {
+                set(fieldKey, [...rows, { host: "", enabled: true, txt: "User-agent: *\nDisallow:\n" }]);
+                setSelected(rows.length);
+              }}
+            >
+              Add
+            </button>
+            <button
+              disabled={!row}
+              onClick={() => {
+                set(fieldKey, rows.filter((_, j) => j !== selected));
+                setSelected(Math.max(0, selected - 1));
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+        {row ? (
+          <div className="robots-editor">
+            <label className="stack">
+              Subdomain
+              <input value={row.host} onChange={(e) => update({ host: e.target.value })} placeholder="www.example.com" spellCheck={false} />
+            </label>
+            <div className="button-row">
+              <button onClick={download} disabled={!row.host.trim()}>
+                Download robots.txt
+              </button>
+              <button onClick={() => update({ txt: "" })}>Clear</button>
+              <label className="check">
+                <input type="checkbox" checked={row.enabled} onChange={(e) => update({ enabled: e.target.checked })} /> Override Enabled
+              </label>
+            </div>
+            <div className="robots-text">
+              <pre className="robots-gutter" aria-hidden>
+                {lines.map((_, i) => (
+                  <div key={i} className={i + 1 === matchedNo ? (result?.allowed ? "hit-allow" : "hit-block") : ""}>
+                    {i + 1}
+                  </div>
+                ))}
+              </pre>
+              <textarea rows={10} value={row.txt} onChange={(e) => update({ txt: e.target.value })} spellCheck={false} wrap="off" />
+            </div>
+            <label className="stack">
+              Test URL (uses the Robots User-Agent: {cfg.robots_user_agent || "* only"})
+              <input value={testUrl} onChange={(e) => setTestUrl(e.target.value)} placeholder="https://www.example.com/private/page or /private/page" spellCheck={false} />
+            </label>
+            {result && (
+              <p className={`verdict ${result.allowed ? "good" : "bad"}`}>
+                {result.allowed ? "Allowed" : "Blocked"}
+                {result.line ? ` by ${result.line}` : " (no rule matches)"}
+                {result.group ? ` in group "${result.group}"` : ""}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="hint">No custom robots.txt. Add a subdomain to override its live file.</p>
+        )}
+      </div>
+      {message && <p className="hint">{message}</p>}
+      <Help text={help} />
+    </div>
+  );
 }
 
 /** Live Test pane: rewrites and classifies a URL under the dialog's (unsaved) configuration. */
@@ -467,8 +647,11 @@ function HeadersField({
           </tr>
           {rows.map(([name, value], i) => (
             <tr key={i}>
-              <td>
-                <input value={name} onChange={(e) => update(i, 0, e.target.value)} spellCheck={false} />
+              <td className="header-name">
+                <input list="toad-header-names" value={name} onChange={(e) => update(i, 0, e.target.value)} spellCheck={false} />
+                <span className={validHeaderName(name) ? "valid-mark" : "invalid-mark"} title={validHeaderName(name) ? "Valid header name" : "Not a valid header name"}>
+                  {validHeaderName(name) ? "✓" : "✗"}
+                </span>
               </td>
               <td>
                 <input value={value} onChange={(e) => update(i, 1, e.target.value)} spellCheck={false} />
@@ -480,6 +663,11 @@ function HeadersField({
           ))}
         </tbody>
       </table>
+      <datalist id="toad-header-names">
+        {HEADER_NAMES.map((h) => (
+          <option key={h} value={h} />
+        ))}
+      </datalist>
       <div className="button-row">
         <button onClick={() => set("custom_headers", [...rows, ["", ""]])}>Add</button>
         <button disabled={!defaults} onClick={() => defaults && set("custom_headers", defaults.custom_headers)}>

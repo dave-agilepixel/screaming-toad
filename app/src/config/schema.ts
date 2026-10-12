@@ -148,6 +148,7 @@ export interface CrawlConfig {
   robots_mode: RobotsMode;
   show_internal_blocked_by_robots: boolean;
   show_external_blocked_by_robots: boolean;
+  custom_robots: { host: string; enabled: boolean; txt: string }[];
   user_agent: string;
   robots_user_agent: string;
   custom_headers: [string, string][];
@@ -188,6 +189,8 @@ export type Field =
   | { kind: "pair"; label: string; store?: string; crawl?: string; help?: string; storeOnly?: boolean }
   | { kind: "headers"; key: string; label: string; help?: string }
   | { kind: "path-limits"; key: string; label: string; help?: string }
+  | { kind: "custom-robots"; key: string; label: string; help?: string }
+  | { kind: "ua-preset"; label: string }
   | { kind: "rewrite-rules"; key: string; label: string; help?: string }
   /** A live test box: how one URL is rewritten / classified / matched. */
   | { kind: "url-test"; label: string; show: "rewrite" | "cdn" | "include" | "exclude" }
@@ -512,8 +515,24 @@ export const NODES: Node[] = [
             ],
             help: "List mode defaults to Ignore.",
           },
-          { kind: "bool", key: "show_internal_blocked_by_robots", label: "Show Internal URLs Blocked by robots.txt" },
-          { kind: "bool", key: "show_external_blocked_by_robots", label: "Show External URLs Blocked by robots.txt" },
+          {
+            kind: "bool",
+            key: "show_internal_blocked_by_robots",
+            label: "Show Internal URLs Blocked by robots.txt",
+            disabledIf: (c) => c.robots_mode === "ignore",
+          },
+          {
+            kind: "bool",
+            key: "show_external_blocked_by_robots",
+            label: "Show External URLs Blocked by robots.txt",
+            disabledIf: (c) => c.robots_mode === "ignore",
+          },
+          {
+            kind: "custom-robots",
+            key: "custom_robots",
+            label: "Custom Robots",
+            help: "Override the live robots.txt of a subdomain, e.g. to test changes before they go live. Matching uses the Robots User-Agent: its own group, otherwise *; the longest rule wins and Allow wins a tie.",
+          },
         ],
       },
     ],
@@ -631,6 +650,7 @@ export const NODES: Node[] = [
     groups: [
       {
         fields: [
+          { kind: "ua-preset", label: "Preset User Agents" },
           { kind: "text", key: "user_agent", label: "HTTP Request User-Agent" },
           { kind: "text", key: "robots_user_agent", label: "Robots User-Agent", help: "The token matched against robots.txt groups and robots meta names." },
         ],

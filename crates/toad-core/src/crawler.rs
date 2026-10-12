@@ -43,6 +43,8 @@ struct QueueItem {
     redirect_hops: u32,
     /// Session Only cookies carried along a redirect chain ("a=1; b=2").
     cookies: Option<String>,
+    /// "Ignore robots.txt but report status": the line that would block it.
+    robots_line: Option<String>,
 }
 
 #[derive(Default)]
@@ -154,7 +156,7 @@ impl Crawler {
                 continue;
             }
             if seen.insert(url.to_string()) {
-                queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None });
+                queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None });
             }
         }
 
@@ -196,7 +198,7 @@ impl Crawler {
             let item = if p.link.kind == LinkKind::Redirect {
                 let Ok(target) = Url::parse(&p.link.to) else { continue };
                 let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
-                self.allowed(&target, kind == FetchKind::Page).then_some(QueueItem { url: target, depth, kind, redirect_hops: 1, cookies: None })
+                self.allowed(&target, kind == FetchKind::Page).then_some(QueueItem { url: target, depth, kind, redirect_hops: 1, cookies: None, robots_line: None })
             } else {
                 let nofollow = p.source_nofollow && !self.cfg.follow_internal_nofollow;
                 self.link_item(&p.link, depth, nofollow)
@@ -237,9 +239,9 @@ impl Crawler {
                 break;
             }
             while !control.is_paused() && tasks.len() < self.cfg.threads.max(1) && issued < self.cfg.max_urls {
-                let Some(item) = queue.pop_front() else { break };
+                let Some(mut item) = queue.pop_front() else { break };
 
-                if let Some(record) = self.robots_block(&item).await {
+                if let Some(record) = self.robots_block(&mut item).await {
                     progress.discovered += 1;
                     let show = if record.is_internal {
                         self.cfg.show_internal_blocked_by_robots
@@ -320,6 +322,18 @@ impl Crawler {
         if let Some(r) = self.robots.get(origin) {
             return r.clone();
         }
+        // A custom entry can name the host alone, or host:port.
+        let parsed = Url::parse(origin).ok();
+        let host = parsed.as_ref().and_then(|u| u.host_str()).unwrap_or("").to_ascii_lowercase();
+        let authority = match parsed.as_ref().and_then(|u| u.port()) {
+            Some(p) => format!("{host}:{p}"),
+            None => host.clone(),
+        };
+        if let Some(custom) = self.cfg.custom_robots.iter().find(|c| c.enabled && (c.host_name() == host || c.host_name() == authority)) {
+            let robots = Arc::new(Robots::parse(&custom.txt));
+            self.robots.insert(origin.to_string(), robots.clone());
+            return robots;
+        }
         let robots = match Url::parse(&format!("{origin}/robots.txt")) {
             // Exclude applies to robots.txt fetches too.
             Ok(u) if self.is_excluded(u.as_str()) => Robots::allow_all(),
@@ -338,22 +352,25 @@ impl Crawler {
         robots
     }
 
-    /// Returns a "Blocked by Robots.txt" record if robots.txt disallows the URL.
-    async fn robots_block(&mut self, item: &QueueItem) -> Option<PageRecord> {
+    /// Returns a "Blocked by Robots.txt" record if robots.txt disallows the
+    /// URL. With "Ignore but report status" the URL is crawled, and the line
+    /// that would have blocked it is noted on the item instead.
+    async fn robots_block(&mut self, item: &mut QueueItem) -> Option<PageRecord> {
         if self.cfg.robots_mode == RobotsMode::Ignore {
             return None;
         }
         let origin = item.url.origin().ascii_serialization();
         let robots = self.robots_for(&origin).await;
-        if self.cfg.robots_mode == RobotsMode::IgnoreButReport {
-            return None;
-        }
         let path = match item.url.query() {
             Some(q) => format!("{}?{}", item.url.path(), q),
             None => item.url.path().to_string(),
         };
         match robots.check(&self.cfg.robots_user_agent, &path) {
             Verdict::Allowed => None,
+            Verdict::Blocked(line) if self.cfg.robots_mode == RobotsMode::IgnoreButReport => {
+                item.robots_line = Some(line);
+                None
+            }
             Verdict::Blocked(line) => {
                 let mut r = PageRecord {
                     url: item.url.to_string(),
@@ -427,7 +444,7 @@ impl Crawler {
                         }
                         if seen.insert(page.to_string()) {
                             progress.discovered += 1;
-                            queue.push_back(QueueItem { url: page, depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None });
+                            queue.push_back(QueueItem { url: page, depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None });
                         }
                     }
                     tx.send(CrawlEvent::Sitemap { sitemap: url.to_string(), urls: parsed.locs }).await.ok();
@@ -453,7 +470,7 @@ impl Crawler {
             {
                 let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
                 if self.allowed(&target, kind == FetchKind::Page) {
-                    out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: chain_cookies(cfg, item, record) });
+                    out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: chain_cookies(cfg, item, record), robots_line: None });
                 }
             }
         }
@@ -465,7 +482,7 @@ impl Crawler {
                 if let Some(target) = record.canonical().filter(|c| *c != record.url).and_then(|c| Url::parse(c).ok()) {
                     let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
                     if self.allowed(&target, kind == FetchKind::Page) {
-                        out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: None });
+                        out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: None, robots_line: None });
                     }
                 }
             }
@@ -506,7 +523,7 @@ impl Crawler {
         if !self.allowed(&url, internal) {
             return None;
         }
-        Some(QueueItem { url, depth, kind, redirect_hops: 0, cookies: None })
+        Some(QueueItem { url, depth, kind, redirect_hops: 0, cookies: None, robots_line: None })
     }
 
     fn should_crawl(&self, link: &Link, internal: bool, page_nofollow: bool) -> bool {
@@ -688,6 +705,7 @@ async fn process(
         r.hash = Some(format!("{:x}", md5::compute(&res.body)));
     }
 
+    r.robots_report_line = item.robots_line.clone();
     let mut self_refresh = false;
     if res.truncated {
         r.error = Some(format!("Not processed: larger than the Max Page Size ({} KB)", cfg.max_page_size_kb));
@@ -778,7 +796,7 @@ mod tests {
     #[test]
     fn meta_refresh_follows_the_crawl_setting() {
         let start = Url::parse("https://example.com/").unwrap();
-        let item = QueueItem { url: Url::parse("https://example.com/old").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None };
+        let item = QueueItem { url: Url::parse("https://example.com/old").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None };
         let followed = |crawl_meta_refresh: bool| {
             let cfg = CrawlConfig { crawl_meta_refresh, ..CrawlConfig::default() };
             let crawler = Crawler::new(cfg, &start).unwrap();
@@ -799,7 +817,7 @@ mod hsts_tests {
         let fetcher = Fetcher::new(&cfg).unwrap();
         let rules = CustomRules::default();
         let hsts = std::sync::Mutex::new(HashSet::from(["secure.example".to_string()]));
-        let item = QueueItem { url: Url::parse("http://secure.example/page").unwrap(), depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None };
+        let item = QueueItem { url: Url::parse("http://secure.example/page").unwrap(), depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None };
         let r = process(&fetcher, &cfg, &rules, &item, true, &hsts).await;
         assert_eq!((r.status_code, r.status.as_str()), (307, "HSTS Policy"));
         assert_eq!(r.redirect_url.as_deref(), Some("https://secure.example/page"));
@@ -810,7 +828,7 @@ mod hsts_tests {
     #[test]
     fn session_cookies_follow_the_redirect_chain() {
         let cfg = CrawlConfig::default();
-        let item = QueueItem { url: Url::parse("https://x.com/a").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: Some("a=1; b=2".into()) };
+        let item = QueueItem { url: Url::parse("https://x.com/a").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: Some("a=1; b=2".into()), robots_line: None };
         let rec = PageRecord { headers: vec![("Set-Cookie".into(), "b=3; Path=/".into()), ("set-cookie".into(), "c=4".into())], ..Default::default() };
         assert_eq!(chain_cookies(&cfg, &item, &rec).as_deref(), Some("a=1; b=3; c=4"));
         let off = CrawlConfig { cookie_storage: CookieStorage::Persistent, ..CrawlConfig::default() };

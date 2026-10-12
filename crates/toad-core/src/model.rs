@@ -163,6 +163,9 @@ pub struct PageRecord {
     pub http_canonical: Option<String>,
     pub hash: Option<String>,
     pub blocked_by_robots_line: Option<String>,
+    /// robots.txt "Ignore but report status": the line that would block this
+    /// URL, which was crawled anyway.
+    pub robots_report_line: Option<String>,
     pub error: Option<String>,
     pub page: Option<PageData>,
     /// For XML sitemap files: the number of `<loc>` entries.

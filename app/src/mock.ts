@@ -121,6 +121,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const url = String(args?.url ?? "");
       return { rewritten: url.replace(/#.*$/, ""), encoded: url, internal: args?.start ? url.includes("example.com") : null, include_match: null, included: true, exclude_match: url.includes("?sort") ? "\\?sort" : null, error: null } as T;
     }
+    case "test_robots": {
+      const blocked = String(args?.url).includes("/private");
+      return { allowed: !blocked, line: blocked ? "Line 2: Disallow: /private/" : null, group: "*" } as T;
+    }
+    case "download_robots":
+      return "User-agent: *\nDisallow: /private/\nSitemap: https://www.example.com/sitemap.xml\n" as T;
     case "recent_profiles":
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
@@ -242,7 +248,7 @@ const DEFAULT_CONFIG = {
   extract_images_from_srcset: false, perform_html_validation: true,
   ignore_non_indexable_for_issues: true, response_timeout_secs: 20, retries_5xx: 0, assume_pages_are_html: false,
   threads: 5, max_urls_per_sec: null as number | null, robots_mode: "respect" as const,
-  show_internal_blocked_by_robots: true, show_external_blocked_by_robots: false,
+  show_internal_blocked_by_robots: true, show_external_blocked_by_robots: false, custom_robots: [] as { host: string; enabled: boolean; txt: string }[],
   user_agent: "Screaming Toad SEO Spider/0.1.0", robots_user_agent: "Screaming Toad",
   custom_headers: [["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"], ["Accept-Encoding", "gzip"], ["Cache-Control", "no-cache"], ["Pragma", "no-cache"]] as [string, string][],
   include: [] as string[], exclude: [] as string[], remove_all_parameters: false, remove_parameters: [] as string[],

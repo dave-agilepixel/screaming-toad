@@ -401,6 +401,36 @@ fn test_url(config: CrawlConfig, start: Option<String>, url: String) -> toad_cor
     toad_core::urlutil::test_url(&config, start.as_deref(), &url)
 }
 
+/// robots.txt > Test: whether `url` is allowed by `txt` for `user_agent`.
+#[tauri::command]
+fn test_robots(txt: String, user_agent: String, url: String) -> CmdResult<toad_core::robots::RobotsTest> {
+    let path = match Url::parse(url.trim()) {
+        Ok(u) => match u.query() {
+            Some(q) => format!("{}?{q}", u.path()),
+            None => u.path().to_string(),
+        },
+        // A bare path such as /private/page.
+        Err(_) if url.trim().starts_with('/') => url.trim().to_string(),
+        Err(e) => return Err(format!("not a valid URL or path: {e}")),
+    };
+    Ok(toad_core::robots::Robots::parse(&txt).explain(&user_agent, &path))
+}
+
+/// robots.txt > Custom Robots > Download: the live robots.txt of a host.
+#[tauri::command]
+async fn download_robots(state: State<'_, AppState>, host: String) -> CmdResult<String> {
+    let cfg = state.config.lock().map_err(err)?.clone();
+    let h = host.trim();
+    let base = if h.contains("://") { h.to_string() } else { format!("https://{h}") };
+    let url = Url::parse(&base).and_then(|u| u.join("/robots.txt")).map_err(err)?;
+    let res = toad_core::fetch::Fetcher::new(&cfg).map_err(err)?.fetch(&url).await;
+    match res.status {
+        200 => Ok(String::from_utf8_lossy(&res.body).into_owned()),
+        0 => Err(format!("{url}: no response ({})", res.error.unwrap_or(res.status_text))),
+        code => Err(format!("{url} returned {code} {}", res.status_text)),
+    }
+}
+
 /// Configuration > Exclude edited while a crawl runs: applies to URLs not
 /// yet requested. Returns whether a crawl was running.
 #[tauri::command]
@@ -490,6 +520,8 @@ fn main() {
             get_config,
             test_url,
             update_exclude,
+            test_robots,
+            download_robots,
             set_config,
             reset_config,
             profiles::recent_profiles,

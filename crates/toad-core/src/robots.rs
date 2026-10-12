@@ -4,6 +4,17 @@
 //! and Allow wins a tie.
 
 use regex::Regex;
+use serde::Serialize;
+
+/// The robots.txt Test pane: what one path gets for one user-agent.
+#[derive(Debug, Clone, Serialize)]
+pub struct RobotsTest {
+    pub allowed: bool,
+    /// The deciding Allow/Disallow line, with its line number.
+    pub line: Option<String>,
+    /// The user-agent group that applied (`*` when none named the agent).
+    pub group: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 struct Rule {
@@ -43,8 +54,9 @@ impl Robots {
         let mut current: Option<Group> = None;
         let mut last_was_agent = false;
 
-        for raw in text.lines() {
+        for (n, raw) in text.lines().enumerate() {
             let line = raw.split('#').next().unwrap_or("").trim();
+            let numbered = format!("Line {}: {line}", n + 1);
             let Some((key, value)) = line.split_once(':') else { continue };
             let key = key.trim().to_ascii_lowercase();
             let value = value.trim();
@@ -72,7 +84,7 @@ impl Robots {
                             allow: key == "allow",
                             pattern: value.to_string(),
                             regex,
-                            line: line.to_string(),
+                            line: numbered.clone(),
                         });
                     }
                 }
@@ -88,7 +100,25 @@ impl Robots {
 
     /// `path` is the URL path plus query string.
     pub fn check(&self, user_agent: &str, path: &str) -> Verdict {
-        let Some(group) = self.group_for(user_agent) else { return Verdict::Allowed };
+        match self.decide(user_agent, path).1 {
+            Some(r) if !r.allow => Verdict::Blocked(r.line.clone()),
+            _ => Verdict::Allowed,
+        }
+    }
+
+    /// Like [`check`](Self::check), but also returns an Allow line that
+    /// decided it and the group used (the Test pane).
+    pub fn explain(&self, user_agent: &str, path: &str) -> RobotsTest {
+        let (group, rule) = self.decide(user_agent, path);
+        RobotsTest {
+            allowed: rule.is_none_or(|r| r.allow),
+            line: rule.map(|r| r.line.clone()),
+            group: group.map(|g| g.agents.join(", ")),
+        }
+    }
+
+    fn decide(&self, user_agent: &str, path: &str) -> (Option<&Group>, Option<&Rule>) {
+        let Some(group) = self.group_for(user_agent) else { return (None, None) };
         let mut best: Option<&Rule> = None;
         for rule in &group.rules {
             if !rule.regex.is_match(path) {
@@ -106,10 +136,7 @@ impl Robots {
                 }
             };
         }
-        match best {
-            Some(r) if !r.allow => Verdict::Blocked(r.line.clone()),
-            _ => Verdict::Allowed,
-        }
+        (Some(group), best)
     }
 
     /// A group naming our product token beats `*`. Among named groups the
@@ -158,10 +185,24 @@ mod tests {
     #[test]
     fn longest_match_and_wildcards() {
         let r = Robots::parse(TXT);
-        assert_eq!(r.check("Googlebot", "/private/x"), Verdict::Blocked("Disallow: /private/".into()));
+        assert_eq!(r.check("Googlebot", "/private/x"), Verdict::Blocked("Line 2: Disallow: /private/".into()));
         assert_eq!(r.check("Googlebot", "/private/ok/1"), Verdict::Allowed);
         assert!(matches!(r.check("Googlebot", "/a/file.pdf"), Verdict::Blocked(_)));
         assert_eq!(r.check("Googlebot", "/a/file.pdf?x=1"), Verdict::Allowed);
+    }
+
+    #[test]
+    fn explain_reports_the_deciding_line_and_group() {
+        let r = Robots::parse(TXT);
+        let t = r.explain("Googlebot", "/private/ok/1");
+        assert!(t.allowed);
+        assert_eq!(t.line.as_deref(), Some("Line 3: Allow: /private/ok"));
+        assert_eq!(t.group.as_deref(), Some("*"));
+        let t = r.explain("Screaming Toad", "/toad-only/x");
+        assert!(!t.allowed);
+        assert_eq!((t.line.as_deref(), t.group.as_deref()), (Some("Line 7: Disallow: /toad-only/"), Some("screaming toad")));
+        let t = r.explain("Googlebot", "/public");
+        assert!(t.allowed && t.line.is_none());
     }
 
     #[test]

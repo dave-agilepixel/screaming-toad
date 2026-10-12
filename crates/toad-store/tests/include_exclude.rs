@@ -87,3 +87,33 @@ async fn include_and_exclude() {
     assert_eq!(paths(&crawl(vec![u("/")], base, control).await), vec!["/", "/shop/c"]);
     assert!(CrawlControl::default().set_exclude(&["(".to_string()]).is_err());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn custom_robots_and_report_mode() {
+    let hits = Arc::new(AtomicUsize::new(0));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    tokio::spawn(serve(listener, hits.clone()));
+    let start = Url::parse(&format!("{origin}/")).unwrap();
+    let custom = vec![toad_core::config::CustomRobots {
+        host: format!("{origin}/"),
+        enabled: true,
+        txt: "User-agent: *\nDisallow: /blog/\n".into(),
+    }];
+
+    // Respect + custom robots: the override is used instead of the live file.
+    let respect = CrawlConfig { threads: 1, custom_robots: custom.clone(), ..CrawlConfig::default() };
+    let got = crawl(vec![start.clone()], respect, CrawlControl::default()).await;
+    assert_eq!(hits.load(Ordering::SeqCst), 0, "the live robots.txt isn't downloaded");
+    let blog: Vec<&PageRecord> = got.iter().filter(|r| r.url.contains("/blog/")).collect();
+    assert_eq!(blog.len(), 2);
+    assert!(blog.iter().all(|r| r.status == "Blocked by Robots.txt" && r.blocked_by_robots_line.as_deref() == Some("Line 2: Disallow: /blog/")));
+
+    // Ignore but report status: crawled normally, with the line reported.
+    let report = CrawlConfig { threads: 1, custom_robots: custom, robots_mode: RobotsMode::IgnoreButReport, ..CrawlConfig::default() };
+    let got = crawl(vec![start], report, CrawlControl::default()).await;
+    let blog: Vec<&PageRecord> = got.iter().filter(|r| r.url.contains("/blog/")).collect();
+    assert_eq!(blog.len(), 2);
+    assert!(blog.iter().all(|r| r.status_code == 200 && r.indexable && r.blocked_by_robots_line.is_none()));
+    assert!(blog.iter().all(|r| r.robots_report_line.as_deref() == Some("Line 2: Disallow: /blog/")));
+}

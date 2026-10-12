@@ -311,3 +311,19 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .verdict { margin: 4px 0 0; font-weight: 600; }
 .verdict.good { color: var(--good); }
 .verdict.bad { color: var(--bad); }
+
+/* ------------------------------------------------------------ robots.txt, headers */
+.robots-layout { display: flex; gap: 10px; margin-top: 6px; }
+.robots-list { width: 210px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.robots-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.robots-row.selected { background: var(--accent-soft); }
+.robots-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.robots-editor label.stack { display: flex; flex-direction: column; gap: 3px; }
+.robots-text { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.robots-text textarea { flex: 1; border: none; border-radius: 0; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; line-height: 18px; resize: vertical; }
+.robots-gutter { margin: 0; padding: 4px 6px; background: var(--panel); color: var(--muted); font-family: Consolas, monospace; font-size: 12px; line-height: 18px; text-align: right; user-select: none; }
+.robots-gutter .hit-block { background: var(--bad); color: #fff; border-radius: 2px; }
+.robots-gutter .hit-allow { background: var(--good); color: #fff; border-radius: 2px; }
+.header-name { display: flex; align-items: center; gap: 4px; }
+.valid-mark { color: var(--good); }
+.invalid-mark { color: var(--bad); font-weight: 600; }

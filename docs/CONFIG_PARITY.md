@@ -66,6 +66,17 @@ The scores below are as audited. Since then:
     - Exclude can be edited during a crawl (`CrawlControl::set_exclude`; queued URLs are re-checked before they are requested).
     - Test panes show the encoded, rewritten URL each regex runs against.
   - Tests: `tests/include_exclude.rs`, plus urlutil unit tests for rewriting, CDNs and the test pane.
+- **WP5, robots.txt, User-Agent and HTTP Header:** done.
+  - **§1.11 robots.txt:**
+    - Custom Robots per subdomain (host or host:port), with Override Enabled. Its text is used instead of the live file.
+    - An editor with Download robots.txt and Clear, and a gutter with line numbers.
+    - A Test URL pane: Allowed or Blocked, the deciding line with its line number, and the group used.
+    - Matched lines now carry line numbers ("Line 7: Disallow: /x").
+    - "Ignore robots.txt but report status" now records the matching line and still crawls the URL; it stays indexable.
+    - The Show Blocked options are disabled under Ignore.
+  - **§1.17 User-Agent:** presets (Googlebot Smartphone, Desktop, Image and News, Google-InspectionTool, Bingbot, Chrome, Chrome for Android, Firefox, Safari, Edge, GPTBot, ClaudeBot and PerplexityBot) fill both the request user-agent and the robots user-agent. The AI crawler strings are unverified.
+  - **§1.18 HTTP Header:** header-name suggestions and a validity mark (the read-only User-Agent row, Add and Reset to Default already existed).
+  - Still deliberate: no Googlebot fallback when selecting a robots group (HANDOVER).
 
 ## How to read this
 

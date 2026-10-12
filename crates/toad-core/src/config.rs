@@ -20,6 +20,25 @@ pub enum RobotsMode {
     IgnoreButReport,
 }
 
+/// robots.txt > Custom Robots: one subdomain's override.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomRobots {
+    /// Host, e.g. `www.example.com` (a scheme or path is ignored).
+    pub host: String,
+    /// Override Enabled: use `txt` instead of downloading robots.txt.
+    pub enabled: bool,
+    pub txt: String,
+}
+
+impl CustomRobots {
+    pub fn host_name(&self) -> String {
+        let h = self.host.trim();
+        let h = h.split_once("://").map_or(h, |(_, rest)| rest);
+        h.split('/').next().unwrap_or("").to_ascii_lowercase()
+    }
+}
+
 /// URL Rewriting > Regex Replace: one rule.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -161,6 +180,8 @@ pub struct CrawlConfig {
     pub robots_mode: RobotsMode,
     pub show_internal_blocked_by_robots: bool,
     pub show_external_blocked_by_robots: bool,
+    /// Custom Robots: robots.txt text used instead of the live file.
+    pub custom_robots: Vec<CustomRobots>,
 
     // Configuration > User-Agent / HTTP Header
     pub user_agent: String,
@@ -284,6 +305,7 @@ impl Default for CrawlConfig {
             robots_mode: RobotsMode::Respect,
             show_internal_blocked_by_robots: true,
             show_external_blocked_by_robots: false,
+            custom_robots: vec![],
             user_agent: format!("Screaming Toad SEO Spider/{}", env!("CARGO_PKG_VERSION")),
             robots_user_agent: "Screaming Toad".to_string(),
             custom_headers: vec![

@@ -450,7 +450,8 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("redirect_url", opt(rec.redirect_url.as_deref())),
         ("redirect_type", opt(rec.redirect_type.as_deref())),
         ("hash", if x.hash { opt(rec.hash.as_deref()) } else { Value::Null }),
-        ("blocked_robots_line", opt(rec.blocked_by_robots_line.as_deref())),
+        // Blocked, or (Ignore but report status) would have been blocked.
+        ("blocked_robots_line", opt(rec.blocked_by_robots_line.as_deref().or(rec.robots_report_line.as_deref()))),
         ("error", opt(rec.error.as_deref())),
         // Headers are always kept: the Security columns read them. The HTTP
         // Headers toggle controls the lower tab and the header exports.
