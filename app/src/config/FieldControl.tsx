@@ -213,6 +213,54 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     case "headers":
       return <HeadersField cfg={cfg} defaults={defaults} set={set} help={f.help} />;
 
+    case "path-limits": {
+      const rows = (getPath(cfg, f.key) as { pattern: string; max: number }[]) ?? [];
+      const update = (i: number, patch: Partial<{ pattern: string; max: number }>) => set(f.key, rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+      return (
+        <div className="field">
+          <span>
+            <Label text={f.label} highlight={highlight} />
+            <Changed cfg={cfg} defaults={defaults} keys={[f.key]} />
+          </span>
+          {rows.length === 0 ? (
+            <p className="hint">No URL path limits configured.</p>
+          ) : (
+            <table className="mapping-table">
+              <thead>
+                <tr>
+                  <th>URL path regex</th>
+                  <th>Max URLs</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input value={r.pattern} onChange={(e) => update(i, { pattern: e.target.value })} spellCheck={false} />
+                    </td>
+                    <td>
+                      <input type="number" min={0} value={r.max} onChange={(e) => update(i, { max: Math.max(0, Number(e.target.value)) })} />
+                    </td>
+                    <td>
+                      <button onClick={() => set(f.key, rows.filter((_, j) => j !== i))}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="button-row">
+            <button onClick={() => set(f.key, [...rows, { pattern: "", max: 1000 }])}>Add</button>
+            <button onClick={() => set(f.key, [])} disabled={rows.length === 0}>
+              Delete All
+            </button>
+          </div>
+          <Help text={f.help} />
+        </div>
+      );
+    }
+
     case "custom-search":
       return <SearchEditor rules={cfg.custom_search} onChange={(v) => set("custom_search", v)} />;
 

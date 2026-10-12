@@ -232,6 +232,7 @@ const DEFAULT_CONFIG = {
   crawl_linked_sitemaps: false, auto_discover_sitemaps_via_robots: true, sitemap_urls: [] as string[],
   max_urls: 5000000, max_depth: null as number | null, max_folder_depth: null as number | null, max_query_params: null as number | null,
   max_redirects: 10, max_url_length: 10000, max_links_per_url: 10000, max_page_size_kb: 50000,
+  max_urls_per_subdomain: null as number | null, max_urls_per_depth: null as number | null, path_limits: [] as { pattern: string; max: number }[],
   cookie_storage: "session_only" as const, ignore_paginated_for_duplicates: true, always_follow_redirects: false, always_follow_canonicals: false,
   respect_noindex: false, respect_canonical: false, respect_next_prev: false, respect_hsts: true, respect_self_referencing_meta_refresh: true,
   extract_images_from_srcset: false, perform_html_validation: true,

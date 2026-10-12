@@ -45,6 +45,13 @@ struct QueueItem {
     cookies: Option<String>,
 }
 
+#[derive(Default)]
+struct LimitCounters {
+    per_host: HashMap<String, u64>,
+    per_depth: HashMap<u32, u64>,
+    per_path: Vec<u64>,
+}
+
 /// Lets a UI pause or stop a running crawl.
 #[derive(Clone, Default)]
 pub struct CrawlControl {
@@ -78,6 +85,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Limit by URL Path, compiled.
+    path_limits: Vec<(Regex, u64)>,
     /// Hosts that sent Strict-Transport-Security (Respect HSTS Policy).
     hsts: Arc<std::sync::Mutex<HashSet<String>>>,
 }
@@ -107,6 +116,12 @@ impl Crawler {
             robots: HashMap::new(),
             rules: Arc::new(CustomRules::compile(&cfg)?),
             hsts: Arc::default(),
+            path_limits: cfg
+                .path_limits
+                .iter()
+                .filter(|l| !l.pattern.is_empty())
+                .map(|l| Ok((Regex::new(&l.pattern)?, l.max)))
+                .collect::<Result<Vec<_>, regex::Error>>()?,
             cfg: Arc::new(cfg),
         })
     }
@@ -189,6 +204,7 @@ impl Crawler {
     ) -> anyhow::Result<Progress> {
         let mut tasks: JoinSet<(QueueItem, PageRecord)> = JoinSet::new();
         let mut issued: u64 = already_issued;
+        let mut limits = LimitCounters::default();
         let mut ticker = self
             .cfg
             .max_urls_per_sec
@@ -216,6 +232,9 @@ impl Crawler {
                     continue;
                 }
 
+                if !self.within_limits(&item, &mut limits) {
+                    continue;
+                }
                 if let Some(t) = ticker.as_mut() {
                     t.tick().await;
                 }
@@ -492,6 +511,33 @@ impl Crawler {
             LinkKind::MobileAlternate => cfg.crawl_mobile_alternate,
             LinkKind::Uncrawlable => false,
         }
+    }
+
+    /// Spider > Limits that count URLs as they are requested: per subdomain,
+    /// per crawl depth and by URL path. Counts the URL when it is allowed.
+    fn within_limits(&self, item: &QueueItem, c: &mut LimitCounters) -> bool {
+        let cfg = &self.cfg;
+        let host = item.url.host_str().unwrap_or("").to_ascii_lowercase();
+        if cfg.max_urls_per_subdomain.is_some_and(|m| c.per_host.get(&host).copied().unwrap_or(0) >= m) {
+            return false;
+        }
+        if cfg.max_urls_per_depth.is_some_and(|m| c.per_depth.get(&item.depth).copied().unwrap_or(0) >= m) {
+            return false;
+        }
+        let s = item.url.as_str();
+        let matched: Vec<usize> = self.path_limits.iter().enumerate().filter(|(_, (re, _))| re.is_match(s)).map(|(i, _)| i).collect();
+        if c.per_path.len() < self.path_limits.len() {
+            c.per_path.resize(self.path_limits.len(), 0);
+        }
+        if matched.iter().any(|&i| c.per_path[i] >= self.path_limits[i].1) {
+            return false;
+        }
+        *c.per_host.entry(host).or_insert(0) += 1;
+        *c.per_depth.entry(item.depth).or_insert(0) += 1;
+        for i in matched {
+            c.per_path[i] += 1;
+        }
+        true
     }
 
     /// Include/Exclude rules and URL limits.

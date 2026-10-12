@@ -20,6 +20,20 @@ pub enum RobotsMode {
     IgnoreButReport,
 }
 
+/// Spider > Limits > Limit by URL Path: one row.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PathLimit {
+    pub pattern: String,
+    pub max: u64,
+}
+
+impl Default for PathLimit {
+    fn default() -> Self {
+        Self { pattern: String::new(), max: 1_000 }
+    }
+}
+
 /// Spider > Advanced > Cookie Storage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -91,6 +105,12 @@ pub struct CrawlConfig {
     pub max_url_length: usize,
     pub max_links_per_url: usize,
     pub max_page_size_kb: u64,
+    /// Limit Crawl Total Per Subdomain.
+    pub max_urls_per_subdomain: Option<u64>,
+    /// Limit URLs Per Crawl Depth.
+    pub max_urls_per_depth: Option<u64>,
+    /// Limit by URL Path: at most `max` URLs matching each regex.
+    pub path_limits: Vec<PathLimit>,
 
     // Configuration > Spider > Advanced
     pub cookie_storage: CookieStorage,
@@ -215,6 +235,9 @@ impl Default for CrawlConfig {
             max_url_length: 10_000,
             max_links_per_url: 10_000,
             max_page_size_kb: 50_000,
+            max_urls_per_subdomain: None,
+            max_urls_per_depth: None,
+            path_limits: vec![],
             cookie_storage: CookieStorage::SessionOnly,
             ignore_non_indexable_for_issues: true,
             ignore_paginated_for_duplicates: true,
@@ -310,6 +333,11 @@ impl CrawlConfig {
     /// meaningless, as readable messages. Empty means the configuration is valid.
     pub fn validate(&self) -> Vec<String> {
         let mut problems = Vec::new();
+        for l in &self.path_limits {
+            if let Err(e) = regex::Regex::new(&l.pattern) {
+                problems.push(format!("Limits: '{}' is not a valid regex for Limit by URL Path ({e})", l.pattern));
+            }
+        }
         for (label, patterns) in [("Include", &self.include), ("Exclude", &self.exclude)] {
             for p in patterns {
                 if let Err(e) = regex::Regex::new(p) {

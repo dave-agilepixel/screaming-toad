@@ -125,6 +125,9 @@ export interface CrawlConfig {
   max_url_length: number;
   max_links_per_url: number;
   max_page_size_kb: number;
+  max_urls_per_subdomain: number | null;
+  max_urls_per_depth: number | null;
+  path_limits: { pattern: string; max: number }[];
   cookie_storage: "session_only" | "persistent" | "do_not_store";
   ignore_non_indexable_for_issues: boolean;
   ignore_paginated_for_duplicates: boolean;
@@ -180,6 +183,7 @@ export type Field =
   /** Store / Crawl, as in Spider > Crawl. Crawl implies Store; storeOnly rows have no Crawl box. */
   | { kind: "pair"; label: string; store?: string; crawl?: string; help?: string; storeOnly?: boolean }
   | { kind: "headers"; key: string; label: string; help?: string }
+  | { kind: "path-limits"; key: string; label: string; help?: string }
   | { kind: "custom-search" }
   | { kind: "custom-extraction" }
   | { kind: "note"; text: string };
@@ -342,13 +346,16 @@ export const NODES: Node[] = [
       {
         fields: [
           { kind: "number", key: "max_urls", label: "Limit Crawl Total", min: 1, help: "Maximum URLs to crawl." },
+          { kind: "limit", key: "max_urls_per_subdomain", label: "Limit Crawl Total Per Subdomain", whenOn: 10000, min: 1 },
           { kind: "limit", key: "max_depth", label: "Limit Crawl Depth", whenOn: 3, min: 0, help: "Clicks from the start URL. A redirect counts as one level." },
+          { kind: "limit", key: "max_urls_per_depth", label: "Limit URLs Per Crawl Depth", whenOn: 1000, min: 1 },
           { kind: "limit", key: "max_folder_depth", label: "Limit Max Folder Depth", whenOn: 5, min: 0 },
           { kind: "limit", key: "max_query_params", label: "Limit Number of Query Strings", whenOn: 5, min: 0 },
           { kind: "number", key: "max_redirects", label: "Max Redirects to Follow", min: 0, max: 20 },
           { kind: "number", key: "max_url_length", label: "Max URL Length to Crawl", min: 1, unit: "characters" },
           { kind: "number", key: "max_links_per_url", label: "Max Links per URL to Crawl", min: 1 },
           { kind: "number", key: "max_page_size_kb", label: "Max Page Size", min: 1, unit: "KB", help: "Larger pages are reported as not processed." },
+          { kind: "path-limits", key: "path_limits", label: "Limit by URL Path", help: "At most N URLs matching each regex, e.g. /products/ → 1,000 or \\?search= → 100." },
         ],
       },
     ],

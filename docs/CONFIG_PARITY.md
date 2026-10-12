@@ -25,6 +25,33 @@ The scores below are as audited. Since then:
   - **§2.2:** List mode in the app (enter or paste, from a file, Download XML Sitemap), the last mode persisted, and Reports > List Mode Export (upload order and duplicates kept).
   - **§3.1:** `toad crawls`, `toad resume` and `--store-html`.
   - Not done: .xlsx upload, Google Sheets input, crawl IDs (Toad addresses crawls by file path), and "Copy DB ID".
+- **WP3, Spider Crawl, Extraction, Advanced and Limits:** done, apart from the items listed below.
+  - **§1.1:** every Store and Crawl pair is honoured (`CrawlConfig::stores_link`; Crawl implies Store).
+    - New link kinds: Media, SWF, AMP and Mobile Alternate.
+    - Uncrawlable Links (Store only) feeds Links > Pages With Uncrawlable Internal Outlinks.
+    - Crawl Invalid Links reports `hppts://` as No Response "Malformed URL".
+    - Internal and External gain a Media filter.
+  - **§1.2:** per-element toggles for Page Title, Meta Description, Meta Keywords, H1, H2, Word Count, Readability, Text to Code Ratio, Hash, Page Size and Forms, plus Response Time, Last Modified, Meta Robots and X-Robots-Tag. Indexability stays always on.
+    - HTTP Headers adds a lower tab, the HTTP Header Summary report and an All HTTP Response Headers bulk export.
+    - Cookies adds a cookies table, an Internal column, a lower tab, Cookie Summary and All Cookies.
+  - **§1.5:**
+    - Cookie Storage: Session Only, Persistent or Do Not Store.
+    - Ignore Paginated URLs for Duplicates.
+    - Always Follow Redirects and Always Follow Canonicals, plus the Canonical Chains report.
+    - Respect noindex, Canonical and Next/Prev.
+    - Respect HSTS Policy (307 "HSTS Policy").
+    - Respect Self Referencing Meta Refresh.
+    - Extract Images From IMG SRCSET and `<picture>`.
+    - Perform HTML Validation.
+  - **§1.3:** Limit Crawl Total Per Subdomain, Limit URLs Per Crawl Depth, and Limit by URL Path.
+  - Tests: `tests/extraction.rs`, `tests/advanced.rs`, `tests/limits.rs`, and unit tests for extraction, the store rules, HSTS and cookies.
+  - **Still open from WP3:**
+    - Store-only URLs are recorded as links but not listed as rows in the tabs.
+    - The URL-bar scope switcher.
+    - Crawl Fragment Identifiers > URL > Broken Bookmark (needs page `id`s stored).
+    - Green Hosting Carbon Calculation.
+    - The AMP tab and Mobile > Mobile Alternate Link filters (they belong to the AMP and Mobile tab work).
+    - Indexability toggle (kept always on).
 
 ## How to read this
 
