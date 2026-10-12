@@ -218,3 +218,52 @@ th { background: var(--panel); position: sticky; top: 0; font-weight: 600; }
 .mapping-table td { border: none; padding: 2px 4px 2px 0; }
 .mapping-table td:last-child { width: 1%; }
 code { background: var(--panel); border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; font-size: 12px; }
+
+/* ------------------------------------------------------------ Configuration dialog */
+.config-modal { width: min(1040px, 96vw); height: min(760px, 92vh); display: flex; flex-direction: column; }
+.config-modal .modal-layout { flex: 1; min-height: 0; }
+.config-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.config-head h2 { margin: 0; }
+.config-search { margin-left: auto; width: 280px; }
+.config-tree { overflow: auto; width: 190px; }
+.config-tree button.child { padding-left: 22px; }
+.config-tree button.planned-node { color: var(--muted); font-style: italic; }
+.config-tree .changes-node { margin-top: 10px; border-top: 1px solid var(--border); border-radius: 0; padding-top: 8px; }
+.badge.neutral { background: var(--accent); }
+.config-content { overflow: auto; padding-right: 6px; }
+.config-title { margin: 0 0 10px; font-size: 14px; }
+.config-group { border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px 10px; margin: 0 0 12px; }
+.config-group legend { padding: 0 6px; font-weight: 600; color: var(--muted); }
+.field { padding: 5px 0; }
+.field .hint { margin: 2px 0 0 0; }
+.field label.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.field label.stack { display: flex; flex-direction: column; gap: 4px; }
+.field label.stack textarea, .field label.stack input { width: 100%; }
+.field label.check { display: inline-flex; align-items: center; gap: 6px; }
+.field label.check.disabled { color: var(--muted); }
+.field .check input { margin: 0; }
+.input-unit { display: inline-flex; align-items: center; gap: 6px; }
+.input-unit input { width: 120px; text-align: right; }
+.unit { color: var(--muted); min-width: 24px; }
+.pair-row { display: grid; grid-template-columns: 1fr 80px 80px; align-items: center; }
+.pair-label { display: inline-flex; align-items: center; gap: 6px; }
+.changed-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--warning); margin-left: 4px; }
+mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
+.planned { background: var(--panel); border: 1px dashed var(--border); border-radius: 6px; padding: 10px 12px; color: var(--muted); }
+.hint.note { background: var(--panel); border-radius: 4px; padding: 6px 8px; }
+.child-links { margin: 0; padding-left: 18px; }
+.search-hit { border-bottom: 1px solid var(--border); padding: 4px 0 6px; }
+.crumb { color: var(--muted); font-size: 12px; }
+.changes-table td { white-space: normal; vertical-align: top; }
+.config-status { margin-top: 10px; padding: 6px 10px; border-radius: 4px; font-size: 12px; }
+.config-status.valid { background: var(--accent-soft); color: var(--accent); }
+.config-status.invalid { background: color-mix(in srgb, var(--issue) 12%, transparent); color: var(--issue); }
+.config-status ul { margin: 4px 0 0; padding-left: 18px; }
+.notice { cursor: pointer; }
+.profiles { min-width: 130px; }
+.change-count { font-size: 12px; }
+.headers-table td input { width: 100%; }
+.headers-table tr.muted td { color: var(--muted); }
+.button-row { display: flex; gap: 6px; margin-top: 6px; }
+.rule-buttons { display: inline-flex; gap: 2px; margin-left: auto; }
+.rule-buttons button { padding: 2px 7px; }

@@ -200,6 +200,63 @@ impl CrawlConfig {
         self
     }
 
+    /// Problems that would stop a crawl starting, or make a setting
+    /// meaningless, as readable messages. Empty means the configuration is valid.
+    pub fn validate(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+        for (label, patterns) in [("Include", &self.include), ("Exclude", &self.exclude)] {
+            for p in patterns {
+                if let Err(e) = regex::Regex::new(p) {
+                    problems.push(format!("{label}: '{p}' is not a valid regex ({e})"));
+                }
+            }
+        }
+        if let Err(e) = crate::custom::CustomRules::compile(self) {
+            problems.push(format!("Custom: {e}"));
+        }
+        let mut names = std::collections::HashSet::new();
+        for name in self.custom_search.iter().map(|s| &s.name).chain(self.custom_extraction.iter().map(|x| &x.name)) {
+            if name.trim().is_empty() {
+                problems.push("Custom: every search and extractor needs a name".into());
+            } else if !names.insert(name.trim().to_lowercase()) {
+                problems.push(format!("Custom: the name '{name}' is used more than once"));
+            }
+        }
+        for (name, value) in &self.custom_headers {
+            if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err() {
+                problems.push(format!("HTTP Header: '{name}' is not a valid header name"));
+            } else if reqwest::header::HeaderValue::from_str(value).is_err() {
+                problems.push(format!("HTTP Header: the value for '{name}' is not valid"));
+            }
+        }
+        if self.user_agent.trim().is_empty() {
+            problems.push("User-Agent: the HTTP user-agent is empty".into());
+        }
+        if self.threads == 0 {
+            problems.push("Speed: Max Threads must be at least 1".into());
+        }
+        if self.max_urls_per_sec.is_some_and(|r| r <= 0.0) {
+            problems.push("Speed: Max URI/s must be above 0".into());
+        }
+        if !(0.0..=1.0).contains(&self.near_duplicate_threshold) {
+            problems.push("Duplicates: the near-duplicate threshold must be between 0% and 100%".into());
+        }
+        if self.max_urls == 0 {
+            problems.push("Limits: Limit Crawl Total must be at least 1".into());
+        }
+        if self.response_timeout_secs == 0 {
+            problems.push("Advanced: Response Timeout must be at least 1 second".into());
+        }
+        let p = &self.preferences;
+        if p.title_min_chars > p.title_max_chars || p.title_min_px > p.title_max_px {
+            problems.push("Preferences: the page title minimum is above the maximum".into());
+        }
+        if p.description_min_chars > p.description_max_chars || p.description_min_px > p.description_max_px {
+            problems.push("Preferences: the meta description minimum is above the maximum".into());
+        }
+        problems
+    }
+
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let text = std::fs::read_to_string(path)?;
         Ok(serde_json::from_str(&text)?)
@@ -391,5 +448,47 @@ impl Default for Preferences {
                 .map(|s| s.to_string())
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_is_valid() {
+        assert_eq!(CrawlConfig::default().validate(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn validate_reports_problems() {
+        let cfg = CrawlConfig {
+            include: vec!["(".into()],
+            threads: 0,
+            custom_headers: vec![("Bad Header".into(), "x".into())],
+            custom_search: vec![CustomSearch { name: "A".into(), query: "x".into(), ..Default::default() }],
+            custom_extraction: vec![CustomExtractor { name: "a".into(), expression: "h1".into(), ..Default::default() }],
+            ..CrawlConfig::default()
+        };
+        let problems = cfg.validate();
+        assert!(problems.iter().any(|p| p.starts_with("Include:")), "{problems:?}");
+        assert!(problems.iter().any(|p| p.starts_with("Speed:")));
+        assert!(problems.iter().any(|p| p.starts_with("HTTP Header:")));
+        assert!(problems.iter().any(|p| p.contains("used more than once")));
+    }
+
+    #[test]
+    fn profiles_round_trip_and_tolerate_missing_fields() {
+        let dir = std::env::temp_dir().join(format!("toad-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("p.toadconfig");
+        let cfg = CrawlConfig { threads: 9, lowercase_urls: true, ..CrawlConfig::default() };
+        cfg.save(&path).unwrap();
+        let back = CrawlConfig::load(&path).unwrap();
+        assert_eq!((back.threads, back.lowercase_urls), (9, true));
+        // Profiles from older versions lack newer fields; they take defaults.
+        std::fs::write(&path, r#"{"threads": 3}"#).unwrap();
+        let old = CrawlConfig::load(&path).unwrap();
+        assert_eq!((old.threads, old.max_url_length), (3, 10_000));
     }
 }

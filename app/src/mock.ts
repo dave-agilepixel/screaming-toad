@@ -101,13 +101,26 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return [["address", String(args?.url)], ["status_code", "200"], ["title_1", "Example page"], ["word_count", "512"]] as T;
     case "get_config":
     case "reset_config":
-      return {
-        max_urls: 5000000, max_depth: null, threads: 5, max_urls_per_sec: null, robots_mode: "respect",
-        user_agent: "Screaming Toad SEO Spider/0.1.0", include: [], exclude: [], crawl_all_subdomains: false,
-        crawl_external_links: true, crawl_images: true, crawl_css: true, crawl_js: true, follow_internal_nofollow: false,
-        crawl_outside_start_folder: false, crawl_linked_sitemaps: false, auto_discover_sitemaps_via_robots: true,
-        sitemap_urls: [], near_duplicates: false, near_duplicate_threshold: 0.9, custom_search: [], custom_extraction: [],
-      } as T;
+    case "builtin_config":
+    case "clear_default_profile":
+      return structuredClone(DEFAULT_CONFIG) as T;
+    case "validate_config": {
+      const c = args?.config as typeof DEFAULT_CONFIG;
+      const problems: string[] = [];
+      for (const p of [...c.include, ...c.exclude]) {
+        try {
+          new RegExp(p);
+        } catch {
+          problems.push(`Include/Exclude: '${p}' is not a valid regex`);
+        }
+      }
+      if (c.threads < 1) problems.push("Speed: Max Threads must be at least 1");
+      return problems as T;
+    }
+    case "recent_profiles":
+      return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
+    case "has_default_profile":
+      return false as T;
     case "list_crawls":
       return [
         { path: "C:/crawls/example-2.toad", name: "example-2", start_url: "https://www.example.com/", urls: 1250, modified: 1791800000 },
@@ -182,3 +195,32 @@ const COMPARE_OVERVIEW: CompareOverviewRow[] = [
     return { tab: "Change Detection", filter: f, current: n, previous: n, change: f === "All" ? 0 : n, change_pct: f === "All" ? null : Math.round((n * 10000) / 1143) / 100, added: null, new: null, removed: null, missing: null };
   }),
 ];
+
+const DEFAULT_CONFIG = {
+  mode: "spider" as const,
+  store_images: true, crawl_images: true, store_css: true, crawl_css: true, store_js: true, crawl_js: true,
+  crawl_internal_links: true, store_external_links: true, crawl_external_links: true, store_canonicals: true, crawl_canonicals: true,
+  store_pagination: true, crawl_pagination: false, store_hreflang: true, crawl_hreflang: false, crawl_meta_refresh: true, crawl_iframes: true,
+  check_links_outside_start_folder: true, crawl_outside_start_folder: false, crawl_all_subdomains: false,
+  follow_internal_nofollow: false, follow_external_nofollow: false, crawl_fragment_identifiers: false,
+  crawl_linked_sitemaps: false, auto_discover_sitemaps_via_robots: true, sitemap_urls: [] as string[],
+  max_urls: 5000000, max_depth: null as number | null, max_folder_depth: null as number | null, max_query_params: null as number | null,
+  max_redirects: 10, max_url_length: 10000, max_links_per_url: 10000, max_page_size_kb: 50000,
+  ignore_non_indexable_for_issues: true, response_timeout_secs: 20, retries_5xx: 0, assume_pages_are_html: false,
+  threads: 5, max_urls_per_sec: null as number | null, robots_mode: "respect" as const,
+  show_internal_blocked_by_robots: true, show_external_blocked_by_robots: false,
+  user_agent: "Screaming Toad SEO Spider/0.1.0", robots_user_agent: "Screaming Toad",
+  custom_headers: [["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"], ["Accept-Encoding", "gzip"], ["Cache-Control", "no-cache"], ["Pragma", "no-cache"]] as [string, string][],
+  include: [] as string[], exclude: [] as string[], remove_parameters: [] as string[], lowercase_urls: false,
+  content_area: { include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
+  extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
+  custom_search: [], custom_extraction: [],
+  preferences: {
+    title_min_chars: 30, title_max_chars: 60, title_min_px: 200, title_max_px: 561,
+    description_min_chars: 70, description_max_chars: 155, description_min_px: 400, description_max_px: 985,
+    url_max_chars: 115, h1_max_chars: 70, h2_max_chars: 70, alt_text_max_chars: 100, image_max_kb: 100,
+    low_content_words: 200, high_crawl_depth: 3, high_internal_outlinks: 1000, high_external_outlinks: 10, html_max_mb: 2,
+    non_descriptive_anchor_text: ["click here", "click this", "find out more", "go", "here", "learn more", "more", "over here", "read here", "read more", "right here", "start", "this"],
+    soft_404_phrases: ["Page Not Found", "404 Page Can't Be Found"],
+  },
+};

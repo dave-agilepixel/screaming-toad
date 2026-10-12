@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod compare;
+mod profiles;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -327,13 +328,19 @@ fn get_config(state: State<'_, AppState>) -> CmdResult<CrawlConfig> {
 
 #[tauri::command]
 fn set_config(state: State<'_, AppState>, config: CrawlConfig) -> CmdResult<()> {
+    let problems = config.validate();
+    if !problems.is_empty() {
+        return Err(problems.join("
+"));
+    }
     *state.config.lock().map_err(err)? = config;
     Ok(())
 }
 
 #[tauri::command]
-fn reset_config(state: State<'_, AppState>) -> CmdResult<CrawlConfig> {
-    let cfg = CrawlConfig::default();
+fn reset_config(app: AppHandle, state: State<'_, AppState>) -> CmdResult<CrawlConfig> {
+    // Back to the saved default if there is one, as Screaming Frog does.
+    let cfg = profiles::startup_config(&app);
     *state.config.lock().map_err(err)? = cfg.clone();
     Ok(cfg)
 }
@@ -342,6 +349,11 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .setup(|app| {
+            let cfg = profiles::startup_config(app.handle());
+            *app.state::<AppState>().config.lock().expect("config lock") = cfg;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             start_crawl,
             pause_crawl,
@@ -365,6 +377,14 @@ fn main() {
             get_config,
             set_config,
             reset_config,
+            profiles::recent_profiles,
+            profiles::load_profile,
+            profiles::save_profile,
+            profiles::save_default_profile,
+            profiles::clear_default_profile,
+            profiles::has_default_profile,
+            profiles::builtin_config,
+            profiles::validate_config,
             compare::list_crawls,
             compare::crawl_info_for,
             compare::get_compare_config,

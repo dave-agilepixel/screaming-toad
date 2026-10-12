@@ -71,49 +71,8 @@ export interface RowsRequest {
   limit: number;
 }
 
-/** Mirrors toad_core::config::CrawlConfig; only the fields the UI edits are typed. */
-export interface CrawlConfig {
-  max_urls: number;
-  max_depth: number | null;
-  threads: number;
-  max_urls_per_sec: number | null;
-  robots_mode: "respect" | "ignore" | "ignore_but_report";
-  user_agent: string;
-  include: string[];
-  exclude: string[];
-  crawl_all_subdomains: boolean;
-  crawl_external_links: boolean;
-  crawl_images: boolean;
-  crawl_css: boolean;
-  crawl_js: boolean;
-  follow_internal_nofollow: boolean;
-  crawl_outside_start_folder: boolean;
-  crawl_linked_sitemaps: boolean;
-  auto_discover_sitemaps_via_robots: boolean;
-  sitemap_urls: string[];
-  near_duplicates: boolean;
-  near_duplicate_threshold: number;
-  custom_search: CustomSearch[];
-  custom_extraction: CustomExtractor[];
-  [key: string]: unknown;
-}
-
-export interface CustomSearch {
-  name: string;
-  mode: "contains" | "does_not_contain";
-  kind: "text" | "regex";
-  query: string;
-  case_sensitive: boolean;
-  search_in: "html" | "html_head" | "html_body" | "page_text" | "content_area";
-}
-
-export interface CustomExtractor {
-  name: string;
-  kind: "css" | "regex";
-  expression: string;
-  attribute: string | null;
-  extract: "element" | "inner_html" | "text";
-}
+export type { CrawlConfig, CustomExtractor, CustomSearch } from "./config/schema";
+import type { CrawlConfig } from "./config/schema";
 
 export type LastMod = "none" | "server_response" | { custom: string };
 
@@ -153,7 +112,21 @@ export const api = {
   getConfig: () => invoke<CrawlConfig>("get_config"),
   setConfig: (config: CrawlConfig) => invoke<void>("set_config", { config }),
   resetConfig: () => invoke<CrawlConfig>("reset_config"),
+  builtinConfig: () => invoke<CrawlConfig>("builtin_config"),
+  validateConfig: (config: CrawlConfig) => invoke<string[]>("validate_config", { config }),
+  recentProfiles: () => invoke<ProfileInfo[]>("recent_profiles"),
+  loadProfile: (path: string) => invoke<CrawlConfig>("load_profile", { path }),
+  saveProfile: (path: string, config: CrawlConfig) => invoke<void>("save_profile", { path, config }),
+  saveDefaultProfile: (config: CrawlConfig) => invoke<void>("save_default_profile", { config }),
+  clearDefaultProfile: () => invoke<CrawlConfig>("clear_default_profile"),
+  hasDefaultProfile: () => invoke<boolean>("has_default_profile"),
 };
+
+export interface ProfileInfo {
+  path: string;
+  name: string;
+  exists: boolean;
+}
 
 export const events = {
   onProgress: (cb: (p: Progress) => void): Promise<UnlistenFn> =>
