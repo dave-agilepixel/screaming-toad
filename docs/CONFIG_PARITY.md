@@ -52,6 +52,20 @@ The scores below are as audited. Since then:
     - Green Hosting Carbon Calculation.
     - The AMP tab and Mobile > Mobile Alternate Link filters (they belong to the AMP and Mobile tab work).
     - Indexability toggle (kept always on).
+- **WP4, URL Rewriting, CDNs, Include and Exclude:** done.
+  - **§1.12 URL Rewriting:**
+    - Remove all parameters.
+    - Regex Replace: an ordered table with `$1` back-references, using Rust regex syntax (noted in the UI).
+    - Percent-encoding case: Uppercase by default, or Lowercase or None.
+    - A live before/after Test pane.
+    - The order is fragment, parameters, regex replace, lowercase, then percent case.
+  - **§1.13 CDNs:** listed hosts, or host/path prefixes, count as Internal. There is a Test pane with a start URL.
+  - **§1.14 / §1.15 Include and Exclude:**
+    - Both apply to every List mode URL, never to the Spider start URL.
+    - Exclude applies to robots.txt fetches.
+    - Exclude can be edited during a crawl (`CrawlControl::set_exclude`; queued URLs are re-checked before they are requested).
+    - Test panes show the encoded, rewritten URL each regex runs against.
+  - Tests: `tests/include_exclude.rs`, plus urlutil unit tests for rewriting, CDNs and the test pane.
 
 ## How to read this
 

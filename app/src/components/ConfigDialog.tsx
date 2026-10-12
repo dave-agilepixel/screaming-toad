@@ -26,7 +26,7 @@ function fieldText(f: Field): string {
 
 /** Configuration dialog: a tree in Screaming Frog's menu order, with search,
  *  a "changed from default" view, validation and profiles. */
-export function ConfigDialog({ onClose }: { onClose: () => void }) {
+export function ConfigDialog({ onClose, crawling = false }: { onClose: () => void; crawling?: boolean }) {
   const [cfg, setCfg] = useState<CrawlConfig | null>(null);
   const [defaults, setDefaults] = useState<CrawlConfig | null>(null);
   const [nodeId, setNodeId] = useState("crawl");
@@ -105,6 +105,8 @@ export function ConfigDialog({ onClose }: { onClose: () => void }) {
   const apply = async () => {
     try {
       await api.setConfig(cfg);
+      // During a crawl only Exclude changes take effect (as in Screaming Frog).
+      if (crawling) await api.updateExclude(cfg.exclude);
       onClose();
     } catch (e) {
       setProblems(String(e).split("\n"));
@@ -264,6 +266,9 @@ export function ConfigDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        {crawling && (
+          <p className="hint notice">A crawl is running: Exclude changes apply to it straight away; other changes apply to the next crawl.</p>
+        )}
         <div className={`config-status ${problems.length ? "invalid" : "valid"}`}>
           {problems.length === 0 ? (
             "✓ Valid configuration"

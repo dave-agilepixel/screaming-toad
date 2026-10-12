@@ -301,3 +301,13 @@ mark { background: var(--accent-soft); color: inherit; border-radius: 2px; }
 button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); }
 .list-upload { text-align: left; color: var(--muted); }
 .button-row .grow { flex: 1; min-width: 120px; }
+
+/* ------------------------------------------------------------ URL test panes */
+.url-test { border: 1px dashed var(--border); border-radius: 6px; padding: 6px 10px 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.url-test legend { color: var(--muted); padding: 0 4px; }
+.url-test label.stack { display: flex; flex-direction: column; gap: 3px; }
+.url-test input { width: 100%; }
+.url-test .changed-value { border-color: var(--warning); }
+.verdict { margin: 4px 0 0; font-weight: 600; }
+.verdict.good { color: var(--good); }
+.verdict.bad { color: var(--bad); }

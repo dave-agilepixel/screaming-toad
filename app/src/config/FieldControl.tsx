@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { api, type UrlTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomSearch, type Field } from "./schema";
 
 interface Props {
@@ -261,12 +262,134 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
       );
     }
 
+    case "rewrite-rules": {
+      const rows = (getPath(cfg, f.key) as { regex: string; replace: string }[]) ?? [];
+      const update = (i: number, patch: Partial<{ regex: string; replace: string }>) => set(f.key, rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+      const move = (i: number, by: number) => {
+        const j = i + by;
+        if (j < 0 || j >= rows.length) return;
+        const next = [...rows];
+        [next[i], next[j]] = [next[j], next[i]];
+        set(f.key, next);
+      };
+      return (
+        <div className="field">
+          <span>
+            <Label text={f.label} highlight={highlight} />
+            <Changed cfg={cfg} defaults={defaults} keys={[f.key]} />
+          </span>
+          {rows.length > 0 && (
+            <table className="mapping-table">
+              <thead>
+                <tr>
+                  <th>Regex</th>
+                  <th>Replace</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input value={r.regex} onChange={(e) => update(i, { regex: e.target.value })} spellCheck={false} />
+                    </td>
+                    <td>
+                      <input value={r.replace} onChange={(e) => update(i, { replace: e.target.value })} spellCheck={false} />
+                    </td>
+                    <td className="rule-buttons">
+                      <button onClick={() => move(i, -1)} disabled={i === 0} title="Move up">
+                        ↑
+                      </button>
+                      <button onClick={() => move(i, 1)} disabled={i === rows.length - 1} title="Move down">
+                        ↓
+                      </button>
+                      <button onClick={() => set(f.key, rows.filter((_, j) => j !== i))}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div className="button-row">
+            <button onClick={() => set(f.key, [...rows, { regex: "", replace: "" }])}>Add</button>
+          </div>
+          <Help text={f.help} />
+        </div>
+      );
+    }
+
+    case "url-test":
+      return <UrlTestBox cfg={cfg} show={f.show} label={f.label} />;
+
     case "custom-search":
       return <SearchEditor rules={cfg.custom_search} onChange={(v) => set("custom_search", v)} />;
 
     case "custom-extraction":
       return <ExtractionEditor rules={cfg.custom_extraction} onChange={(v) => set("custom_extraction", v)} />;
   }
+}
+
+/** Live Test pane: rewrites and classifies a URL under the dialog's (unsaved) configuration. */
+function UrlTestBox({ cfg, show, label }: { cfg: CrawlConfig; show: "rewrite" | "cdn" | "include" | "exclude"; label: string }) {
+  const [url, setUrl] = useState("");
+  const [start, setStart] = useState("");
+  const [result, setResult] = useState<UrlTest | null>(null);
+
+  useEffect(() => {
+    if (!url.trim()) {
+      setResult(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      api
+        .testUrl(cfg, show === "cdn" ? start.trim() || null : null, url.trim())
+        .then(setResult)
+        .catch((e) => setResult({ rewritten: "", encoded: "", internal: null, include_match: null, included: false, exclude_match: null, error: String(e) }));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [cfg, url, start, show]);
+
+  return (
+    <fieldset className="url-test">
+      <legend>{label}</legend>
+      {show === "cdn" && (
+        <label className="stack">
+          Start URL
+          <input value={start} onChange={(e) => setStart(e.target.value)} placeholder="https://www.example.com/" spellCheck={false} />
+        </label>
+      )}
+      <label className="stack">
+        {show === "rewrite" ? "URL before rewriting" : "Test URL"}
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.example.com/page?id=1" spellCheck={false} />
+      </label>
+      {result?.error && <p className="error">{result.error}</p>}
+      {result && !result.error && (
+        <div className="url-test-result">
+          {show === "rewrite" && (
+            <label className="stack">
+              URL after rewriting
+              <input value={result.rewritten} readOnly className={result.rewritten !== url.trim() ? "changed-value" : ""} />
+            </label>
+          )}
+          {show === "cdn" &&
+            (result.internal === null ? (
+              <p className="hint">Enter a start URL to see whether the test URL is Internal or External.</p>
+            ) : (
+              <p className={`verdict ${result.internal ? "good" : ""}`}>{result.internal ? "Internal" : "External"}</p>
+            ))}
+          {show === "include" && (
+            <p className={`verdict ${result.included ? "good" : "bad"}`}>
+              {result.include_match ? `Included: matches ${result.include_match}` : result.included ? "Included (the Include list is empty)" : "Not included: no pattern matches"}
+            </p>
+          )}
+          {show === "exclude" && (
+            <p className={`verdict ${result.exclude_match ? "bad" : "good"}`}>{result.exclude_match ? `Excluded: matches ${result.exclude_match}` : "Not excluded"}</p>
+          )}
+          {(show === "include" || show === "exclude") && <p className="hint">Matched against the encoded, rewritten URL: {result.rewritten}</p>}
+        </div>
+      )}
+    </fieldset>
+  );
 }
 
 /** A string list edited one item per line. Keeps the raw text while typing,

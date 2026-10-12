@@ -153,8 +153,12 @@ export interface CrawlConfig {
   custom_headers: [string, string][];
   include: string[];
   exclude: string[];
+  remove_all_parameters: boolean;
   remove_parameters: string[];
+  url_rewrite_rules: { regex: string; replace: string }[];
   lowercase_urls: boolean;
+  percent_encoding_case: "uppercase" | "lowercase" | "none";
+  cdns: string[];
   content_area: ContentArea;
   extract_structured_data: boolean;
   store_html: boolean;
@@ -184,6 +188,9 @@ export type Field =
   | { kind: "pair"; label: string; store?: string; crawl?: string; help?: string; storeOnly?: boolean }
   | { kind: "headers"; key: string; label: string; help?: string }
   | { kind: "path-limits"; key: string; label: string; help?: string }
+  | { kind: "rewrite-rules"; key: string; label: string; help?: string }
+  /** A live test box: how one URL is rewritten / classified / matched. */
+  | { kind: "url-test"; label: string; show: "rewrite" | "cdn" | "include" | "exclude" }
   | { kind: "custom-search" }
   | { kind: "custom-extraction" }
   | { kind: "note"; text: string };
@@ -517,9 +524,53 @@ export const NODES: Node[] = [
     groups: [
       {
         fields: [
-          { kind: "lines", key: "remove_parameters", label: "Remove Parameters", placeholder: "sessionid", help: "Query parameter names to strip from discovered URLs, one per line." },
+          { kind: "bool", key: "remove_all_parameters", label: "Remove all parameters" },
+          {
+            kind: "lines",
+            key: "remove_parameters",
+            label: "Remove Parameters",
+            placeholder: "sessionid",
+            help: "Query parameter names to strip from discovered URLs, one per line.",
+            disabledIf: (c) => c.remove_all_parameters,
+          },
+          {
+            kind: "rewrite-rules",
+            key: "url_rewrite_rules",
+            label: "Regex Replace",
+            help: "Applied in order to the whole URL. Use $1 for capture groups. Rust regex syntax: no look-around or back-references inside the pattern.",
+          },
           { kind: "bool", key: "lowercase_urls", label: "Lowercase discovered URLs" },
+          {
+            kind: "select",
+            key: "percent_encoding_case",
+            label: "Percent-encoding case",
+            options: [
+              ["uppercase", "Uppercase (%C3%A9)"],
+              ["lowercase", "Lowercase (%c3%a9)"],
+              ["none", "None (as found)"],
+            ],
+          },
+          { kind: "url-test", label: "Test", show: "rewrite" },
           { kind: "note", text: "Rewriting applies to discovered URLs, not to the start URL or List mode URLs." },
+        ],
+      },
+    ],
+  },
+  {
+    id: "cdns",
+    label: "CDNs",
+    groups: [
+      {
+        fields: [
+          {
+            kind: "lines",
+            key: "cdns",
+            label: "CDNs",
+            rows: 6,
+            placeholder: "cdn.example.com\nassets.example.net/images/",
+            help: "Hosts (or host/path prefixes) treated as Internal, e.g. an image CDN or the other ccTLDs of an hreflang set. One per line.",
+          },
+          { kind: "url-test", label: "Test", show: "cdn" },
         ],
       },
     ],
@@ -536,8 +587,9 @@ export const NODES: Node[] = [
             label: "Include",
             rows: 6,
             placeholder: "https://www.example.com/blog/.*",
-            help: "Only internal URLs matching one of these regexes are crawled (partial match, case-sensitive). The start URL is always crawled.",
+            help: "Only internal URLs matching one of these regexes are crawled (partial match, case-sensitive). The start URL is always crawled; in List mode every uploaded URL must match.",
           },
+          { kind: "url-test", label: "Test", show: "include" },
         ],
       },
     ],
@@ -554,8 +606,9 @@ export const NODES: Node[] = [
             label: "Exclude",
             rows: 6,
             placeholder: ".*\\?sort=.*",
-            help: "URLs matching one of these regexes are never requested (partial match, case-sensitive).",
+            help: "URLs matching one of these regexes are never requested (partial match, case-sensitive), including robots.txt files and List mode URLs. Changes made during a crawl apply to URLs not yet requested.",
           },
+          { kind: "url-test", label: "Test", show: "exclude" },
         ],
       },
     ],

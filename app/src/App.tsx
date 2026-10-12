@@ -471,7 +471,7 @@ export default function App() {
                 Resume
               </button>
             )}
-            <button onClick={() => setShowConfig(true)} disabled={crawling}>
+            <button onClick={() => setShowConfig(true)} title={crawling ? "Exclude can be changed during a crawl" : undefined}>
               Configuration
             </button>
             <button onClick={() => setShowCrawls(true)} disabled={crawling} title="File > Crawls: every saved crawl">
@@ -666,6 +666,7 @@ export default function App() {
 
       {showConfig && (
         <ConfigDialog
+          crawling={crawling}
           onClose={() => {
             setShowConfig(false);
             // Custom Search/Extraction tabs depend on the configuration.

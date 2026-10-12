@@ -117,6 +117,8 @@ export const api = {
   setConfig: (config: CrawlConfig) => invoke<void>("set_config", { config }),
   resetConfig: () => invoke<CrawlConfig>("reset_config"),
   builtinConfig: () => invoke<CrawlConfig>("builtin_config"),
+  testUrl: (config: CrawlConfig, start: string | null, url: string) => invoke<UrlTest>("test_url", { config, start, url }),
+  updateExclude: (patterns: string[]) => invoke<boolean>("update_exclude", { patterns }),
   validateConfig: (config: CrawlConfig) => invoke<string[]>("validate_config", { config }),
   recentProfiles: () => invoke<ProfileInfo[]>("recent_profiles"),
   loadProfile: (path: string) => invoke<CrawlConfig>("load_profile", { path }),
@@ -125,6 +127,16 @@ export const api = {
   clearDefaultProfile: () => invoke<CrawlConfig>("clear_default_profile"),
   hasDefaultProfile: () => invoke<boolean>("has_default_profile"),
 };
+
+export interface UrlTest {
+  rewritten: string;
+  encoded: string;
+  internal: boolean | null;
+  include_match: string | null;
+  included: boolean;
+  exclude_match: string | null;
+  error: string | null;
+}
 
 export interface ProfileInfo {
   path: string;

@@ -117,6 +117,10 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       if (c.threads < 1) problems.push("Speed: Max Threads must be at least 1");
       return problems as T;
     }
+    case "test_url": {
+      const url = String(args?.url ?? "");
+      return { rewritten: url.replace(/#.*$/, ""), encoded: url, internal: args?.start ? url.includes("example.com") : null, include_match: null, included: true, exclude_match: url.includes("?sort") ? "\\?sort" : null, error: null } as T;
+    }
     case "recent_profiles":
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
@@ -241,7 +245,8 @@ const DEFAULT_CONFIG = {
   show_internal_blocked_by_robots: true, show_external_blocked_by_robots: false,
   user_agent: "Screaming Toad SEO Spider/0.1.0", robots_user_agent: "Screaming Toad",
   custom_headers: [["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"], ["Accept-Encoding", "gzip"], ["Cache-Control", "no-cache"], ["Pragma", "no-cache"]] as [string, string][],
-  include: [] as string[], exclude: [] as string[], remove_parameters: [] as string[], lowercase_urls: false,
+  include: [] as string[], exclude: [] as string[], remove_all_parameters: false, remove_parameters: [] as string[],
+  url_rewrite_rules: [] as { regex: string; replace: string }[], lowercase_urls: false, percent_encoding_case: "uppercase" as const, cdns: [] as string[],
   content_area: { include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,

@@ -8,7 +8,7 @@ use crate::fetch::Fetcher;
 use crate::model::{Link, LinkKind, PageRecord, Progress};
 use crate::robots::{Robots, Verdict};
 use crate::sitemap::{self, SitemapKind};
-use crate::urlutil::{folder_depth, normalize, query_param_count, Scope};
+use crate::urlutil::{list_input_allowed, folder_depth, normalize, query_param_count, Scope};
 use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,9 +57,21 @@ struct LimitCounters {
 pub struct CrawlControl {
     stop: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
+    /// Configuration > Exclude edited while the crawl runs.
+    exclude: Arc<std::sync::RwLock<Option<Vec<Regex>>>>,
 }
 
 impl CrawlControl {
+    /// Replace the Exclude list of a running crawl. URLs already queued are
+    /// checked again when they are about to be requested.
+    pub fn set_exclude(&self, patterns: &[String]) -> anyhow::Result<()> {
+        let compiled = patterns.iter().map(|p| Regex::new(p)).collect::<Result<Vec<_>, _>>()?;
+        if let Ok(mut w) = self.exclude.write() {
+            *w = Some(compiled);
+        }
+        Ok(())
+    }
+
     pub fn stop(&self) {
         self.stop.store(true, Ordering::SeqCst);
     }
@@ -85,6 +97,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Exclude as edited during the crawl (shared with CrawlControl).
+    live_exclude: Arc<std::sync::RwLock<Option<Vec<Regex>>>>,
     /// Limit by URL Path, compiled.
     path_limits: Vec<(Regex, u64)>,
     /// Hosts that sent Strict-Transport-Security (Respect HSTS Policy).
@@ -116,6 +130,7 @@ impl Crawler {
             robots: HashMap::new(),
             rules: Arc::new(CustomRules::compile(&cfg)?),
             hsts: Arc::default(),
+            live_exclude: Arc::default(),
             path_limits: cfg
                 .path_limits
                 .iter()
@@ -127,6 +142,7 @@ impl Crawler {
     }
 
     pub async fn run(mut self, seeds: Vec<Url>, tx: mpsc::Sender<CrawlEvent>, control: CrawlControl) -> anyhow::Result<Progress> {
+        self.live_exclude = control.exclude.clone();
         let started = Instant::now();
         let mut seen: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<QueueItem> = VecDeque::new();
@@ -134,6 +150,9 @@ impl Crawler {
             // URL Rewriting applies to discovered URLs only; start and List
             // URLs are crawled as given (minus any fragment).
             url.set_fragment(None);
+            if !list_input_allowed(&self.cfg, &url, &self.include, &self.exclude) {
+                continue;
+            }
             if seen.insert(url.to_string()) {
                 queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None });
             }
@@ -154,12 +173,13 @@ impl Crawler {
     /// whose targets were never crawled. Each link goes through the same
     /// follow rules as a fresh crawl, so a changed configuration applies.
     pub async fn resume(
-        self,
+        mut self,
         crawled: Vec<String>,
         pending: Vec<PendingLink>,
         tx: mpsc::Sender<CrawlEvent>,
         control: CrawlControl,
     ) -> anyhow::Result<Progress> {
+        self.live_exclude = control.exclude.clone();
         let started = Instant::now();
         let already = crawled.len() as u64;
         let mut seen: HashSet<String> = crawled.into_iter().collect();
@@ -232,6 +252,10 @@ impl Crawler {
                     continue;
                 }
 
+                // Exclude may have been edited since the URL was queued.
+                if item.depth > 0 && self.is_excluded(item.url.as_str()) {
+                    continue;
+                }
                 if !self.within_limits(&item, &mut limits) {
                     continue;
                 }
@@ -297,6 +321,8 @@ impl Crawler {
             return r.clone();
         }
         let robots = match Url::parse(&format!("{origin}/robots.txt")) {
+            // Exclude applies to robots.txt fetches too.
+            Ok(u) if self.is_excluded(u.as_str()) => Robots::allow_all(),
             Ok(u) => {
                 let res = self.fetcher.fetch(&u).await;
                 if res.status == 200 {
@@ -540,6 +566,14 @@ impl Crawler {
         true
     }
 
+    /// Exclude, as edited mid-crawl (CrawlControl::set_exclude) or as configured.
+    fn is_excluded(&self, url: &str) -> bool {
+        match self.live_exclude.read().ok().as_deref() {
+            Some(Some(live)) => live.iter().any(|r| r.is_match(url)),
+            _ => self.exclude.iter().any(|r| r.is_match(url)),
+        }
+    }
+
     /// Include/Exclude rules and URL limits.
     fn allowed(&self, url: &Url, internal: bool) -> bool {
         let cfg = &self.cfg;
@@ -547,7 +581,7 @@ impl Crawler {
         if s.len() > cfg.max_url_length {
             return false;
         }
-        if self.exclude.iter().any(|r| r.is_match(s)) {
+        if self.is_excluded(s) {
             return false;
         }
         if internal {

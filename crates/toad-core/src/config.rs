@@ -20,6 +20,25 @@ pub enum RobotsMode {
     IgnoreButReport,
 }
 
+/// URL Rewriting > Regex Replace: one rule.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RegexReplace {
+    pub regex: String,
+    pub replace: String,
+}
+
+/// URL Rewriting > percent-encoding case: `%c3%a9` vs `%C3%A9`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PercentCase {
+    #[default]
+    Uppercase,
+    Lowercase,
+    /// Leave encodings as found.
+    None,
+}
+
 /// Spider > Limits > Limit by URL Path: one row.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -152,9 +171,16 @@ pub struct CrawlConfig {
     pub include: Vec<String>,
     pub exclude: Vec<String>,
 
-    // Configuration > URL Rewriting
+    // Configuration > URL Rewriting (discovered URLs only)
+    pub remove_all_parameters: bool,
     pub remove_parameters: Vec<String>,
+    /// Regex Replace, applied in order (`$1` back-references).
+    pub url_rewrite_rules: Vec<RegexReplace>,
     pub lowercase_urls: bool,
+    pub percent_encoding_case: PercentCase,
+
+    // Configuration > CDNs: hosts (or host/path prefixes) treated as Internal.
+    pub cdns: Vec<String>,
 
     // Configuration > Content > Area
     pub content_area: ContentArea,
@@ -271,8 +297,12 @@ impl Default for CrawlConfig {
             ],
             include: vec![],
             exclude: vec![],
+            remove_all_parameters: false,
             remove_parameters: vec![],
+            url_rewrite_rules: vec![],
             lowercase_urls: false,
+            percent_encoding_case: PercentCase::Uppercase,
+            cdns: vec![],
             content_area: ContentArea::default(),
             extract_structured_data: true,
             store_html: false,
@@ -333,6 +363,11 @@ impl CrawlConfig {
     /// meaningless, as readable messages. Empty means the configuration is valid.
     pub fn validate(&self) -> Vec<String> {
         let mut problems = Vec::new();
+        for r in &self.url_rewrite_rules {
+            if let Err(e) = regex::Regex::new(&r.regex) {
+                problems.push(format!("URL Rewriting: '{}' is not a valid regex ({e})", r.regex));
+            }
+        }
         for l in &self.path_limits {
             if let Err(e) = regex::Regex::new(&l.pattern) {
                 problems.push(format!("Limits: '{}' is not a valid regex for Limit by URL Path ({e})", l.pattern));

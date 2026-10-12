@@ -395,6 +395,26 @@ fn save_crawl_as(state: State<'_, AppState>, path: String) -> CmdResult<()> {
     with_store(&state, |s| s.save_copy(std::path::Path::new(&path)))
 }
 
+/// The Test panes of URL Rewriting, CDNs, Include and Exclude.
+#[tauri::command]
+fn test_url(config: CrawlConfig, start: Option<String>, url: String) -> toad_core::urlutil::UrlTest {
+    toad_core::urlutil::test_url(&config, start.as_deref(), &url)
+}
+
+/// Configuration > Exclude edited while a crawl runs: applies to URLs not
+/// yet requested. Returns whether a crawl was running.
+#[tauri::command]
+fn update_exclude(state: State<'_, AppState>, patterns: Vec<String>) -> CmdResult<bool> {
+    let control = state.control.lock().map_err(err)?;
+    match control.as_ref() {
+        Some(c) => {
+            c.set_exclude(&patterns).map_err(err)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 #[tauri::command]
 fn get_config(state: State<'_, AppState>) -> CmdResult<CrawlConfig> {
     Ok(state.config.lock().map_err(err)?.clone())
@@ -468,6 +488,8 @@ fn main() {
             open_crawl,
             save_crawl_as,
             get_config,
+            test_url,
+            update_exclude,
             set_config,
             reset_config,
             profiles::recent_profiles,
