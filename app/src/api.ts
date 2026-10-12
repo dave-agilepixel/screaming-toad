@@ -106,6 +106,8 @@ export const api = {
   generateSitemap: (dir: string, options: SitemapOptions) => invoke<string[]>("generate_sitemap", { dir, options }),
   urlDetails: (url: string) => invoke<[string, string][]>("get_url_details", { url }),
   pageSource: (url: string) => invoke<string | null>("get_page_source", { url }),
+  httpHeaders: (url: string) => invoke<Table>("get_http_headers", { url }),
+  cookies: (url: string) => invoke<Table>("get_cookies", { url }),
   exportPageSource: (dir: string) => invoke<number>("export_page_source", { dir }),
   exportCsv: (tab: string, filter: string, search: string | undefined, path: string) =>
     invoke<number>("export_csv", { req: { tab, filter, search, path } }),

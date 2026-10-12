@@ -32,6 +32,26 @@ export interface ContentArea {
   exclude_ids: string[];
 }
 
+export interface Extraction {
+  page_title: boolean;
+  meta_description: boolean;
+  meta_keywords: boolean;
+  h1: boolean;
+  h2: boolean;
+  word_count: boolean;
+  readability: boolean;
+  text_to_code_ratio: boolean;
+  hash: boolean;
+  page_size: boolean;
+  forms: boolean;
+  response_time: boolean;
+  last_modified: boolean;
+  http_headers: boolean;
+  cookies: boolean;
+  meta_robots: boolean;
+  x_robots_tag: boolean;
+}
+
 export interface Preferences {
   title_min_chars: number;
   title_max_chars: number;
@@ -124,6 +144,7 @@ export interface CrawlConfig {
   content_area: ContentArea;
   extract_structured_data: boolean;
   store_html: boolean;
+  extraction: Extraction;
   near_duplicates: boolean;
   near_duplicate_threshold: number;
   near_duplicates_indexable_only: boolean;
@@ -237,6 +258,39 @@ export const NODES: Node[] = [
     label: "Extraction",
     parent: "spider",
     groups: [
+      {
+        title: "Page Details",
+        fields: [
+          { kind: "bool", key: "extraction.page_title", label: "Page Title" },
+          { kind: "bool", key: "extraction.meta_description", label: "Meta Description" },
+          { kind: "bool", key: "extraction.meta_keywords", label: "Meta Keywords" },
+          { kind: "bool", key: "extraction.h1", label: "H1" },
+          { kind: "bool", key: "extraction.h2", label: "H2" },
+          { kind: "note", text: "Indexability is always extracted: every tab's filters depend on it." },
+          { kind: "bool", key: "extraction.word_count", label: "Word Count" },
+          { kind: "bool", key: "extraction.readability", label: "Readability" },
+          { kind: "bool", key: "extraction.text_to_code_ratio", label: "Text to Code Ratio" },
+          { kind: "bool", key: "extraction.hash", label: "Hash Value", help: "MD5 of the page; needed for Content > Exact Duplicates." },
+          { kind: "bool", key: "extraction.page_size", label: "Page Size" },
+          { kind: "bool", key: "extraction.forms", label: "Forms", help: "Security > Form URL Insecure and Form on HTTP URL." },
+        ],
+      },
+      {
+        title: "URL Details",
+        fields: [
+          { kind: "bool", key: "extraction.response_time", label: "Response Time" },
+          { kind: "bool", key: "extraction.last_modified", label: "Last Modified" },
+          { kind: "bool", key: "extraction.http_headers", label: "HTTP Headers", help: "HTTP Headers lower tab, Reports > HTTP Header Summary, Bulk Export > All HTTP Response Headers." },
+          { kind: "bool", key: "extraction.cookies", label: "Cookies", help: "Cookies lower tab and column, Reports > Cookie Summary, Bulk Export > All Cookies." },
+        ],
+      },
+      {
+        title: "Directives",
+        fields: [
+          { kind: "bool", key: "extraction.meta_robots", label: "Meta Robots", help: "When off, meta robots directives don't affect indexability or nofollow." },
+          { kind: "bool", key: "extraction.x_robots_tag", label: "X-Robots-Tag" },
+        ],
+      },
       {
         title: "Structured Data",
         fields: [

@@ -565,6 +565,16 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
         }
         r.page = Some(page);
     }
+    // Spider > Extraction > Directives: a directive that isn't extracted
+    // doesn't affect indexability or nofollow either.
+    if !cfg.extraction.meta_robots {
+        if let Some(p) = r.page.as_mut() {
+            p.meta_robots.clear();
+        }
+    }
+    if !cfg.extraction.x_robots_tag {
+        r.x_robots_tag.clear();
+    }
     r.compute_indexability();
     r
 }

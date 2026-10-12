@@ -116,6 +116,9 @@ pub struct CrawlConfig {
     // Screaming Frog has it off.
     pub extract_structured_data: bool,
 
+    // Configuration > Spider > Extraction: page details, URL details, directives.
+    pub extraction: Extraction,
+
     // Configuration > Spider > Extraction > Store HTML: keep the HTML of
     // internal pages (View Source, page-source exports, Compare "Content").
     pub store_html: bool,
@@ -211,6 +214,7 @@ impl Default for CrawlConfig {
             content_area: ContentArea::default(),
             extract_structured_data: true,
             store_html: false,
+            extraction: Extraction::default(),
             near_duplicates: false,
             near_duplicate_threshold: 0.90,
             near_duplicates_indexable_only: true,
@@ -328,6 +332,54 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Spider > Extraction: which page and URL details are extracted and stored.
+/// Indexability is always computed (every tab's filters depend on it).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Extraction {
+    pub page_title: bool,
+    pub meta_description: bool,
+    pub meta_keywords: bool,
+    pub h1: bool,
+    pub h2: bool,
+    pub word_count: bool,
+    pub readability: bool,
+    pub text_to_code_ratio: bool,
+    pub hash: bool,
+    pub page_size: bool,
+    pub forms: bool,
+    pub response_time: bool,
+    pub last_modified: bool,
+    pub http_headers: bool,
+    pub cookies: bool,
+    pub meta_robots: bool,
+    pub x_robots_tag: bool,
+}
+
+impl Default for Extraction {
+    fn default() -> Self {
+        Self {
+            page_title: true,
+            meta_description: true,
+            meta_keywords: true,
+            h1: true,
+            h2: true,
+            word_count: true,
+            readability: true,
+            text_to_code_ratio: true,
+            hash: true,
+            page_size: true,
+            forms: true,
+            response_time: true,
+            last_modified: true,
+            http_headers: false,
+            cookies: false,
+            meta_robots: true,
+            x_robots_tag: true,
+        }
     }
 }
 

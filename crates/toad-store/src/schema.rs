@@ -93,6 +93,21 @@ CREATE TABLE IF NOT EXISTS list_inputs (
     address TEXT
 );
 
+-- Spider > Extraction > Cookies: Set-Cookie headers per URL.
+CREATE TABLE IF NOT EXISTS cookies (
+    id INTEGER PRIMARY KEY,
+    url_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    value TEXT,
+    domain TEXT,
+    path TEXT,
+    expires TEXT,
+    secure INTEGER NOT NULL DEFAULT 0,
+    http_only INTEGER NOT NULL DEFAULT 0,
+    same_site TEXT
+);
+CREATE INDEX IF NOT EXISTS cookies_url ON cookies(url_id);
+
 -- Store HTML: deflate-compressed page source, one row per URL.
 CREATE TABLE IF NOT EXISTS html (
     url_id INTEGER PRIMARY KEY,

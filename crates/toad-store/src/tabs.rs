@@ -134,12 +134,46 @@ const COLUMNS: &[(&str, &str)] = &[
     ("Errors", "u.sd_errors"),
     ("Warnings", "u.sd_warnings"),
     ("Parse Errors", "u.sd_parse_errors"),
+    ("Cookies", "(SELECT COUNT(*) FROM cookies c WHERE c.url_id = u.id)"),
 ];
 
 /// Values kept per extractor as separate columns (Name 1, Name 2, ...).
 const EXTRACTION_COLUMNS: usize = 3;
 
 pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
+    let mut tabs = build_tabs(cfg);
+    // Spider > Extraction: a tab or filter whose element isn't extracted
+    // shows nothing (rather than flagging every page as "missing" it).
+    let x = &cfg.extraction;
+    for t in &mut tabs {
+        let off = match t.name {
+            "Page Titles" => !x.page_title,
+            "Meta Description" => !x.meta_description,
+            "Meta Keywords" => !x.meta_keywords,
+            "H1" => !x.h1,
+            "H2" => !x.h2,
+            _ => false,
+        };
+        if off {
+            t.base = "0 = 1".into();
+        }
+        if t.name == "Internal" && x.cookies {
+            t.columns.push("Cookies");
+        }
+        for f in &mut t.filters {
+            let off = (f.name.starts_with("Low Content") && !x.word_count)
+                || (f.name.starts_with("Readability") && !x.readability)
+                || (f.name == "Exact Duplicates" && !x.hash)
+                || (f.name.starts_with("Form") && !x.forms);
+            if off {
+                f.sql = "0 = 1".into();
+            }
+        }
+    }
+    tabs
+}
+
+fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     let prefs = &cfg.preferences;
     let ignore_non_indexable = cfg.ignore_non_indexable_for_issues;
     // Internal HTML pages that returned 200: the rows most on-page tabs show.

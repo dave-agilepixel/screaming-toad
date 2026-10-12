@@ -29,6 +29,26 @@ const LINK_FROM: &str = "FROM links l JOIN urls s ON s.id = l.source_id LEFT JOI
 
 /// Name, kind, description, SQL. Redirect Chains is built in Rust instead.
 const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
+    ("HTTP Header Summary", ReportKind::Report, "Every response header name, with the number of URLs that sent it (needs Extraction > HTTP Headers).",
+     "SELECT json_extract(j.value, '$[0]') AS \"Header\", COUNT(DISTINCT u.id) AS \"URLs\",
+             COUNT(DISTINCT json_extract(j.value, '$[1]')) AS \"Distinct Values\"
+      FROM urls u, json_each(u.headers_json) j
+      WHERE (SELECT json_extract(value, '$.extraction.http_headers') FROM meta WHERE key = 'config') = 1
+      GROUP BY lower(json_extract(j.value, '$[0]')) ORDER BY 2 DESC, 1"),
+    ("All HTTP Response Headers", ReportKind::BulkExport, "One row per URL and response header (needs Extraction > HTTP Headers).",
+     "SELECT u.address AS \"Address\", u.status_code AS \"Status Code\", json_extract(j.value, '$[0]') AS \"Header Name\",
+             json_extract(j.value, '$[1]') AS \"Header Value\"
+      FROM urls u, json_each(u.headers_json) j
+      WHERE (SELECT json_extract(value, '$.extraction.http_headers') FROM meta WHERE key = 'config') = 1
+      ORDER BY u.crawl_order"),
+    ("Cookie Summary", ReportKind::Report, "Each cookie name and domain, with how many URLs set it (needs Extraction > Cookies).",
+     "SELECT c.name AS \"Cookie Name\", c.domain AS \"Domain\", COUNT(DISTINCT c.url_id) AS \"URLs\",
+             MAX(c.secure) AS \"Secure\", MAX(c.http_only) AS \"HttpOnly\", MAX(c.same_site) AS \"SameSite\"
+      FROM cookies c GROUP BY c.name, c.domain ORDER BY 3 DESC"),
+    ("All Cookies", ReportKind::BulkExport, "One row per URL and cookie (needs Extraction > Cookies).",
+     "SELECT u.address AS \"Address\", c.name AS \"Cookie Name\", c.value AS \"Cookie Value\", c.domain AS \"Domain\",
+             c.path AS \"Path\", c.expires AS \"Expiry\", c.secure AS \"Secure\", c.http_only AS \"HttpOnly\", c.same_site AS \"SameSite\"
+      FROM cookies c JOIN urls u ON u.id = c.url_id ORDER BY u.crawl_order, c.id"),
     ("List Mode Export", ReportKind::Report, "List mode URLs in upload order, with duplicates kept, and their crawl data.",
      "SELECT i.url AS \"Original URL\", u.address AS \"Address\", u.status_code AS \"Status Code\", u.status AS \"Status\",
              CASE WHEN u.id IS NULL THEN NULL WHEN u.indexable = 1 THEN 'Indexable' ELSE 'Non-Indexable' END AS \"Indexability\",

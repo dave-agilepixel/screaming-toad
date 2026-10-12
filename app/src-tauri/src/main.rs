@@ -335,6 +335,16 @@ fn generate_sitemap(state: State<'_, AppState>, dir: String, options: SitemapOpt
     })
 }
 
+#[tauri::command]
+fn get_http_headers(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.http_headers(&url))
+}
+
+#[tauri::command]
+fn get_cookies(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.cookies(&url))
+}
+
 /// View Source: the stored HTML, or None when Store HTML was off.
 #[tauri::command]
 fn get_page_source(state: State<'_, AppState>, url: String) -> CmdResult<Option<String>> {
@@ -446,6 +456,8 @@ fn main() {
             get_outlinks,
             get_url_details,
             get_page_source,
+            get_http_headers,
+            get_cookies,
             export_page_source,
             get_near_duplicates,
             get_reports,

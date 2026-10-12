@@ -97,7 +97,7 @@ impl Store {
         for rec in records {
             let order = self.next_order;
             self.next_order += 1;
-            let values = url_values(rec, order);
+            let values = url_values(rec, order, &self.cfg);
             let sql = self.insert_sql.get_or_insert_with(|| {
                 let cols: Vec<&str> = values.iter().map(|(c, _)| *c).collect();
                 let placeholders: Vec<String> = (1..=cols.len()).map(|i| format!("?{i}")).collect();
@@ -174,6 +174,15 @@ impl Store {
                     }
                 }
             }
+            if self.cfg.extraction.cookies {
+                let mut cookie_stmt = tx.prepare_cached(
+                    "INSERT INTO cookies (url_id, name, value, domain, path, expires, secure, http_only, same_site) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                )?;
+                for (_, raw) in rec.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
+                    let c = parse_set_cookie(raw);
+                    cookie_stmt.execute(params![source_id, c.name, c.value, c.domain, c.path, c.expires, c.secure, c.http_only, c.same_site])?;
+                }
+            }
             if let Some(html) = &rec.html {
                 tx.prepare_cached("INSERT OR REPLACE INTO html (url_id, body) VALUES (?1, ?2)")?
                     .execute(params![source_id, compress(html.as_bytes())?])?;
@@ -233,6 +242,34 @@ impl Store {
         blob.map(|b| decompress(&b)).transpose()
     }
 
+    /// HTTP Headers lower tab: the response headers of one URL.
+    pub fn http_headers(&self, address: &str) -> anyhow::Result<Table> {
+        if !self.cfg.extraction.http_headers {
+            return Ok(Table { columns: vec!["Header Name".into(), "Header Value".into()], ..Default::default() });
+        }
+        let json: Option<String> =
+            self.conn.query_row("SELECT headers_json FROM urls WHERE address = ?1", params![address], |r| r.get(0)).optional()?.flatten();
+        let headers: Vec<(String, String)> = json.and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
+        let rows: Vec<Vec<String>> = headers.into_iter().map(|(k, v)| vec![k, v]).collect();
+        Ok(Table { columns: vec!["Header Name".into(), "Header Value".into()], total: rows.len() as u64, rows })
+    }
+
+    /// Cookies lower tab: the cookies one URL set.
+    pub fn cookies(&self, address: &str) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT c.name, c.value, c.domain, c.path, c.expires,
+                    CASE WHEN c.secure = 1 THEN 'true' ELSE 'false' END,
+                    CASE WHEN c.http_only = 1 THEN 'true' ELSE 'false' END, c.same_site
+             FROM cookies c JOIN urls u ON u.id = c.url_id WHERE u.address = ?1 ORDER BY c.id",
+            &[Value::Text(address.to_string())],
+        )?;
+        Ok(Table {
+            columns: ["Cookie Name", "Cookie Value", "Domain", "Path", "Expiry", "Secure", "HttpOnly", "SameSite"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
+    }
+
     /// Whether any page source was stored in this crawl.
     pub fn has_html(&self) -> anyhow::Result<bool> {
         Ok(self.conn.query_row("SELECT EXISTS (SELECT 1 FROM html)", [], |r| r.get(0))?)
@@ -262,6 +299,40 @@ impl Store {
     pub fn url_count(&self) -> anyhow::Result<u64> {
         Ok(self.conn.query_row("SELECT COUNT(*) FROM urls", [], |r| r.get::<_, i64>(0))? as u64)
     }
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct SetCookie {
+    name: String,
+    value: String,
+    domain: Option<String>,
+    path: Option<String>,
+    expires: Option<String>,
+    secure: bool,
+    http_only: bool,
+    same_site: Option<String>,
+}
+
+/// `name=value; Domain=x; Path=/; Expires=...; Max-Age=...; Secure; HttpOnly; SameSite=Lax`
+fn parse_set_cookie(raw: &str) -> SetCookie {
+    let mut parts = raw.split(';');
+    let (name, value) = parts.next().unwrap_or("").split_once('=').unwrap_or((raw, ""));
+    let mut c = SetCookie { name: name.trim().to_string(), value: value.trim().to_string(), ..Default::default() };
+    for attr in parts {
+        let (k, v) = attr.split_once('=').unwrap_or((attr, ""));
+        let v = Some(v.trim().to_string()).filter(|v| !v.is_empty());
+        match k.trim().to_ascii_lowercase().as_str() {
+            "domain" => c.domain = v,
+            "path" => c.path = v,
+            "expires" => c.expires = c.expires.take().or(v),
+            "max-age" => c.expires = v.map(|s| format!("Max-Age={s}")),
+            "secure" => c.secure = true,
+            "httponly" => c.http_only = true,
+            "samesite" => c.same_site = v,
+            _ => {}
+        }
+    }
+    c
 }
 
 fn compress(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
@@ -302,7 +373,8 @@ fn nth_len(v: &[String], i: usize) -> Value {
 
 /// Column values for one URL, always in the same order (the insert
 /// statement is built from the first call and cached).
-fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
+fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec<(&'static str, Value)> {
+    let x = &cfg.extraction;
     let parsed = Url::parse(&rec.url).ok();
     let path = parsed.as_ref().map(|u| u.path().to_string()).unwrap_or_default();
     let decoded_path = percent_decode(&path);
@@ -315,11 +387,12 @@ fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
     let is_https = rec.url.starts_with("https://");
     let page = rec.page.as_ref();
     let empty: Vec<String> = Vec::new();
-    let titles = page.map(|p| &p.titles).unwrap_or(&empty);
-    let descs = page.map(|p| &p.meta_descriptions).unwrap_or(&empty);
-    let keywords = page.map(|p| &p.meta_keywords).unwrap_or(&empty);
-    let h1 = page.map(|p| &p.h1).unwrap_or(&empty);
-    let h2 = page.map(|p| &p.h2).unwrap_or(&empty);
+    // Spider > Extraction: elements that are switched off are stored empty.
+    let titles = page.filter(|_| x.page_title).map(|p| &p.titles).unwrap_or(&empty);
+    let descs = page.filter(|_| x.meta_description).map(|p| &p.meta_descriptions).unwrap_or(&empty);
+    let keywords = page.filter(|_| x.meta_keywords).map(|p| &p.meta_keywords).unwrap_or(&empty);
+    let h1 = page.filter(|_| x.h1).map(|p| &p.h1).unwrap_or(&empty);
+    let h2 = page.filter(|_| x.h2).map(|p| &p.h2).unwrap_or(&empty);
     let robots = page.map(|p| &p.meta_robots).unwrap_or(&empty);
     let canonicals = page.map(|p| &p.canonicals).unwrap_or(&empty);
     let mut distinct_canonicals = canonicals.clone();
@@ -347,7 +420,7 @@ fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
         .filter(|d| !d.is_empty())
         .collect();
 
-    let forms = page.map(|p| p.form_actions.as_slice()).unwrap_or(&[]);
+    let forms = if x.forms { page.map(|p| p.form_actions.as_slice()).unwrap_or(&[]) } else { &[] };
     let hreflang_invalid = page.is_some_and(|p| p.hreflang.iter().any(|(code, _)| !valid_hreflang(code)));
     let sd = page.and_then(|p| p.structured_data.as_ref());
     let mut sd_types: Vec<String> = sd.map(|s| s.items.iter().flat_map(|i| i.types.clone()).collect()).unwrap_or_default();
@@ -369,29 +442,31 @@ fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
         ("is_html", flag(rec.is_html)),
         ("indexable", flag(rec.indexable)),
         ("indexability_status", text(&rec.indexability_status)),
-        ("size", int(rec.size as i64)),
-        ("transferred", int(rec.transferred as i64)),
-        ("response_time", Value::Real(rec.response_time_ms as f64 / 1000.0)),
+        ("size", if x.page_size { int(rec.size as i64) } else { Value::Null }),
+        ("transferred", if x.page_size { int(rec.transferred as i64) } else { Value::Null }),
+        ("response_time", if x.response_time { Value::Real(rec.response_time_ms as f64 / 1000.0) } else { Value::Null }),
         ("http_version", text(&rec.http_version)),
-        ("last_modified", opt(rec.last_modified.as_deref())),
+        ("last_modified", if x.last_modified { opt(rec.last_modified.as_deref()) } else { Value::Null }),
         ("redirect_url", opt(rec.redirect_url.as_deref())),
         ("redirect_type", opt(rec.redirect_type.as_deref())),
-        ("hash", opt(rec.hash.as_deref())),
+        ("hash", if x.hash { opt(rec.hash.as_deref()) } else { Value::Null }),
         ("blocked_robots_line", opt(rec.blocked_by_robots_line.as_deref())),
         ("error", opt(rec.error.as_deref())),
+        // Headers are always kept: the Security columns read them. The HTTP
+        // Headers toggle controls the lower tab and the header exports.
         ("headers_json", text(&serde_json::to_string(&rec.headers).unwrap_or_default())),
         ("title_1", nth(titles, 0)),
         ("title_1_length", nth_len(titles, 0)),
         ("title_1_px", titles.first().map(|t| int(pixel::title_px(t))).unwrap_or(Value::Null)),
         ("title_2", nth(titles, 1)),
         ("title_count", int(titles.len() as i64)),
-        ("title_outside_head", flag(page.is_some_and(|p| p.title_outside_head))),
+        ("title_outside_head", flag(x.page_title && page.is_some_and(|p| p.title_outside_head))),
         ("meta_description_1", nth(descs, 0)),
         ("meta_description_1_length", nth_len(descs, 0)),
         ("meta_description_1_px", descs.first().map(|d| int(pixel::description_px(d))).unwrap_or(Value::Null)),
         ("meta_description_2", nth(descs, 1)),
         ("meta_description_count", int(descs.len() as i64)),
-        ("description_outside_head", flag(page.is_some_and(|p| p.description_outside_head))),
+        ("description_outside_head", flag(x.meta_description && page.is_some_and(|p| p.description_outside_head))),
         ("meta_keywords_1", nth(keywords, 0)),
         ("meta_keywords_count", int(keywords.len() as i64)),
         ("h1_1", nth(h1, 0)),
@@ -399,14 +474,14 @@ fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
         ("h1_2", nth(h1, 1)),
         ("h1_2_length", nth_len(h1, 1)),
         ("h1_count", int(h1.len() as i64)),
-        ("h1_alt_text", flag(page.is_some_and(|p| p.h1_has_alt_text))),
-        ("h1_non_sequential", flag(page.is_some_and(|p| p.h1_non_sequential))),
+        ("h1_alt_text", flag(x.h1 && page.is_some_and(|p| p.h1_has_alt_text))),
+        ("h1_non_sequential", flag(x.h1 && page.is_some_and(|p| p.h1_non_sequential))),
         ("h2_1", nth(h2, 0)),
         ("h2_1_length", nth_len(h2, 0)),
         ("h2_2", nth(h2, 1)),
         ("h2_2_length", nth_len(h2, 1)),
         ("h2_count", int(h2.len() as i64)),
-        ("h2_non_sequential", flag(page.is_some_and(|p| p.h2_non_sequential))),
+        ("h2_non_sequential", flag(x.h2 && page.is_some_and(|p| p.h2_non_sequential))),
         ("meta_robots_1", nth(robots, 0)),
         ("meta_robots_2", nth(robots, 1)),
         ("x_robots_tag_1", nth(&rec.x_robots_tag, 0)),
@@ -431,11 +506,11 @@ fn url_values(rec: &PageRecord, order: i64) -> Vec<(&'static str, Value)> {
         ("hreflang_invalid", flag(hreflang_invalid)),
         ("language", opt(page.and_then(|p| p.language.as_deref()))),
         ("has_viewport", flag(page.is_some_and(|p| p.has_viewport))),
-        ("word_count", page.map(|p| int(p.word_count)).unwrap_or(Value::Null)),
-        ("sentence_count", page.map(|p| int(p.sentence_count)).unwrap_or(Value::Null)),
-        ("avg_words_per_sentence", real(avg_wps)),
-        ("flesch", real(page.and_then(|p| p.flesch_reading_ease))),
-        ("text_ratio", real(page.map(|p| p.text_ratio))),
+        ("word_count", page.filter(|_| x.word_count).map(|p| int(p.word_count)).unwrap_or(Value::Null)),
+        ("sentence_count", page.filter(|_| x.word_count).map(|p| int(p.sentence_count)).unwrap_or(Value::Null)),
+        ("avg_words_per_sentence", real(avg_wps.filter(|_| x.word_count))),
+        ("flesch", real(page.and_then(|p| p.flesch_reading_ease).filter(|_| x.readability))),
+        ("text_ratio", real(page.map(|p| p.text_ratio).filter(|_| x.text_to_code_ratio))),
         ("lorem_ipsum", flag(page.is_some_and(|p| p.lorem_ipsum))),
         ("head_tags", page.map(|p| int(p.head_tags)).unwrap_or(Value::Null)),
         ("body_tags", page.map(|p| int(p.body_tags)).unwrap_or(Value::Null)),
@@ -519,6 +594,17 @@ mod tests {
         assert!(valid_hreflang("zh-Hant-TW"));
         assert!(!valid_hreflang("en-UK1"));
         assert!(!valid_hreflang("english"));
+    }
+
+    #[test]
+    fn parses_set_cookie() {
+        let c = parse_set_cookie("sid=abc123; Path=/; Domain=.example.com; Max-Age=3600; Secure; HttpOnly; SameSite=Lax");
+        assert_eq!((c.name.as_str(), c.value.as_str()), ("sid", "abc123"));
+        assert_eq!((c.domain.as_deref(), c.path.as_deref()), (Some(".example.com"), Some("/")));
+        assert_eq!(c.expires.as_deref(), Some("Max-Age=3600"));
+        assert!(c.secure && c.http_only);
+        assert_eq!(c.same_site.as_deref(), Some("Lax"));
+        assert_eq!(parse_set_cookie("flag").name, "flag");
     }
 
     #[test]
