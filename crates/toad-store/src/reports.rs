@@ -154,7 +154,7 @@ impl Store {
 
     /// Run SQL and keep the column names it declares.
     pub(crate) fn table(&self, sql: &str, args: &[Value]) -> anyhow::Result<Table> {
-        let mut stmt = self.conn.prepare(sql)?;
+        let stmt = self.conn.prepare(sql)?;
         let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
         drop(stmt);
         let rows = self.query_strings(sql, args)?;
