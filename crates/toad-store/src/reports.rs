@@ -29,6 +29,12 @@ const LINK_FROM: &str = "FROM links l JOIN urls s ON s.id = l.source_id LEFT JOI
 
 /// Name, kind, description, SQL. Redirect Chains is built in Rust instead.
 const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
+    ("List Mode Export", ReportKind::Report, "List mode URLs in upload order, with duplicates kept, and their crawl data.",
+     "SELECT i.url AS \"Original URL\", u.address AS \"Address\", u.status_code AS \"Status Code\", u.status AS \"Status\",
+             CASE WHEN u.id IS NULL THEN NULL WHEN u.indexable = 1 THEN 'Indexable' ELSE 'Non-Indexable' END AS \"Indexability\",
+             u.indexability_status AS \"Indexability Status\", u.title_1 AS \"Title 1\", u.meta_description_1 AS \"Meta Description 1\",
+             u.h1_1 AS \"H1-1\", u.canonical_1 AS \"Canonical Link Element 1\", u.redirect_url AS \"Redirect URL\", u.word_count AS \"Word Count\"
+      FROM list_inputs i LEFT JOIN urls u ON u.address = i.address ORDER BY i.ord"),
     ("All Redirects", ReportKind::Report, "Every redirecting URL with its final destination.",
      "SELECT u.address AS \"Address\", u.status_code AS \"Status Code\", u.redirect_type AS \"Redirect Type\",
              u.redirect_url AS \"Redirect URL\", u.final_destination AS \"Final Destination\",

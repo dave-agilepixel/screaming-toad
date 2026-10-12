@@ -2,14 +2,14 @@
 //! read its overview, issues, grid rows and detail panes.
 
 use crate::{err, AppState, CmdResult};
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use serde::Deserialize;
+use std::path::Path;
 use tauri::{AppHandle, Manager, State};
 use toad_store::compare::{
     test_mapping, ChangeElement, CompareConfig, CompareIssueRow, CompareOverviewRow, CompareState, CompareSummary, LinkState,
     SourceCompare, UrlMapping,
 };
-use toad_store::{Comparison, FilterDef, RowQuery, Store, TabDef, Table};
+use toad_store::{Comparison, CrawlEntry, FilterDef, RowQuery, TabDef, Table};
 
 fn with_cmp<T>(state: &AppState, f: impl FnOnce(&Comparison) -> anyhow::Result<T>) -> CmdResult<T> {
     let guard = state.compare.lock().map_err(err)?;
@@ -17,55 +17,15 @@ fn with_cmp<T>(state: &AppState, f: impl FnOnce(&Comparison) -> anyhow::Result<T
     f(cmp).map_err(err)
 }
 
-fn crawls_dir(app: &AppHandle) -> CmdResult<PathBuf> {
-    Ok(app.path().app_data_dir().map_err(err)?.join("crawls"))
-}
-
-/// One saved crawl, for the Current/Previous pickers (a first cut of File > Crawls).
-#[derive(Serialize)]
-pub struct CrawlInfo {
-    path: String,
-    name: String,
-    start_url: Option<String>,
-    urls: u64,
-    /// Seconds since the Unix epoch.
-    modified: u64,
-}
-
-fn crawl_info(path: &Path) -> Option<CrawlInfo> {
-    let store = Store::open(path).ok()?;
-    let modified = std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map_or(0, |d| d.as_secs());
-    Some(CrawlInfo {
-        path: path.to_string_lossy().into_owned(),
-        name: path.file_stem()?.to_string_lossy().into_owned(),
-        start_url: store.meta("start_url").ok().flatten(),
-        urls: store.url_count().ok()?,
-        modified,
-    })
-}
-
-/// Crawls saved by the app, newest first.
+/// Saved crawls for the Current/Previous pickers, newest first.
 #[tauri::command]
-pub fn list_crawls(app: AppHandle) -> CmdResult<Vec<CrawlInfo>> {
-    let dir = crawls_dir(&app)?;
-    let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(vec![]) };
-    let mut out: Vec<CrawlInfo> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "toad"))
-        .filter_map(|p| crawl_info(&p))
-        .collect();
-    out.sort_by(|a, b| b.modified.cmp(&a.modified));
-    Ok(out)
+pub fn list_crawls(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Vec<CrawlEntry>> {
+    Ok(toad_store::crawls::list(&crate::settings::crawls_dir(&app, &state)?))
 }
 
 #[tauri::command]
-pub fn crawl_info_for(path: String) -> CmdResult<CrawlInfo> {
-    crawl_info(Path::new(&path)).ok_or_else(|| format!("{path} is not a Screaming Toad crawl"))
+pub fn crawl_info_for(path: String) -> CmdResult<CrawlEntry> {
+    toad_store::crawls::entry(Path::new(&path)).map_err(|_| format!("{path} is not a Screaming Toad crawl"))
 }
 
 #[tauri::command]

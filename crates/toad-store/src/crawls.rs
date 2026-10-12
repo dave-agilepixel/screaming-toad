@@ -97,6 +97,21 @@ impl Store {
         Ok(())
     }
 
+    /// List mode: keep the uploaded URLs in order, duplicates included.
+    pub fn set_list_inputs(&self, inputs: &[String]) -> anyhow::Result<()> {
+        self.conn.execute("DELETE FROM list_inputs", [])?;
+        let mut stmt = self.conn.prepare("INSERT INTO list_inputs (ord, url, address) VALUES (?1, ?2, ?3)")?;
+        for (i, url) in inputs.iter().enumerate() {
+            // Crawled as given, minus any fragment (see Crawler::run).
+            let address = url::Url::parse(url.trim()).ok().map(|mut u| {
+                u.set_fragment(None);
+                u.to_string()
+            });
+            stmt.execute(rusqlite::params![i as i64, url, address])?;
+        }
+        Ok(())
+    }
+
     pub fn status(&self) -> anyhow::Result<CrawlStatus> {
         Ok(self.meta("status")?.map_or(CrawlStatus::Complete, |s| CrawlStatus::parse(&s)))
     }
@@ -294,6 +309,20 @@ mod tests {
         let store = Store::create(&path, &Url::parse("https://example.com/").unwrap(), &CrawlConfig::default()).unwrap();
         store.mark_started("example.com", "spider").unwrap();
         path
+    }
+
+    #[test]
+    fn list_mode_export_keeps_order_and_duplicates() {
+        let dir = std::env::temp_dir().join(format!("toad-list-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = crawl(&dir, "list.toad");
+        let store = Store::open(&path).unwrap();
+        let inputs = ["https://example.com/b", "https://example.com/a#top", "https://example.com/b", "not a url"].map(String::from);
+        store.set_list_inputs(&inputs).unwrap();
+        let t = store.report("List Mode Export").unwrap();
+        let col: Vec<&str> = t.rows.iter().map(|r| r[0].as_str()).collect();
+        assert_eq!(col, inputs.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        assert_eq!(t.columns[0], "Original URL");
     }
 
     #[test]

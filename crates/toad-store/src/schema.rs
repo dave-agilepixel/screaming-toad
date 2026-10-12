@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS urls (
 );
 
 -- Structured data items and validation issues per URL.
+-- List mode: the URLs as uploaded, in order and with duplicates
+-- (List Mode Export). `address` is the URL as crawled.
+CREATE TABLE IF NOT EXISTS list_inputs (
+    ord INTEGER PRIMARY KEY,
+    url TEXT NOT NULL,
+    address TEXT
+);
+
 -- Store HTML: deflate-compressed page source, one row per URL.
 CREATE TABLE IF NOT EXISTS html (
     url_id INTEGER PRIMARY KEY,

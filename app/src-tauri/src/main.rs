@@ -4,6 +4,7 @@
 
 mod compare;
 mod profiles;
+mod settings;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -22,6 +23,8 @@ struct AppState {
     /// The open comparison (Compare mode) and Config > Compare.
     compare: Arc<Mutex<Option<Comparison>>>,
     compare_config: Mutex<CompareConfig>,
+    /// File > Settings (storage folder, retention, last mode).
+    settings: Mutex<settings::AppSettings>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -60,6 +63,7 @@ struct StartCrawl {
 #[tauri::command]
 async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl) -> CmdResult<String> {
     let mut cfg = state.config.lock().map_err(err)?.clone();
+    let mut list_inputs: Option<Vec<String>> = None;
     let seeds: Vec<Url> = match (req.url, req.list) {
         (Some(u), _) if !u.trim().is_empty() => {
             let u = u.trim();
@@ -68,7 +72,10 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
         }
         (_, Some(list)) => {
             cfg = cfg.for_list_mode();
-            list.iter().filter_map(|l| Url::parse(l.trim()).ok()).collect()
+            let inputs: Vec<String> = list.iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+            let seeds = inputs.iter().filter_map(|l| Url::parse(l).ok()).collect();
+            list_inputs = Some(inputs);
+            seeds
         }
         _ => return Err("Enter a URL to crawl.".into()),
     };
@@ -79,25 +86,66 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
         c.stop();
     }
 
-    let dir = app.path().app_data_dir().map_err(err)?.join("crawls");
-    std::fs::create_dir_all(&dir).map_err(err)?;
-    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
-    let host = seeds[0].host_str().unwrap_or("crawl").replace('.', "_");
-    let path = dir.join(format!("{host}-{stamp}.toad"));
+    let dir = settings::crawls_dir(&app, &state)?;
+    let stamp = toad_store::crawls::now();
+    let host = seeds[0].host_str().unwrap_or("crawl").to_string();
+    let path = dir.join(format!("{}-{stamp}.toad", host.replace('.', "_")));
 
     let start = seeds[0].clone();
     let store = Store::create(&path, &start, &cfg).map_err(err)?;
+    let mode = if list_inputs.is_some() { "list" } else { "spider" };
+    store.mark_started(&host, mode).map_err(err)?;
+    if let Some(inputs) = &list_inputs {
+        store.set_list_inputs(inputs).map_err(err)?;
+    }
     *state.store.lock().map_err(err)? = Some(store);
     *state.crawl_path.lock().map_err(err)? = Some(path.clone());
 
     let crawler = Crawler::new(cfg, &start).map_err(err)?;
     let control = CrawlControl::default();
     *state.control.lock().map_err(err)? = Some(control.clone());
-    let (tx, mut rx) = tokio::sync::mpsc::channel(1024);
-    let store_ref = state.store.clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    let crawl = tauri::async_runtime::spawn(crawler.run(seeds, tx, control));
+    pump(app, state.store.clone(), rx, crawl);
+    Ok(path.to_string_lossy().into_owned())
+}
 
+/// Continue a stopped or interrupted crawl from its file, with the
+/// configuration it was started with.
+#[tauri::command]
+async fn continue_crawl(app: AppHandle, state: State<'_, AppState>, path: String) -> CmdResult<()> {
+    if let Some(c) = state.control.lock().map_err(err)?.as_ref() {
+        c.stop();
+    }
+    let path = PathBuf::from(path);
+    let store = Store::open(&path).map_err(err)?;
+    let start = store.meta("start_url").map_err(err)?.and_then(|u| Url::parse(&u).ok()).ok_or("This crawl has no start URL.")?;
+    let cfg = store.config().clone();
+    let (crawled, pending) = store.resume_state().map_err(err)?;
+    let mode = store.meta("mode").map_err(err)?.unwrap_or_else(|| "spider".into());
+    store.mark_started("", &mode).map_err(err)?;
+    *state.config.lock().map_err(err)? = cfg.clone();
+    *state.store.lock().map_err(err)? = Some(store);
+    *state.crawl_path.lock().map_err(err)? = Some(path);
+
+    let crawler = Crawler::new(cfg, &start).map_err(err)?;
+    let control = CrawlControl::default();
+    *state.control.lock().map_err(err)? = Some(control.clone());
+    let (tx, rx) = tokio::sync::mpsc::channel(1024);
+    let crawl = tauri::async_runtime::spawn(crawler.resume(crawled, pending, tx, control));
+    pump(app, state.store.clone(), rx, crawl);
+    Ok(())
+}
+
+/// Write a running crawl's events to the store in batches, emit progress to
+/// the UI, then record how it ended, run crawl analysis and apply retention.
+fn pump(
+    app: AppHandle,
+    store_ref: Arc<Mutex<Option<Store>>>,
+    mut rx: tokio::sync::mpsc::Receiver<CrawlEvent>,
+    crawl: tauri::async_runtime::JoinHandle<anyhow::Result<Progress>>,
+) {
     tauri::async_runtime::spawn(async move {
-        let crawl = tauri::async_runtime::spawn(crawler.run(seeds, tx, control));
         let mut batch: Vec<PageRecord> = Vec::with_capacity(100);
         let flush = |batch: &mut Vec<PageRecord>| {
             if let Ok(mut guard) = store_ref.lock() {
@@ -110,6 +158,7 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
             batch.clear();
         };
         let mut last_flush = std::time::Instant::now();
+        let mut queued_at_end = 0;
         while let Some(event) = rx.recv().await {
             match event {
                 CrawlEvent::Page(rec) => {
@@ -136,6 +185,7 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
                 }
                 CrawlEvent::Finished(p) => {
                     flush(&mut batch);
+                    queued_at_end = p.queued;
                     app.emit("crawl-progress", ProgressPayload::from(&p)).ok();
                     break;
                 }
@@ -146,15 +196,17 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
         app.emit("crawl-analysing", ()).ok();
         if let Ok(mut guard) = store_ref.lock() {
             if let Some(store) = guard.as_mut() {
+                if let Err(e) = store.mark_finished(queued_at_end) {
+                    eprintln!("store error: {e}");
+                }
                 if let Err(e) = store.analyse() {
                     eprintln!("analysis error: {e}");
                 }
             }
         }
+        settings::apply_retention(&app);
         app.emit("crawl-finished", ()).ok();
     });
-
-    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -364,10 +416,24 @@ fn main() {
         .setup(|app| {
             let cfg = profiles::startup_config(app.handle());
             *app.state::<AppState>().config.lock().expect("config lock") = cfg;
+            *app.state::<AppState>().settings.lock().expect("settings lock") = settings::load(app.handle());
+            settings::apply_retention(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             start_crawl,
+            continue_crawl,
+            settings::get_app_settings,
+            settings::set_app_settings,
+            settings::crawls_list,
+            settings::crawl_rename,
+            settings::crawl_set_project,
+            settings::crawl_set_locked,
+            settings::crawl_duplicate,
+            settings::crawl_delete,
+            settings::crawl_export,
+            settings::current_crawl_path,
+            settings::fetch_sitemap_urls,
             pause_crawl,
             resume_crawl,
             stop_crawl,
