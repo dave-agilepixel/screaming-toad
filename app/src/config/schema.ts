@@ -125,7 +125,18 @@ export interface CrawlConfig {
   max_url_length: number;
   max_links_per_url: number;
   max_page_size_kb: number;
+  cookie_storage: "session_only" | "persistent" | "do_not_store";
   ignore_non_indexable_for_issues: boolean;
+  ignore_paginated_for_duplicates: boolean;
+  always_follow_redirects: boolean;
+  always_follow_canonicals: boolean;
+  respect_noindex: boolean;
+  respect_canonical: boolean;
+  respect_next_prev: boolean;
+  respect_hsts: boolean;
+  respect_self_referencing_meta_refresh: boolean;
+  extract_images_from_srcset: boolean;
+  perform_html_validation: boolean;
   response_timeout_secs: number;
   retries_5xx: number;
   assume_pages_are_html: boolean;
@@ -356,8 +367,29 @@ export const NODES: Node[] = [
     groups: [
       {
         fields: [
+          {
+            kind: "select",
+            key: "cookie_storage",
+            label: "Cookie Storage",
+            options: [
+              ["session_only", "Session Only"],
+              ["persistent", "Persistent"],
+              ["do_not_store", "Do Not Store"],
+            ],
+            help: "Session Only keeps cookies along a redirect chain; Persistent shares one cookie jar across the whole crawl.",
+          },
           { kind: "bool", key: "ignore_non_indexable_for_issues", label: "Ignore Non-Indexable URLs for Issues" },
+          { kind: "bool", key: "ignore_paginated_for_duplicates", label: "Ignore Paginated URLs for Duplicate Filters", help: "Pages with rel=prev are left out of the Duplicate filters." },
+          { kind: "bool", key: "always_follow_redirects", label: "Always Follow Redirects", help: "Follow redirect chains past the crawl depth limit (useful in List mode), up to Max Redirects." },
+          { kind: "bool", key: "always_follow_canonicals", label: "Always Follow Canonicals", help: "Follow canonical targets past the depth limit. See Reports > Canonical Chains." },
+          { kind: "bool", key: "respect_noindex", label: "Respect noindex", help: "Noindex pages are crawled but hidden from every tab." },
+          { kind: "bool", key: "respect_canonical", label: "Respect Canonical", help: "Canonicalised pages are crawled but hidden." },
+          { kind: "bool", key: "respect_next_prev", label: "Respect Next/Prev", help: "rel=prev pages are crawled but hidden." },
+          { kind: "bool", key: "respect_hsts", label: "Respect HSTS Policy", help: "http:// links to a host that sent Strict-Transport-Security are reported as 307 'HSTS Policy'." },
+          { kind: "bool", key: "respect_self_referencing_meta_refresh", label: "Respect Self Referencing Meta Refresh", help: "A page that meta-refreshes to itself is Non-Indexable." },
+          { kind: "bool", key: "extract_images_from_srcset", label: "Extract Images From IMG SRCSET Attribute", help: "Also <picture><source srcset>." },
           { kind: "bool", key: "crawl_fragment_identifiers", label: "Crawl Fragment Identifiers" },
+          { kind: "bool", key: "perform_html_validation", label: "Perform HTML Validation", help: "The Validation tab." },
           { kind: "bool", key: "assume_pages_are_html", label: "Assume Pages are HTML", help: "Treat responses with no Content-Type as HTML." },
           { kind: "number", key: "response_timeout_secs", label: "Response Timeout", min: 1, unit: "secs" },
           { kind: "number", key: "retries_5xx", label: "5XX Response Retries", min: 0, max: 10 },

@@ -1,7 +1,7 @@
 //! The crawl loop: a breadth-first frontier, robots.txt, scope rules,
 //! limits and a fixed number of concurrent fetches.
 
-use crate::config::{CrawlConfig, RobotsMode};
+use crate::config::{CookieStorage, CrawlConfig, RobotsMode};
 use crate::custom::CustomRules;
 use crate::extract::extract;
 use crate::fetch::Fetcher;
@@ -41,6 +41,8 @@ struct QueueItem {
     depth: u32,
     kind: FetchKind,
     redirect_hops: u32,
+    /// Session Only cookies carried along a redirect chain ("a=1; b=2").
+    cookies: Option<String>,
 }
 
 /// Lets a UI pause or stop a running crawl.
@@ -76,6 +78,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Hosts that sent Strict-Transport-Security (Respect HSTS Policy).
+    hsts: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
 /// A link recorded in an earlier crawl session whose target was never
@@ -102,6 +106,7 @@ impl Crawler {
             exclude: compile(&cfg.exclude)?,
             robots: HashMap::new(),
             rules: Arc::new(CustomRules::compile(&cfg)?),
+            hsts: Arc::default(),
             cfg: Arc::new(cfg),
         })
     }
@@ -115,7 +120,7 @@ impl Crawler {
             // URLs are crawled as given (minus any fragment).
             url.set_fragment(None);
             if seen.insert(url.to_string()) {
-                queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0 });
+                queue.push_back(QueueItem { url, depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None });
             }
         }
 
@@ -156,7 +161,7 @@ impl Crawler {
             let item = if p.link.kind == LinkKind::Redirect {
                 let Ok(target) = Url::parse(&p.link.to) else { continue };
                 let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
-                self.allowed(&target, kind == FetchKind::Page).then_some(QueueItem { url: target, depth, kind, redirect_hops: 1 })
+                self.allowed(&target, kind == FetchKind::Page).then_some(QueueItem { url: target, depth, kind, redirect_hops: 1, cookies: None })
             } else {
                 let nofollow = p.source_nofollow && !self.cfg.follow_internal_nofollow;
                 self.link_item(&p.link, depth, nofollow)
@@ -218,9 +223,10 @@ impl Crawler {
                 let fetcher = self.fetcher.clone();
                 let cfg = self.cfg.clone();
                 let rules = self.rules.clone();
+                let hsts = self.hsts.clone();
                 let is_internal = self.scope.is_internal(&item.url);
                 tasks.spawn(async move {
-                    let record = process(&fetcher, &cfg, &rules, &item, is_internal).await;
+                    let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts).await;
                     (item, record)
                 });
             }
@@ -376,7 +382,7 @@ impl Crawler {
                         }
                         if seen.insert(page.to_string()) {
                             progress.discovered += 1;
-                            queue.push_back(QueueItem { url: page, depth: 1, kind: FetchKind::Page, redirect_hops: 0 });
+                            queue.push_back(QueueItem { url: page, depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None });
                         }
                     }
                     tx.send(CrawlEvent::Sitemap { sitemap: url.to_string(), urls: parsed.locs }).await.ok();
@@ -390,19 +396,35 @@ impl Crawler {
         let cfg = &self.cfg;
         let mut out = Vec::new();
         let depth = item.depth + 1;
-        if cfg.max_depth.is_some_and(|max| depth > max) {
-            return out;
-        }
+        let over_depth = cfg.max_depth.is_some_and(|max| depth > max);
 
         // Redirects (HTTP or meta refresh) count as one level of depth.
+        // Always Follow Redirects ignores the depth limit for them.
         let is_meta_refresh = record.redirect_type.as_deref() == Some("Meta Refresh Redirect");
         if let Some(target) = record.redirect_url.as_deref().and_then(|u| Url::parse(u).ok()) {
-            if item.redirect_hops < cfg.max_redirects && (cfg.crawl_meta_refresh || !is_meta_refresh) {
+            if (!over_depth || cfg.always_follow_redirects)
+                && item.redirect_hops < cfg.max_redirects
+                && (cfg.crawl_meta_refresh || !is_meta_refresh)
+            {
                 let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
                 if self.allowed(&target, kind == FetchKind::Page) {
-                    out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1 });
+                    out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: chain_cookies(cfg, item, record) });
                 }
             }
+        }
+
+        // Always Follow Canonicals: canonical targets past the depth limit,
+        // capped like a redirect chain.
+        if over_depth {
+            if cfg.always_follow_canonicals && item.redirect_hops < cfg.max_redirects {
+                if let Some(target) = record.canonical().filter(|c| *c != record.url).and_then(|c| Url::parse(c).ok()) {
+                    let kind = if self.scope.is_internal(&target) { FetchKind::Page } else { FetchKind::CheckOnly };
+                    if self.allowed(&target, kind == FetchKind::Page) {
+                        out.push(QueueItem { url: target, depth, kind, redirect_hops: item.redirect_hops + 1, cookies: None });
+                    }
+                }
+            }
+            return out;
         }
 
         let Some(page) = &record.page else { return out };
@@ -439,7 +461,7 @@ impl Crawler {
         if !self.allowed(&url, internal) {
             return None;
         }
-        Some(QueueItem { url, depth, kind, redirect_hops: 0 })
+        Some(QueueItem { url, depth, kind, redirect_hops: 0, cookies: None })
     }
 
     fn should_crawl(&self, link: &Link, internal: bool, page_nofollow: bool) -> bool {
@@ -458,7 +480,7 @@ impl Crawler {
             LinkKind::Image => cfg.crawl_images,
             LinkKind::Css => cfg.crawl_css,
             LinkKind::JavaScript => cfg.crawl_js,
-            LinkKind::Canonical | LinkKind::HttpCanonical => cfg.crawl_canonicals,
+            LinkKind::Canonical | LinkKind::HttpCanonical => cfg.crawl_canonicals || cfg.always_follow_canonicals,
             LinkKind::RelNext | LinkKind::RelPrev => cfg.crawl_pagination,
             LinkKind::Hreflang => cfg.crawl_hreflang,
             LinkKind::Iframe => cfg.crawl_iframes,
@@ -497,7 +519,35 @@ impl Crawler {
     }
 }
 
-async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item: &QueueItem, is_internal: bool) -> PageRecord {
+async fn process(
+    fetcher: &Fetcher,
+    cfg: &CrawlConfig,
+    rules: &CustomRules,
+    item: &QueueItem,
+    is_internal: bool,
+    hsts: &std::sync::Mutex<HashSet<String>>,
+) -> PageRecord {
+    // Respect HSTS Policy: an http:// URL on a host that sent HSTS is
+    // reported as a 307 to https://, without a request.
+    if cfg.respect_hsts && item.url.scheme() == "http" {
+        let host = item.url.host_str().unwrap_or("").to_ascii_lowercase();
+        if hsts.lock().is_ok_and(|h| h.contains(&host)) {
+            let mut target = item.url.clone();
+            let _ = target.set_scheme("https");
+            let mut r = PageRecord {
+                url: item.url.to_string(),
+                depth: item.depth,
+                is_internal,
+                status_code: 307,
+                status: "HSTS Policy".into(),
+                redirect_url: Some(target.to_string()),
+                redirect_type: Some("HSTS Policy".into()),
+                ..Default::default()
+            };
+            r.compute_indexability();
+            return r;
+        }
+    }
     if !matches!(item.url.scheme(), "http" | "https") {
         let mut r = PageRecord {
             url: item.url.to_string(),
@@ -511,7 +561,16 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
         r.compute_indexability();
         return r;
     }
-    let res = fetcher.fetch(&item.url).await;
+    let cookie = (cfg.cookie_storage == CookieStorage::SessionOnly).then_some(item.cookies.as_deref()).flatten();
+    let res = fetcher.fetch_with_cookies(&item.url, cookie).await;
+    if item.url.scheme() == "https" {
+        let sts = res.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("strict-transport-security")).map(|(_, v)| v.to_ascii_lowercase());
+        if sts.is_some_and(|v| !v.replace(' ', "").contains("max-age=0")) {
+            if let (Ok(mut h), Some(host)) = (hsts.lock(), item.url.host_str()) {
+                h.insert(host.to_ascii_lowercase());
+            }
+        }
+    }
     let mut r = PageRecord {
         url: item.url.to_string(),
         depth: item.depth,
@@ -549,6 +608,7 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
         r.hash = Some(format!("{:x}", md5::compute(&res.body)));
     }
 
+    let mut self_refresh = false;
     if res.truncated {
         r.error = Some(format!("Not processed: larger than the Max Page Size ({} KB)", cfg.max_page_size_kb));
     } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
@@ -561,6 +621,8 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
             if target != r.url {
                 r.redirect_url = Some(target);
                 r.redirect_type = Some("Meta Refresh Redirect".into());
+            } else if cfg.respect_self_referencing_meta_refresh {
+                self_refresh = true;
             }
         }
         r.page = Some(page);
@@ -576,7 +638,33 @@ async fn process(fetcher: &Fetcher, cfg: &CrawlConfig, rules: &CustomRules, item
         r.x_robots_tag.clear();
     }
     r.compute_indexability();
+    if self_refresh && r.indexable {
+        r.indexable = false;
+        r.indexability_status = "Self Referencing Meta Refresh".into();
+    }
     r
+}
+
+/// Session Only cookies for the next hop of a redirect chain: those already
+/// carried, plus any the redirect response set (later values win).
+fn chain_cookies(cfg: &CrawlConfig, item: &QueueItem, record: &PageRecord) -> Option<String> {
+    if cfg.cookie_storage != CookieStorage::SessionOnly {
+        return None;
+    }
+    let mut pairs: Vec<(String, String)> = item
+        .cookies
+        .as_deref()
+        .unwrap_or("")
+        .split(';')
+        .filter_map(|p| p.trim().split_once('=').map(|(k, v)| (k.to_string(), v.to_string())))
+        .collect();
+    for (_, raw) in record.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
+        if let Some((k, v)) = raw.split(';').next().and_then(|nv| nv.trim().split_once('=')) {
+            pairs.retain(|(n, _)| n != k);
+            pairs.push((k.to_string(), v.to_string()));
+        }
+    }
+    (!pairs.is_empty()).then(|| pairs.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; "))
 }
 
 /// `<https://x.com/a>; rel="canonical"` → `https://x.com/a`.
@@ -610,7 +698,7 @@ mod tests {
     #[test]
     fn meta_refresh_follows_the_crawl_setting() {
         let start = Url::parse("https://example.com/").unwrap();
-        let item = QueueItem { url: Url::parse("https://example.com/old").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0 };
+        let item = QueueItem { url: Url::parse("https://example.com/old").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: None };
         let followed = |crawl_meta_refresh: bool| {
             let cfg = CrawlConfig { crawl_meta_refresh, ..CrawlConfig::default() };
             let crawler = Crawler::new(cfg, &start).unwrap();
@@ -618,5 +706,34 @@ mod tests {
         };
         assert!(followed(true));
         assert!(!followed(false), "Crawl > Meta Refresh off must not follow refresh targets");
+    }
+}
+
+#[cfg(test)]
+mod hsts_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn http_links_to_an_hsts_host_become_307() {
+        let cfg = CrawlConfig::default();
+        let fetcher = Fetcher::new(&cfg).unwrap();
+        let rules = CustomRules::default();
+        let hsts = std::sync::Mutex::new(HashSet::from(["secure.example".to_string()]));
+        let item = QueueItem { url: Url::parse("http://secure.example/page").unwrap(), depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None };
+        let r = process(&fetcher, &cfg, &rules, &item, true, &hsts).await;
+        assert_eq!((r.status_code, r.status.as_str()), (307, "HSTS Policy"));
+        assert_eq!(r.redirect_url.as_deref(), Some("https://secure.example/page"));
+        assert_eq!(r.redirect_type.as_deref(), Some("HSTS Policy"));
+        assert!(!r.indexable);
+    }
+
+    #[test]
+    fn session_cookies_follow_the_redirect_chain() {
+        let cfg = CrawlConfig::default();
+        let item = QueueItem { url: Url::parse("https://x.com/a").unwrap(), depth: 0, kind: FetchKind::Page, redirect_hops: 0, cookies: Some("a=1; b=2".into()) };
+        let rec = PageRecord { headers: vec![("Set-Cookie".into(), "b=3; Path=/".into()), ("set-cookie".into(), "c=4".into())], ..Default::default() };
+        assert_eq!(chain_cookies(&cfg, &item, &rec).as_deref(), Some("a=1; b=3; c=4"));
+        let off = CrawlConfig { cookie_storage: CookieStorage::Persistent, ..CrawlConfig::default() };
+        assert_eq!(chain_cookies(&off, &item, &rec), None);
     }
 }

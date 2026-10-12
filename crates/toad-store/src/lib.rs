@@ -134,7 +134,7 @@ impl Store {
                     ])?;
                 }
             }
-            if let (Some(target), Some("HTTP Redirect")) = (&rec.redirect_url, rec.redirect_type.as_deref()) {
+            if let (Some(target), Some("HTTP Redirect" | "HSTS Policy")) = (&rec.redirect_url, rec.redirect_type.as_deref()) {
                 link_stmt.execute(params![
                     source_id, target, internal(target), LinkKind::Redirect.as_str(),
                     "", Option::<String>::None, true, "", "", "Absolute", "", "", Option::<String>::None,

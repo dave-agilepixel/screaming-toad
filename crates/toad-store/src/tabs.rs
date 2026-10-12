@@ -154,8 +154,23 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             "H2" => !x.h2,
             _ => false,
         };
-        if off {
+        if off || (t.name == "Validation" && !cfg.perform_html_validation) {
             t.base = "0 = 1".into();
+        }
+        // Advanced > Respect noindex / Canonical / Next-Prev: crawled, but
+        // hidden from every tab.
+        let mut hide = Vec::new();
+        if cfg.respect_noindex {
+            hide.push("coalesce(u.directives, '') LIKE '%,noindex,%' OR coalesce(u.directives, '') LIKE '%,none,%'");
+        }
+        if cfg.respect_canonical {
+            hide.push("coalesce(u.canonical_1, u.http_canonical, u.address) <> u.address");
+        }
+        if cfg.respect_next_prev {
+            hide.push("u.rel_prev IS NOT NULL");
+        }
+        if !hide.is_empty() {
+            t.base = format!("({}) AND NOT ({})", t.base, hide.join(" OR "));
         }
         if t.name == "Internal" && x.cookies {
             t.columns.push("Cookies");
@@ -180,7 +195,10 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     let html = "u.is_internal = 1 AND u.is_html = 1 AND u.status_code = 200";
     // Restrict on-page issue filters to indexable pages when configured.
     let ix = if ignore_non_indexable { " AND u.indexable = 1" } else { "" };
+    // Advanced > Ignore Paginated URLs for Duplicate Filters: rel=prev pages are left out.
+    let paginated = if cfg.ignore_paginated_for_duplicates { " AND u.rel_prev IS NULL" } else { "" };
     let dup_scoped = |col: &str, ix: &str| {
+        let ix = format!("{ix}{paginated}");
         format!(
             "u.{col} IS NOT NULL AND u.{col} <> '' AND u.{col} IN (SELECT d.{col} FROM urls d WHERE d.is_internal = 1 AND d.is_html = 1 AND d.status_code = 200{dix} AND d.{col} IS NOT NULL AND d.{col} <> '' GROUP BY d.{col} HAVING COUNT(*) > 1){ix}",
             dix = ix.replace("u.", "d.")

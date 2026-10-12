@@ -20,6 +20,18 @@ pub enum RobotsMode {
     IgnoreButReport,
 }
 
+/// Spider > Advanced > Cookie Storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CookieStorage {
+    /// Cookies are kept along a redirect chain only.
+    #[default]
+    SessionOnly,
+    /// One cookie jar shared by the whole crawl.
+    Persistent,
+    DoNotStore,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CrawlConfig {
@@ -81,7 +93,23 @@ pub struct CrawlConfig {
     pub max_page_size_kb: u64,
 
     // Configuration > Spider > Advanced
+    pub cookie_storage: CookieStorage,
     pub ignore_non_indexable_for_issues: bool,
+    pub ignore_paginated_for_duplicates: bool,
+    pub always_follow_redirects: bool,
+    pub always_follow_canonicals: bool,
+    /// Crawl noindex pages but hide them from every tab.
+    pub respect_noindex: bool,
+    /// Crawl canonicalised pages but hide them from every tab.
+    pub respect_canonical: bool,
+    /// Crawl rel=prev pages but hide them from every tab.
+    pub respect_next_prev: bool,
+    /// Report http:// links to an HSTS host as a 307 "HSTS Policy" redirect.
+    pub respect_hsts: bool,
+    /// A page that meta-refreshes to itself is Non-Indexable.
+    pub respect_self_referencing_meta_refresh: bool,
+    pub extract_images_from_srcset: bool,
+    pub perform_html_validation: bool,
     pub response_timeout_secs: u64,
     pub retries_5xx: u32,
     pub assume_pages_are_html: bool,
@@ -187,7 +215,18 @@ impl Default for CrawlConfig {
             max_url_length: 10_000,
             max_links_per_url: 10_000,
             max_page_size_kb: 50_000,
+            cookie_storage: CookieStorage::SessionOnly,
             ignore_non_indexable_for_issues: true,
+            ignore_paginated_for_duplicates: true,
+            always_follow_redirects: false,
+            always_follow_canonicals: false,
+            respect_noindex: false,
+            respect_canonical: false,
+            respect_next_prev: false,
+            respect_hsts: true,
+            respect_self_referencing_meta_refresh: true,
+            extract_images_from_srcset: false,
+            perform_html_validation: true,
             response_timeout_secs: 20,
             retries_5xx: 0,
             assume_pages_are_html: false,

@@ -29,6 +29,15 @@ const LINK_FROM: &str = "FROM links l JOIN urls s ON s.id = l.source_id LEFT JOI
 
 /// Name, kind, description, SQL. Redirect Chains is built in Rust instead.
 const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
+    ("Canonical Chains", ReportKind::Report, "Pages whose canonical target is itself canonicalised elsewhere or redirects (Advanced > Always Follow Canonicals follows them).",
+     "SELECT u.address AS \"Address\", coalesce(u.canonical_1, u.http_canonical) AS \"Canonical\",
+             t.status_code AS \"Canonical Status Code\",
+             CASE WHEN t.redirect_url IS NOT NULL THEN 'Redirect' ELSE 'Canonical' END AS \"Next Hop Type\",
+             coalesce(t.redirect_url, t.canonical_1, t.http_canonical) AS \"Next Hop\"
+      FROM urls u JOIN urls t ON t.address = coalesce(u.canonical_1, u.http_canonical)
+      WHERE coalesce(u.canonical_1, u.http_canonical) <> u.address
+        AND (t.redirect_url IS NOT NULL OR coalesce(t.canonical_1, t.http_canonical, t.address) <> t.address)
+      ORDER BY u.crawl_order"),
     ("HTTP Header Summary", ReportKind::Report, "Every response header name, with the number of URLs that sent it (needs Extraction > HTTP Headers).",
      "SELECT json_extract(j.value, '$[0]') AS \"Header\", COUNT(DISTINCT u.id) AS \"URLs\",
              COUNT(DISTINCT json_extract(j.value, '$[1]')) AS \"Distinct Values\"

@@ -171,10 +171,19 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                 }
             }
             "img" => {
+                let alt = v.attr("alt").map(|a| a.trim().to_string());
                 if let Some(src) = v.attr("src") {
                     if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
-                        link.alt = v.attr("alt").map(|a| a.trim().to_string());
+                        link.alt = alt.clone();
                         p.links.push(link);
+                    }
+                }
+                if cfg.extract_images_from_srcset {
+                    for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                        if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
+                            link.alt = alt.clone();
+                            p.links.push(link);
+                        }
                     }
                 }
             }
@@ -188,6 +197,13 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
             "video" | "audio" => {
                 if let Some(src) = v.attr("src") {
                     if let Some(link) = make_link(LinkKind::Media, src, &el, &base, cfg) {
+                        p.links.push(link);
+                    }
+                }
+            }
+            "source" if cfg.extract_images_from_srcset && el.parent().and_then(ElementRef::wrap).is_some_and(|m| m.value().name() == "picture") => {
+                for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                    if let Some(link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                         p.links.push(link);
                     }
                 }
@@ -342,6 +358,11 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
     })
 }
 
+/// The URLs in a srcset attribute ("a.jpg 1x, b.jpg 2x" or "a.jpg 480w, ...").
+fn srcset_urls(srcset: &str) -> Vec<&str> {
+    srcset.split(',').filter_map(|c| c.split_whitespace().next()).filter(|u| !u.is_empty()).collect()
+}
+
 /// A link the spider cannot follow: kept as written (resolved when it is a
 /// URL), with the anchor text, for Links > Uncrawlable Internal Outlinks.
 fn uncrawlable_link(raw: &str, el: &ElementRef, base: &Url, cfg: &CrawlConfig) -> Link {
@@ -460,6 +481,27 @@ mod tests {
 <a href="/img-link"><img src="/t.png"></a><img src="/t2.png" alt="A toad">
 <a href="https://other.com/" rel="nofollow sponsored" target="_blank">Other</a>
 <a href="mailto:x@y.com">mail</a><footer><a href="/privacy">Privacy</a></footer></body></html>"#;
+
+    #[test]
+    fn srcset_images_when_enabled() {
+        let html = r#"<html><body><img src="/a.jpg" srcset="/a-2x.jpg 2x, /a-480.jpg 480w" alt="A">
+            <picture><source srcset="/p.webp 1x"><img src="/p.jpg"></picture></body></html>"#;
+        let url = Url::parse("https://x.com/").unwrap();
+        let images = |on: bool| {
+            let cfg = CrawlConfig { extract_images_from_srcset: on, ..CrawlConfig::default() };
+            let mut v: Vec<String> = extract(html, &url, &cfg, &CustomRules::default())
+                .links
+                .into_iter()
+                .filter(|l| l.kind == LinkKind::Image)
+                .map(|l| l.to)
+                .collect();
+            v.sort();
+            v
+        };
+        assert_eq!(images(false), vec!["https://x.com/a.jpg", "https://x.com/p.jpg"]);
+        assert_eq!(images(true).len(), 5);
+        assert!(images(true).contains(&"https://x.com/p.webp".to_string()));
+    }
 
     #[test]
     fn extracts_new_link_kinds() {

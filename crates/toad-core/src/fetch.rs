@@ -1,7 +1,7 @@
 //! HTTP fetching. Redirects are not followed automatically: each hop is
 //! recorded as its own URL, as Screaming Frog does.
 
-use crate::config::CrawlConfig;
+use crate::config::{CookieStorage, CrawlConfig};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::time::{Duration, Instant};
 use url::Url;
@@ -37,6 +37,8 @@ impl Fetcher {
         }
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            // Persistent: one jar shared by every request in the crawl.
+            .cookie_store(cfg.cookie_storage == CookieStorage::Persistent)
             .timeout(Duration::from_secs(cfg.response_timeout_secs))
             .connect_timeout(Duration::from_secs(cfg.response_timeout_secs))
             .user_agent(cfg.user_agent.clone())
@@ -50,9 +52,15 @@ impl Fetcher {
     }
 
     pub async fn fetch(&self, url: &Url) -> FetchResult {
+        self.fetch_with_cookies(url, None).await
+    }
+
+    /// Fetch, sending `cookie` as the Cookie header (Session Only cookies
+    /// carried along a redirect chain).
+    pub async fn fetch_with_cookies(&self, url: &Url, cookie: Option<&str>) -> FetchResult {
         let mut attempt = 0;
         loop {
-            let res = self.fetch_once(url).await;
+            let res = self.fetch_once(url, cookie).await;
             if res.status >= 500 && attempt < self.retries_5xx {
                 attempt += 1;
                 tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
@@ -62,9 +70,13 @@ impl Fetcher {
         }
     }
 
-    async fn fetch_once(&self, url: &Url) -> FetchResult {
+    async fn fetch_once(&self, url: &Url, cookie: Option<&str>) -> FetchResult {
         let start = Instant::now();
-        let mut resp = match self.client.get(url.clone()).send().await {
+        let mut req = self.client.get(url.clone());
+        if let Some(c) = cookie.filter(|c| !c.is_empty()) {
+            req = req.header(reqwest::header::COOKIE, c);
+        }
+        let mut resp = match req.send().await {
             Ok(r) => r,
             Err(e) => {
                 return FetchResult {
