@@ -87,6 +87,7 @@ fn parse_inner(bytes: &[u8], base: &Url) -> anyhow::Result<ParsedPdf> {
                         link_path: String::new(),
                         position: format!("PDF page {}", n + 1),
                         hreflang: None,
+                        origin: String::new(),
                     });
                 }
             }

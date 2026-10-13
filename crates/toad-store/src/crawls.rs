@@ -205,6 +205,7 @@ impl Store {
                     link_path: String::new(),
                     position: String::new(),
                     hreflang: None,
+                    origin: String::new(),
                 },
                 source_depth: depth.max(0) as u32,
                 source_nofollow,

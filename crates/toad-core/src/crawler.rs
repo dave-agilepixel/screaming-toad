@@ -99,6 +99,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Rendering: JavaScript (launched when the crawl starts).
+    renderer: Option<Arc<crate::render::Renderer>>,
     /// Content > Spelling & Grammar (dictionaries shared by every page).
     language: Arc<crate::spelling::LanguageChecker>,
     /// Exclude as edited during the crawl (shared with CrawlControl).
@@ -136,6 +138,7 @@ impl Crawler {
             hsts: Arc::default(),
             live_exclude: Arc::default(),
             language: Arc::new(crate::spelling::LanguageChecker::new(&cfg)),
+            renderer: None,
             path_limits: cfg
                 .path_limits
                 .iter()
@@ -148,6 +151,7 @@ impl Crawler {
 
     pub async fn run(mut self, seeds: Vec<Url>, tx: mpsc::Sender<CrawlEvent>, control: CrawlControl) -> anyhow::Result<Progress> {
         self.live_exclude = control.exclude.clone();
+        self.start_renderer().await?;
         let started = Instant::now();
         let mut seen: HashSet<String> = HashSet::new();
         let mut queue: VecDeque<QueueItem> = VecDeque::new();
@@ -185,6 +189,7 @@ impl Crawler {
         control: CrawlControl,
     ) -> anyhow::Result<Progress> {
         self.live_exclude = control.exclude.clone();
+        self.start_renderer().await?;
         let started = Instant::now();
         let already = crawled.len() as u64;
         let mut seen: HashSet<String> = crawled.into_iter().collect();
@@ -273,10 +278,11 @@ impl Crawler {
                 let rules = self.rules.clone();
                 let hsts = self.hsts.clone();
                 let language = self.language.clone();
+                let renderer = self.renderer.clone();
                 // List mode audits every uploaded URL fully, whatever its host.
                 let is_internal = self.scope.is_internal(&item.url) || (self.cfg.mode == crate::config::Mode::List && item.depth == 0);
                 tasks.spawn(async move {
-                    let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts, &language).await;
+                    let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts, &language, renderer.as_deref()).await;
                     (item, record)
                 });
             }
@@ -296,6 +302,22 @@ impl Crawler {
                 Err(_) => continue,
             };
 
+            let mut record = record;
+            if self.cfg.robots_mode == RobotsMode::Respect {
+                if let Some(info) = record.rendered.as_mut() {
+                    let requests = std::mem::take(&mut info.requests);
+                    for u in requests.iter().filter_map(|u| Url::parse(u).ok()) {
+                        let robots = self.robots_for(&u.origin().ascii_serialization()).await;
+                        let path = match u.query() {
+                            Some(q) => format!("{}?{q}", u.path()),
+                            None => u.path().to_string(),
+                        };
+                        if matches!(robots.check(&self.cfg.robots_user_agent, &path), Verdict::Blocked(_)) {
+                            info.blocked_resources.push(u.to_string());
+                        }
+                    }
+                }
+            }
             if item.kind == FetchKind::Page && record.is_internal {
                 for next in self.discover(&item, &record) {
                     if seen.insert(next.url.to_string()) {
@@ -319,7 +341,18 @@ impl Crawler {
         progress.queued = queue.len() as u64;
         progress.elapsed_ms = started.elapsed().as_millis() as u64;
         tx.send(CrawlEvent::Finished(progress.clone())).await.ok();
+        if let Some(r) = self.renderer.take().and_then(|r| Arc::try_unwrap(r).ok()) {
+            r.close().await;
+        }
         Ok(progress)
+    }
+
+    /// Rendering: JavaScript needs a browser for the whole crawl.
+    async fn start_renderer(&mut self) -> anyhow::Result<()> {
+        if self.cfg.rendering.javascript() && self.renderer.is_none() {
+            self.renderer = Some(Arc::new(crate::render::Renderer::launch(&self.cfg).await?));
+        }
+        Ok(())
     }
 
     /// robots.txt for an origin, fetched once and cached.
@@ -629,6 +662,7 @@ async fn process(
     is_internal: bool,
     hsts: &std::sync::Mutex<HashSet<String>>,
     language: &crate::spelling::LanguageChecker,
+    renderer: Option<&crate::render::Renderer>,
 ) -> PageRecord {
     // Respect HSTS Policy: an http:// URL on a host that sent HSTS is
     // reported as a 307 to https://, without a request.
@@ -760,6 +794,11 @@ async fn process(
     } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
         let html = String::from_utf8_lossy(&res.body);
         let mut page = extract(&html, &item.url, cfg, rules);
+        if let Some(renderer) = renderer {
+            let (rendered_page, info) = render_page(renderer, cfg, rules, &item.url, page).await;
+            page = rendered_page;
+            r.rendered = Some(info);
+        }
         if language.enabled() {
             // Titles, meta descriptions and the content area.
             let text = page.titles.iter().chain(page.meta_descriptions.iter()).chain(std::iter::once(&page.content_text)).cloned().collect::<Vec<_>>().join(". ");
@@ -871,7 +910,7 @@ mod hsts_tests {
         let rules = CustomRules::default();
         let hsts = std::sync::Mutex::new(HashSet::from(["secure.example".to_string()]));
         let item = QueueItem { url: Url::parse("http://secure.example/page").unwrap(), depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None };
-        let r = process(&fetcher, &cfg, &rules, &item, true, &hsts, &crate::spelling::LanguageChecker::new(&cfg)).await;
+        let r = process(&fetcher, &cfg, &rules, &item, true, &hsts, &crate::spelling::LanguageChecker::new(&cfg), None).await;
         assert_eq!((r.status_code, r.status.as_str()), (307, "HSTS Policy"));
         assert_eq!(r.redirect_url.as_deref(), Some("https://secure.example/page"));
         assert_eq!(r.redirect_type.as_deref(), Some("HSTS Policy"));
@@ -886,5 +925,55 @@ mod hsts_tests {
         assert_eq!(chain_cookies(&cfg, &item, &rec).as_deref(), Some("a=1; b=3; c=4"));
         let off = CrawlConfig { cookie_storage: CookieStorage::Persistent, ..CrawlConfig::default() };
         assert_eq!(chain_cookies(&off, &item, &rec), None);
+    }
+}
+
+
+/// Render a page and extract from the rendered HTML. Links from both the
+/// original and the rendered HTML are kept, with their Link Origin. If
+/// rendering fails the original HTML's data is used and the error noted.
+async fn render_page(
+    renderer: &crate::render::Renderer,
+    cfg: &CrawlConfig,
+    rules: &CustomRules,
+    url: &Url,
+    raw: crate::model::PageData,
+) -> (crate::model::PageData, crate::model::RenderInfo) {
+    let original = crate::model::OriginalHtml {
+        title: raw.titles.first().cloned(),
+        meta_description: raw.meta_descriptions.first().cloned(),
+        h1: raw.h1.first().cloned(),
+        canonical: raw.canonicals.first().cloned(),
+        directives: raw.meta_robots.join(","),
+        word_count: raw.word_count,
+        link_count: raw.links.len() as u32,
+    };
+    let mut info = crate::model::RenderInfo { original, ..Default::default() };
+    match renderer.render(url).await {
+        Ok(out) => {
+            let mut page = extract(&out.html, url, cfg, rules);
+            let key = |l: &Link| (l.kind, l.to.clone());
+            let raw_keys: HashSet<(LinkKind, String)> = raw.links.iter().map(key).collect();
+            let rendered_keys: HashSet<(LinkKind, String)> = page.links.iter().map(key).collect();
+            for l in &mut page.links {
+                l.origin = if raw_keys.contains(&key(l)) { "HTML & Rendered HTML".into() } else { "Rendered HTML".into() };
+            }
+            for mut l in raw.links.into_iter().filter(|l| !rendered_keys.contains(&key(l))) {
+                l.origin = "HTML".into();
+                page.links.push(l);
+            }
+            info.console = out.console;
+            info.screenshot = out.screenshot;
+            info.requests = out.requests;
+            info.transferred_bytes = out.transferred_bytes;
+            if cfg.rendering.store_rendered_html {
+                info.html = Some(out.html);
+            }
+            (page, info)
+        }
+        Err(e) => {
+            info.error = Some(format!("Rendering failed: {e}"));
+            (raw, info)
+        }
     }
 }

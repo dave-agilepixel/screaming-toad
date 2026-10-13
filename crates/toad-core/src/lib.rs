@@ -8,6 +8,7 @@ pub mod fetch;
 pub mod minhash;
 pub mod model;
 pub mod pdf;
+pub mod render;
 pub mod pixel;
 pub mod robots;
 pub mod sitemap;

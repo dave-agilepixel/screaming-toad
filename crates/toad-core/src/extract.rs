@@ -359,6 +359,7 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
         link_path: path,
         position,
         hreflang: None,
+        origin: String::new(),
     })
 }
 
@@ -388,6 +389,7 @@ fn uncrawlable_link(raw: &str, el: &ElementRef, base: &Url, cfg: &CrawlConfig) -
             String::new()
         },
         hreflang: None,
+        origin: String::new(),
     }
 }
 

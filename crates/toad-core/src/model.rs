@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum LinkKind {
     Hyperlink,
     Image,
@@ -93,6 +93,9 @@ pub struct Link {
     pub link_path: String,
     pub position: String,
     pub hreflang: Option<String>,
+    /// JavaScript rendering: "HTML", "Rendered HTML" or "HTML & Rendered HTML".
+    #[serde(default)]
+    pub origin: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -143,6 +146,38 @@ pub struct PageData {
     pub structured_data: Option<crate::structured::StructuredData>,
 }
 
+/// The original (pre-JavaScript) HTML's key elements, for the JavaScript tab.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OriginalHtml {
+    pub title: Option<String>,
+    pub meta_description: Option<String>,
+    pub h1: Option<String>,
+    pub canonical: Option<String>,
+    /// Meta robots directives, comma-joined.
+    pub directives: String,
+    pub word_count: u32,
+    pub link_count: u32,
+}
+
+/// What JavaScript rendering produced for a page.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RenderInfo {
+    pub original: OriginalHtml,
+    pub console: Vec<crate::render::ConsoleMessage>,
+    #[serde(skip)]
+    pub screenshot: Option<Vec<u8>>,
+    #[serde(skip)]
+    pub html: Option<String>,
+    /// Resources the page requested that robots.txt blocks.
+    pub blocked_resources: Vec<String>,
+    /// Every resource URL requested while rendering.
+    #[serde(skip)]
+    pub requests: Vec<String>,
+    pub transferred_bytes: u64,
+    /// Rendering failed; the original HTML was used instead.
+    pub error: Option<String>,
+}
+
 /// One fetched (or blocked, or failed) URL.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PageRecord {
@@ -177,6 +212,8 @@ pub struct PageRecord {
     /// The page's HTML, when Store HTML is on (internal HTML pages only).
     #[serde(skip)]
     pub html: Option<String>,
+    /// JavaScript rendering results (Rendering: JavaScript).
+    pub rendered: Option<RenderInfo>,
     /// PDF document properties (Extract PDF Properties).
     pub pdf: Option<crate::pdf::PdfInfo>,
     /// PDF text (Store PDF), for Bulk Export > All PDF Content.

@@ -110,8 +110,8 @@ impl Store {
             }
             let source_id = tx.last_insert_rowid();
             let mut link_stmt = tx.prepare_cached(
-                "INSERT INTO links (source_id, target, internal, kind, anchor, alt, follow, rel, target_attr, path_type, link_path, position, hreflang)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                "INSERT INTO links (source_id, target, internal, kind, anchor, alt, follow, rel, target_attr, path_type, link_path, position, hreflang, origin)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             )?;
             let internal = |target: &str| {
                 Url::parse(target).ok().zip(self.scope.as_ref()).is_some_and(|(u, s)| s.is_internal(&u))
@@ -132,13 +132,14 @@ impl Store {
                         l.link_path,
                         l.position,
                         l.hreflang,
+                        Some(l.origin.as_str()).filter(|o| !o.is_empty()),
                     ])?;
                 }
             }
             if let (Some(target), Some("HTTP Redirect" | "HSTS Policy")) = (&rec.redirect_url, rec.redirect_type.as_deref()) {
                 link_stmt.execute(params![
                     source_id, target, internal(target), LinkKind::Redirect.as_str(),
-                    "", Option::<String>::None, true, "", "", "Absolute", "", "", Option::<String>::None,
+                    "", Option::<String>::None, true, "", "", "Absolute", "", "", Option::<String>::None, Option::<String>::None,
                 ])?;
             }
             if let Some(page) = &rec.page {
@@ -198,6 +199,24 @@ impl Store {
                 tx.prepare_cached("INSERT OR REPLACE INTO pdf_text (url_id, body) VALUES (?1, ?2)")?
                     .execute(params![source_id, compress(text.as_bytes())?])?;
             }
+            if let Some(info) = &rec.rendered {
+                let mut console_stmt =
+                    tx.prepare_cached("INSERT INTO console_log (url_id, ord, level, source, message) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+                for (ord, m) in info.console.iter().enumerate() {
+                    console_stmt.execute(params![source_id, ord as i64, m.level, m.source, m.message])?;
+                }
+                let mut blocked_stmt = tx.prepare_cached("INSERT INTO blocked_resources (url_id, resource) VALUES (?1, ?2)")?;
+                for b in &info.blocked_resources {
+                    blocked_stmt.execute(params![source_id, b])?;
+                }
+                if let Some(png) = &info.screenshot {
+                    tx.prepare_cached("INSERT OR REPLACE INTO screenshots (url_id, png) VALUES (?1, ?2)")?.execute(params![source_id, png])?;
+                }
+                if let Some(html) = &info.html {
+                    tx.prepare_cached("INSERT OR REPLACE INTO rendered_html (url_id, body) VALUES (?1, ?2)")?
+                        .execute(params![source_id, compress(html.as_bytes())?])?;
+                }
+            }
             if let Some(html) = &rec.html {
                 tx.prepare_cached("INSERT OR REPLACE INTO html (url_id, body) VALUES (?1, ?2)")?
                     .execute(params![source_id, compress(html.as_bytes())?])?;
@@ -255,6 +274,49 @@ impl Store {
             )
             .optional()?;
         blob.map(|b| decompress(&b)).transpose()
+    }
+
+    /// View Source > Rendered HTML (Store Rendered HTML).
+    pub fn rendered_source(&self, address: &str) -> anyhow::Result<Option<String>> {
+        let blob: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT h.body FROM rendered_html h JOIN urls u ON u.id = h.url_id WHERE u.address = ?1",
+                params![address],
+                |r| r.get(0),
+            )
+            .optional()?;
+        blob.map(|b| decompress(&b)).transpose()
+    }
+
+    /// Rendered Page lower tab: the PNG screenshot.
+    pub fn screenshot(&self, address: &str) -> anyhow::Result<Option<Vec<u8>>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT s.png FROM screenshots s JOIN urls u ON u.id = s.url_id WHERE u.address = ?1",
+                params![address],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Chrome Console Log lower tab.
+    pub fn console_log(&self, address: &str) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT c.level, c.source, c.message FROM console_log c JOIN urls u ON u.id = c.url_id WHERE u.address = ?1 ORDER BY c.ord",
+            &[Value::Text(address.to_string())],
+        )?;
+        Ok(Table { columns: ["Level", "Source", "Message"].iter().map(|s| s.to_string()).collect(), total: rows.len() as u64, rows })
+    }
+
+    /// Resources the page requested that robots.txt blocks.
+    pub fn blocked_resources(&self, address: &str) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT b.resource FROM blocked_resources b JOIN urls u ON u.id = b.url_id WHERE u.address = ?1 ORDER BY b.rowid",
+            &[Value::Text(address.to_string())],
+        )?;
+        Ok(Table { columns: vec!["Blocked Resource".to_string()], total: rows.len() as u64, rows })
     }
 
     /// HTTP Headers lower tab: the response headers of one URL.
@@ -468,6 +530,15 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
     let repetitive = segments.iter().enumerate().any(|(i, s)| segments[..i].contains(s));
     let is_https = rec.url.starts_with("https://");
     let page = rec.page.as_ref();
+    let rendered = rec.rendered.as_ref();
+    let original = rendered.map(|r| &r.original);
+    // CO2 per page view: everything the browser transferred when rendered,
+    // otherwise the page's own transfer size.
+    let co2 = match rendered {
+        Some(r) if r.error.is_none() => Some(toad_core::render::co2_grams(r.transferred_bytes.max(rec.transferred))),
+        _ if rec.is_html && rec.status_code == 200 => Some(toad_core::render::co2_grams(rec.transferred)),
+        _ => None,
+    };
     let empty: Vec<String> = Vec::new();
     // Spider > Extraction: elements that are switched off are stored empty.
     let titles = page.filter(|_| x.page_title).map(|p| &p.titles).unwrap_or(&empty);
@@ -631,6 +702,33 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("pdf_created", opt(rec.pdf.as_ref().and_then(|p| p.created.as_deref()))),
         ("pdf_modified", opt(rec.pdf.as_ref().and_then(|p| p.modified.as_deref()))),
         ("pdf_pages", rec.pdf.as_ref().map(|p| int(p.pages as i64)).unwrap_or(Value::Null)),
+        ("rendered", flag(rendered.is_some_and(|r| r.error.is_none()))),
+        ("render_error", opt(rendered.and_then(|r| r.error.as_deref()))),
+        ("orig_title", opt(original.and_then(|o| o.title.as_deref()))),
+        ("orig_meta_description", opt(original.and_then(|o| o.meta_description.as_deref()))),
+        ("orig_h1", opt(original.and_then(|o| o.h1.as_deref()))),
+        ("orig_canonical", opt(original.and_then(|o| o.canonical.as_deref()))),
+        ("orig_directives", opt(original.map(|o| o.directives.as_str()))),
+        ("orig_word_count", original.map(|o| int(o.word_count)).unwrap_or(Value::Null)),
+        ("orig_link_count", original.map(|o| int(o.link_count)).unwrap_or(Value::Null)),
+        ("js_link_count", if rendered.is_some() {
+            int(page.map_or(0, |p| p.links.iter().filter(|l| l.origin == "Rendered HTML").count() as i64))
+        } else {
+            Value::Null
+        }),
+        ("js_errors", if rendered.is_some() && cfg.rendering.js_error_reporting {
+            int(rendered.map_or(0, |r| r.console.iter().filter(|m| m.level == "error").count() as i64))
+        } else {
+            Value::Null
+        }),
+        ("js_warnings", if rendered.is_some() && cfg.rendering.js_error_reporting {
+            int(rendered.map_or(0, |r| r.console.iter().filter(|m| m.level == "warning").count() as i64))
+        } else {
+            Value::Null
+        }),
+        ("blocked_resources", rendered.map(|r| int(r.blocked_resources.len() as i64)).unwrap_or(Value::Null)),
+        ("co2_mg", co2.map(|g| real(Some((g * 1000.0 * 100.0).round() / 100.0))).unwrap_or(Value::Null)),
+        ("carbon_rating", opt(co2.map(toad_core::render::carbon_rating))),
         ("spelling_errors", if cfg.spelling.spell_check && page.is_some() {
             int(page.map_or(0, |p| p.language_issues.iter().filter(|i| i.kind == "Spelling").count() as i64))
         } else {

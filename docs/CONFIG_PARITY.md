@@ -126,6 +126,16 @@ The scores below are as audited. Since then:
     - Parsing runs under `catch_unwind`.
   - **Fixed along the way:** List mode now audits every uploaded URL fully, whatever its host. Before, only URLs on the first URL's host were parsed.
   - **Not done:** PDF link anchor text (`lopdf` gives the link rectangle, not the text under it), and storing PDF files themselves (Bulk Export > All PDF Documents).
+- **WP9, JavaScript rendering:** in progress.
+  - **Batch A (done): renderer and dual-HTML crawl.**
+    - Spider > Rendering: Text Only / JavaScript, screenshots, JS error reporting, flatten shadow DOM and iframes, AJAX timeout, window-size presets, W/H, scaling, Mobile, Touch, Rotate, Resize to Content and resize time. Also a Browser Executable path, auto-detected when blank.
+    - `render.rs` drives an installed Chrome, Edge or Chromium over CDP (`chromiumoxide`), with one browser per crawl, at most `threads` tabs, and a private profile.
+    - Internal HTML 200 pages are rendered and extracted from the rendered HTML. The original HTML's title, description, H1, canonical, directives, word count and link count are kept in `orig_*` columns.
+    - Links from both HTML versions are kept, with Link Origin (HTML / Rendered HTML / HTML & Rendered HTML) in the inlinks and outlinks tables.
+    - Stored: Chrome console messages, screenshots, Store Rendered HTML, and blocked resources (requests that robots.txt disallows).
+    - CO2 (mg) and Carbon Rating use everything the browser transferred, or the page's own transfer size in Text Only mode.
+    - **Deviation:** subresources are fetched by the browser itself, not routed through Toad's fetcher. Blocked resources are worked out after the page renders.
+  - **Next:** B, the JavaScript tab filters. C, the Rendered Page and Chrome Console lower tabs, View Source > Rendered HTML, and the High Carbon Rating UI. D, Accessibility (axe-core). E, Custom JavaScript.
 
 ## How to read this
 

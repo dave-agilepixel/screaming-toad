@@ -11,6 +11,26 @@ export interface UserAgentPreset {
 
 const CHROME = "141.0.0.0";
 
+// Spider > Rendering > Window Size presets.
+export interface WindowPreset {
+  name: string;
+  width: number;
+  height: number;
+  scaling_factor: number;
+  mobile: boolean;
+  touch: boolean;
+}
+
+export const WINDOW_PRESETS: WindowPreset[] = [
+  { name: "Googlebot Mobile: Smartphone", width: 411, height: 731, scaling_factor: 1, mobile: true, touch: true },
+  { name: "Googlebot Desktop", width: 1024, height: 768, scaling_factor: 1, mobile: false, touch: false },
+  { name: "Desktop 1366x768", width: 1366, height: 768, scaling_factor: 1, mobile: false, touch: false },
+  { name: "Desktop 1920x1080", width: 1920, height: 1080, scaling_factor: 1, mobile: false, touch: false },
+  { name: "iPhone 15", width: 393, height: 852, scaling_factor: 3, mobile: true, touch: true },
+  { name: "Samsung Galaxy S24", width: 360, height: 780, scaling_factor: 3, mobile: true, touch: true },
+  { name: "iPad Air", width: 820, height: 1180, scaling_factor: 2, mobile: true, touch: true },
+];
+
 export const USER_AGENT_PRESETS: UserAgentPreset[] = [
   {
     name: "Googlebot (Smartphone)",

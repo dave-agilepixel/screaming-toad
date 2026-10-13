@@ -86,7 +86,22 @@ CREATE TABLE IF NOT EXISTS urls (
     sd_rich_errors INTEGER NOT NULL DEFAULT 0,
     sd_rich_warnings INTEGER NOT NULL DEFAULT 0,
     pdf_title TEXT, pdf_subject TEXT, pdf_author TEXT, pdf_keywords TEXT,
-    pdf_created TEXT, pdf_modified TEXT, pdf_pages INTEGER
+    pdf_created TEXT, pdf_modified TEXT, pdf_pages INTEGER,
+    rendered INTEGER NOT NULL DEFAULT 0,
+    render_error TEXT,
+    orig_title TEXT,
+    orig_meta_description TEXT,
+    orig_h1 TEXT,
+    orig_canonical TEXT,
+    orig_directives TEXT,
+    orig_word_count INTEGER,
+    orig_link_count INTEGER,
+    js_link_count INTEGER,
+    js_errors INTEGER,
+    js_warnings INTEGER,
+    blocked_resources INTEGER,
+    co2_mg REAL,
+    carbon_rating TEXT
 );
 
 -- Structured data items and validation issues per URL.
@@ -133,6 +148,27 @@ CREATE TABLE IF NOT EXISTS pdf_text (
 );
 
 -- Store HTML: deflate-compressed page source, one row per URL.
+-- Rendering: JavaScript.
+CREATE TABLE IF NOT EXISTS console_log (
+    url_id INTEGER NOT NULL,
+    ord INTEGER NOT NULL,
+    level TEXT NOT NULL,
+    source TEXT NOT NULL,
+    message TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS screenshots (
+    url_id INTEGER PRIMARY KEY,
+    png BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS rendered_html (
+    url_id INTEGER PRIMARY KEY,
+    body BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS blocked_resources (
+    url_id INTEGER NOT NULL,
+    resource TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS html (
     url_id INTEGER PRIMARY KEY,
     body BLOB NOT NULL
@@ -191,7 +227,8 @@ CREATE TABLE IF NOT EXISTS links (
     path_type TEXT,
     link_path TEXT,
     position TEXT,
-    hreflang TEXT
+    hreflang TEXT,
+    origin TEXT
 );
 
 CREATE INDEX IF NOT EXISTS links_source ON links(source_id);
@@ -203,6 +240,8 @@ CREATE INDEX IF NOT EXISTS custom_values_url ON custom_values(url_id, kind, idx)
 CREATE INDEX IF NOT EXISTS near_duplicates_a ON near_duplicates(a_id);
 CREATE INDEX IF NOT EXISTS sd_items_url ON sd_items(url_id);
 CREATE INDEX IF NOT EXISTS sd_issues_url ON sd_issues(url_id);
+CREATE INDEX IF NOT EXISTS console_log_url ON console_log(url_id);
+CREATE INDEX IF NOT EXISTS blocked_resources_url ON blocked_resources(url_id);
 "#;
 
 /// Columns added to `urls` after the first release, as (name, type). Older
@@ -219,10 +258,25 @@ pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[
     ("pdf_created", "TEXT"),
     ("pdf_modified", "TEXT"),
     ("pdf_pages", "INTEGER"),
+    ("rendered", "INTEGER NOT NULL DEFAULT 0"),
+    ("render_error", "TEXT"),
+    ("orig_title", "TEXT"),
+    ("orig_meta_description", "TEXT"),
+    ("orig_h1", "TEXT"),
+    ("orig_canonical", "TEXT"),
+    ("orig_directives", "TEXT"),
+    ("orig_word_count", "INTEGER"),
+    ("orig_link_count", "INTEGER"),
+    ("js_link_count", "INTEGER"),
+    ("js_errors", "INTEGER"),
+    ("js_warnings", "INTEGER"),
+    ("blocked_resources", "INTEGER"),
+    ("co2_mg", "REAL"),
+    ("carbon_rating", "TEXT"),
 ];
 
 /// Columns added to other tables: (table, column, type).
-pub const ADDED_COLUMNS: &[(&str, &str, &str)] = &[("sd_issues", "source", "TEXT NOT NULL DEFAULT 'Google'")];
+pub const ADDED_COLUMNS: &[(&str, &str, &str)] = &[("sd_issues", "source", "TEXT NOT NULL DEFAULT 'Google'"), ("links", "origin", "TEXT")];
 
 fn columns_of(conn: &rusqlite::Connection, table: &str) -> rusqlite::Result<Vec<String>> {
     let mut stmt = conn.prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))?;

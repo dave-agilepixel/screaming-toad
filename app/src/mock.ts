@@ -269,6 +269,11 @@ const DEFAULT_CONFIG = {
   url_rewrite_rules: [] as { regex: string; replace: string }[], lowercase_urls: false, percent_encoding_case: "uppercase" as const, cdns: [] as string[],
   content_area: { mode: "exclude" as const, check_alt_text: false, include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
   store_html: false, store_pdf: false, extract_pdf_properties: false, extract_pdf_links: false,
+  rendering: {
+    mode: "text_only" as const, screenshots: true, js_error_reporting: false, flatten_shadow_dom: true, flatten_iframes: true, ajax_timeout_secs: 5,
+    window_preset: "Googlebot Mobile: Smartphone", width: 411, height: 731, scaling_factor: 1, mobile: true, touch: true,
+    resize_to_content: true, resize_time_secs: 1, rotate: false, store_rendered_html: false, browser_path: null as string | null,
+  },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   structured_data: { json_ld: true, microdata: true, rdfa: false, schema_org_validation: true, google_rich_results: true, case_sensitive: false }, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
   spelling: { spell_check: false, grammar_check: false, language_mode: "auto" as const, language: "en-US", grammar_server: "", disabled_grammar_rules: [] as string[], ignore_words: [] as string[] },

@@ -44,6 +44,26 @@ export interface StructuredDataConfig {
   case_sensitive: boolean;
 }
 
+export interface RenderingConfig {
+  mode: "text_only" | "javascript";
+  screenshots: boolean;
+  js_error_reporting: boolean;
+  flatten_shadow_dom: boolean;
+  flatten_iframes: boolean;
+  ajax_timeout_secs: number;
+  window_preset: string;
+  width: number;
+  height: number;
+  scaling_factor: number;
+  mobile: boolean;
+  touch: boolean;
+  resize_to_content: boolean;
+  resize_time_secs: number;
+  rotate: boolean;
+  store_rendered_html: boolean;
+  browser_path: string | null;
+}
+
 export interface SpellingConfig {
   spell_check: boolean;
   grammar_check: boolean;
@@ -187,6 +207,7 @@ export interface CrawlConfig {
   structured_data: StructuredDataConfig;
   store_html: boolean;
   store_pdf: boolean;
+  rendering: RenderingConfig;
   extract_pdf_properties: boolean;
   extract_pdf_links: boolean;
   extraction: Extraction;
@@ -220,6 +241,7 @@ export type Field =
   | { kind: "path-limits"; key: string; label: string; help?: string }
   | { kind: "custom-robots"; key: string; label: string; help?: string }
   | { kind: "ua-preset"; label: string }
+  | { kind: "window-preset"; label: string; disabledIf?: Pred }
   | { kind: "link-positions"; key: string; label: string }
   | { kind: "spelling-language"; key: string; label: string; help?: string }
   | { kind: "global-dictionary"; label: string; help?: string }
@@ -395,13 +417,20 @@ export const NODES: Node[] = [
             label: "Store HTML",
             help: "Keep the HTML of internal pages: View Source in the lower window, Bulk Export > All Page Source, and Content / View Source in Compare mode.",
           },
+          {
+            kind: "bool",
+            key: "rendering.store_rendered_html",
+            label: "Store Rendered HTML",
+            help: "Keep the HTML after JavaScript runs: View Source > Rendered HTML. Needs Rendering: JavaScript.",
+            disabledIf: (c) => c.rendering.mode !== "javascript",
+          },
         ],
       },
       {
         fields: [
           {
             kind: "note",
-            text: "Page details (title, meta description, H1/H2, indexability, word count, readability, hash, size, response time, meta robots, X-Robots-Tag) are always extracted. Per-element toggles, Store Rendered HTML and PDF extraction are planned.",
+            text: "Page details (title, meta description, H1/H2, indexability, word count, readability, hash, size, response time, meta robots, X-Robots-Tag) are always extracted. Indexability is always extracted.",
           },
         ],
       },
@@ -433,8 +462,58 @@ export const NODES: Node[] = [
     id: "rendering",
     label: "Rendering",
     parent: "spider",
-    groups: [],
-    planned: "Toad crawls in Text Only mode. JavaScript rendering (headless Chrome), screenshots and the window-size presets are planned.",
+    groups: [
+      {
+        fields: [
+          {
+            kind: "select",
+            key: "rendering.mode",
+            label: "Rendering",
+            options: [
+              ["text_only", "Text Only"],
+              ["javascript", "JavaScript"],
+            ],
+            help: "JavaScript renders internal HTML pages in headless Chrome or Edge and extracts from the rendered HTML; the original HTML is kept for the JavaScript tab.",
+          },
+        ],
+      },
+      {
+        title: "Rendered Page",
+        fields: [
+          { kind: "bool", key: "rendering.screenshots", label: "Enable Rendered Page Screenshots", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.js_error_reporting", label: "Enable JavaScript Error Reporting", help: "Chrome console messages: the Chrome Console Log lower tab and JavaScript > Pages With JavaScript Errors.", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.flatten_shadow_dom", label: "Flatten Shadow DOM", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.flatten_iframes", label: "Flatten iframes", help: "Same-origin iframe content is inlined into the rendered HTML.", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "number", key: "rendering.ajax_timeout_secs", label: "AJAX Timeout", min: 0, step: 0.5, unit: "secs", help: "How long to wait after the page loads before taking the snapshot.", disabledIf: (c) => c.rendering.mode !== "javascript" },
+        ],
+      },
+      {
+        title: "Window Size",
+        fields: [
+          { kind: "window-preset", label: "Window Size", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "number", key: "rendering.width", label: "Width", min: 100, unit: "px", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "number", key: "rendering.height", label: "Height", min: 100, unit: "px", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "number", key: "rendering.scaling_factor", label: "Scaling Factor", min: 0.5, step: 0.25, disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.mobile", label: "Mobile", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.touch", label: "Touch", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.rotate", label: "Rotate", help: "Swap width and height (landscape).", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "bool", key: "rendering.resize_to_content", label: "Resize to Content", help: "Full-page screenshots.", disabledIf: (c) => c.rendering.mode !== "javascript" },
+          { kind: "number", key: "rendering.resize_time_secs", label: "Resize Time", min: 0, step: 0.5, unit: "secs", disabledIf: (c) => c.rendering.mode !== "javascript" },
+        ],
+      },
+      {
+        title: "Browser",
+        fields: [
+          {
+            kind: "text",
+            key: "rendering.browser_path",
+            label: "Browser Executable",
+            placeholder: "Auto-detect Chrome, Edge or Chromium",
+            help: "Toad drives an installed Chrome-family browser rather than bundling one. Leave blank to find it automatically.",
+          },
+        ],
+      },
+    ],
   },
   {
     id: "advanced",

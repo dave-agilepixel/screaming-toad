@@ -218,6 +218,9 @@ pub struct CrawlConfig {
     // internal pages (View Source, page-source exports, Compare "Content").
     pub store_html: bool,
 
+    // Configuration > Spider > Rendering
+    pub rendering: RenderingConfig,
+
     // Configuration > Spider > Extraction > PDF
     /// Parse PDF text: word count, readability, Custom Search, spelling,
     /// and Bulk Export > All PDF Content.
@@ -346,6 +349,7 @@ impl Default for CrawlConfig {
             content_area: ContentArea::default(),
             structured_data: StructuredDataConfig::default(),
             store_html: false,
+            rendering: RenderingConfig::default(),
             store_pdf: false,
             extract_pdf_properties: false,
             extract_pdf_links: false,
@@ -486,6 +490,73 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Spider > Rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RenderMode {
+    #[default]
+    TextOnly,
+    #[serde(rename = "javascript")]
+    JavaScript,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RenderingConfig {
+    pub mode: RenderMode,
+    pub screenshots: bool,
+    pub js_error_reporting: bool,
+    pub flatten_shadow_dom: bool,
+    pub flatten_iframes: bool,
+    /// Wait after the load event before the snapshot.
+    pub ajax_timeout_secs: f64,
+    /// Window Size preset name (the UI fills the fields below from it).
+    pub window_preset: String,
+    pub width: u32,
+    pub height: u32,
+    pub scaling_factor: f64,
+    pub mobile: bool,
+    pub touch: bool,
+    /// Full-page screenshots.
+    pub resize_to_content: bool,
+    pub resize_time_secs: f64,
+    pub rotate: bool,
+    /// Spider > Extraction > Store Rendered HTML.
+    pub store_rendered_html: bool,
+    /// Chrome / Edge / Chromium executable. Empty: auto-detect.
+    pub browser_path: Option<String>,
+}
+
+impl Default for RenderingConfig {
+    fn default() -> Self {
+        Self {
+            mode: RenderMode::TextOnly,
+            screenshots: true,
+            js_error_reporting: false,
+            flatten_shadow_dom: true,
+            flatten_iframes: true,
+            ajax_timeout_secs: 5.0,
+            window_preset: "Googlebot Mobile: Smartphone".into(),
+            width: 411,
+            height: 731,
+            scaling_factor: 1.0,
+            mobile: true,
+            touch: true,
+            resize_to_content: true,
+            resize_time_secs: 1.0,
+            rotate: false,
+            store_rendered_html: false,
+            browser_path: None,
+        }
+    }
+}
+
+impl RenderingConfig {
+    pub fn javascript(&self) -> bool {
+        self.mode == RenderMode::JavaScript
     }
 }
 

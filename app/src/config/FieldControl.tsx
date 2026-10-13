@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
-import { HEADER_NAMES, USER_AGENT_PRESETS, validHeaderName } from "./presets";
+import { HEADER_NAMES, USER_AGENT_PRESETS, WINDOW_PRESETS, validHeaderName } from "./presets";
 import type { RobotsTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomSearch, type Field } from "./schema";
 
@@ -356,6 +356,44 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
             </select>
           </label>
           <p className="hint">A preset fills both fields below. Use Chrome for sites that block bots (403, 406, 429); Googlebot for cookie walls.</p>
+        </div>
+      );
+    }
+
+    case "window-preset": {
+      const r = cfg.rendering;
+      const current = WINDOW_PRESETS.find(
+        (p) => p.width === r.width && p.height === r.height && p.scaling_factor === r.scaling_factor && p.mobile === r.mobile && p.touch === r.touch,
+      );
+      return (
+        <div className="field">
+          <label className="row">
+            <span>
+              <Label text={f.label} highlight={highlight} />
+              <Changed cfg={cfg} defaults={defaults} keys={["rendering.width", "rendering.height", "rendering.scaling_factor", "rendering.mobile", "rendering.touch"]} />
+            </span>
+            <select
+              disabled={f.disabledIf?.(cfg)}
+              value={current?.name ?? "__custom__"}
+              onChange={(e) => {
+                const p = WINDOW_PRESETS.find((x) => x.name === e.target.value);
+                if (!p) return;
+                set("rendering.window_preset", p.name);
+                set("rendering.width", p.width);
+                set("rendering.height", p.height);
+                set("rendering.scaling_factor", p.scaling_factor);
+                set("rendering.mobile", p.mobile);
+                set("rendering.touch", p.touch);
+              }}
+            >
+              {WINDOW_PRESETS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name} ({p.width}×{p.height})
+                </option>
+              ))}
+              {!current && <option value="__custom__">Custom</option>}
+            </select>
+          </label>
         </div>
       );
     }

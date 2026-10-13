@@ -184,7 +184,7 @@ impl Store {
     pub fn inlinks(&self, address: &str) -> anyhow::Result<Table> {
         self.link_table(
             "SELECT l.kind, s.address, l.target, l.anchor, l.alt, CASE WHEN l.follow = 1 THEN 'true' ELSE 'false' END,
-                    l.target_attr, l.rel, t.status_code, t.status, l.path_type, l.link_path, l.position
+                    l.target_attr, l.rel, t.status_code, t.status, l.path_type, l.link_path, l.position, l.origin
              FROM links l JOIN urls s ON s.id = l.source_id LEFT JOIN urls t ON t.id = l.target_id
              WHERE l.target = ?1 ORDER BY s.crawl_order",
             address,
@@ -194,7 +194,7 @@ impl Store {
     pub fn outlinks(&self, address: &str) -> anyhow::Result<Table> {
         self.link_table(
             "SELECT l.kind, s.address, l.target, l.anchor, l.alt, CASE WHEN l.follow = 1 THEN 'true' ELSE 'false' END,
-                    l.target_attr, l.rel, t.status_code, t.status, l.path_type, l.link_path, l.position
+                    l.target_attr, l.rel, t.status_code, t.status, l.path_type, l.link_path, l.position, l.origin
              FROM links l JOIN urls s ON s.id = l.source_id LEFT JOIN urls t ON t.id = l.target_id
              WHERE s.address = ?1 ORDER BY l.id",
             address,
@@ -204,7 +204,7 @@ impl Store {
     fn link_table(&self, sql: &str, address: &str) -> anyhow::Result<Table> {
         let rows = self.query_strings(sql, &[Value::Text(address.to_string())])?;
         Ok(Table {
-            columns: ["Type", "From", "To", "Anchor Text", "Alt Text", "Follow", "Target", "Rel", "Status Code", "Status", "Path Type", "Link Path", "Link Position"]
+            columns: ["Type", "From", "To", "Anchor Text", "Alt Text", "Follow", "Target", "Rel", "Status Code", "Status", "Path Type", "Link Path", "Link Position", "Link Origin"]
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
