@@ -310,6 +310,9 @@ export interface CompareConfig {
   similarity_change_pct: number;
   ignore_non_indexable: boolean;
   url_mapping: UrlMapping[];
+  remove_parameters: string[];
+  remove_all_parameters: boolean;
+  lowercase: boolean;
 }
 
 export interface CompareSummary {
@@ -377,7 +380,8 @@ export const compareApi = {
   crawlInfo: (path: string) => invoke<CrawlInfo>("crawl_info_for", { path }),
   getConfig: () => invoke<CompareConfig>("get_compare_config"),
   setConfig: (config: CompareConfig) => invoke<void>("set_compare_config", { config }),
-  testMapping: (rules: UrlMapping[], url: string) => invoke<string>("test_url_mapping", { rules, url }),
+  testMapping: (config: CompareConfig, url: string) => invoke<string>("test_url_mapping", { config, url }),
+  screenshots: (url: string) => invoke<[string | null, string | null]>("compare_screenshots", { url }),
   run: (current: string, previous: string) => invoke<CompareSummary>("run_compare", { current, previous }),
   open: (path: string) => invoke<CompareSummary>("open_comparison", { path }),
   close: () => invoke<void>("close_comparison"),

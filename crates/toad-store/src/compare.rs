@@ -151,6 +151,12 @@ pub struct CompareConfig {
     pub similarity_change_pct: f64,
     pub ignore_non_indexable: bool,
     pub url_mapping: Vec<UrlMapping>,
+    /// URL Mapping > Remove Parameters: query parameters dropped from
+    /// previous-crawl URLs before matching.
+    pub remove_parameters: Vec<String>,
+    /// URL Mapping > Options [inferred from URL Rewriting's Options tab].
+    pub remove_all_parameters: bool,
+    pub lowercase: bool,
 }
 
 impl Default for CompareConfig {
@@ -160,6 +166,9 @@ impl Default for CompareConfig {
             similarity_change_pct: 10.0,
             ignore_non_indexable: false,
             url_mapping: Vec::new(),
+            remove_parameters: Vec::new(),
+            remove_all_parameters: false,
+            lowercase: false,
         }
     }
 }
@@ -285,10 +294,15 @@ pub struct SourceCompare {
     pub changed: usize,
 }
 
-/// Applies URL Mapping rules, in order, to previous-crawl URLs.
+/// Maps previous-crawl URLs onto current-crawl URLs: Remove Parameters,
+/// then the Regex Replace rules in order, then Options (lowercase), the
+/// same order as Configuration > URL Rewriting.
 #[derive(Debug, Clone, Default)]
 pub struct UrlMapper {
     rules: Vec<(Regex, String)>,
+    remove_parameters: Vec<String>,
+    remove_all_parameters: bool,
+    lowercase: bool,
 }
 
 impl UrlMapper {
@@ -298,15 +312,53 @@ impl UrlMapper {
             .filter(|r| !r.regex.is_empty())
             .map(|r| Ok((Regex::new(&r.regex).with_context(|| format!("URL Mapping regex '{}'", r.regex))?, r.replace.clone())))
             .collect::<anyhow::Result<Vec<_>>>()?;
-        Ok(Self { rules })
+        Ok(Self { rules, ..Default::default() })
+    }
+
+    /// Every URL Mapping setting of a compare configuration.
+    pub fn from_config(cfg: &CompareConfig) -> anyhow::Result<Self> {
+        Ok(Self {
+            remove_parameters: cfg.remove_parameters.iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect(),
+            remove_all_parameters: cfg.remove_all_parameters,
+            lowercase: cfg.lowercase,
+            ..Self::new(&cfg.url_mapping)?
+        })
     }
 
     pub fn map(&self, url: &str) -> String {
-        let mut out = url.to_string();
+        let mut out = self.strip_parameters(url);
         for (re, rep) in &self.rules {
             out = re.replace_all(&out, rep.as_str()).into_owned();
         }
+        if self.lowercase {
+            out = out.to_lowercase();
+        }
         out
+    }
+
+    fn strip_parameters(&self, url: &str) -> String {
+        if !self.remove_all_parameters && self.remove_parameters.is_empty() {
+            return url.to_string();
+        }
+        let Ok(mut u) = url::Url::parse(url) else { return url.to_string() };
+        if u.query().is_none() {
+            return url.to_string();
+        }
+        if self.remove_all_parameters {
+            u.set_query(None);
+            return u.to_string();
+        }
+        let kept: Vec<(String, String)> = u
+            .query_pairs()
+            .filter(|(k, _)| !self.remove_parameters.iter().any(|p| p.eq_ignore_ascii_case(k)))
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        if kept.is_empty() {
+            u.set_query(None);
+        } else {
+            u.query_pairs_mut().clear().extend_pairs(kept);
+        }
+        u.to_string()
     }
 }
 
@@ -407,7 +459,7 @@ fn absolute(p: &Path) -> PathBuf {
 impl Comparison {
     /// Compare two crawls and save the result to `out` (replacing any file there).
     pub fn build(current_path: &Path, previous_path: &Path, out: &Path, cfg: &CompareConfig) -> anyhow::Result<Self> {
-        let mapper = UrlMapper::new(&cfg.url_mapping)?;
+        let mapper = UrlMapper::from_config(cfg)?;
         if absolute(current_path) == absolute(previous_path) {
             bail!("the current and previous crawls are the same file");
         }
@@ -464,7 +516,7 @@ impl Comparison {
         let previous = Store::open(&previous_path)?;
         attach(&current, path)?;
         attach(&previous, path)?;
-        let mapper = UrlMapper::new(&cfg.url_mapping)?;
+        let mapper = UrlMapper::from_config(&cfg)?;
         Ok(Self { current, previous, current_path, previous_path, path: path.to_path_buf(), cfg, mapper })
     }
 
@@ -1021,6 +1073,21 @@ impl Comparison {
         Ok(Table { columns: template.columns, total: rows.len() as u64, rows })
     }
 
+    /// Rendered Page compare: each side's screenshot (JavaScript rendering
+    /// with screenshots on), for side by side display.
+    pub fn screenshots(&self, address: &str) -> anyhow::Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+        let (cur, prev) = self.pair(address)?;
+        let current = match &cur {
+            Some(a) => self.current.screenshot(a)?,
+            None => None,
+        };
+        let previous = match &prev {
+            Some(a) => self.previous.screenshot(a)?,
+            None => None,
+        };
+        Ok((current, previous))
+    }
+
     /// View Source compare for a URL shown in any compare view. Needs Store
     /// HTML in the crawls; a side without stored HTML comes back as None.
     pub fn source_compare(&self, address: &str) -> anyhow::Result<SourceCompare> {
@@ -1160,6 +1227,12 @@ pub fn test_mapping(rules: &[UrlMapping], url: &str) -> anyhow::Result<String> {
     Ok(UrlMapper::new(rules)?.map(url))
 }
 
+/// The Test tab with every URL Mapping setting (Remove Parameters,
+/// Regex Replace, Options).
+pub fn test_mapping_config(cfg: &CompareConfig, url: &str) -> anyhow::Result<String> {
+    Ok(UrlMapper::from_config(cfg)?.map(url))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1174,6 +1247,22 @@ mod tests {
         let groups = vec![UrlMapping { regex: "/m/(.*)".into(), replace: "/$1".into() }];
         assert_eq!(test_mapping(&groups, "https://x.com/m/page").unwrap(), "https://x.com/page");
         assert!(UrlMapper::new(&[UrlMapping { regex: "(".into(), replace: "".into() }]).is_err());
+    }
+
+    #[test]
+    fn mapping_options_and_parameters() {
+        let cfg = CompareConfig {
+            url_mapping: vec![UrlMapping { regex: "staging\\.".into(), replace: "www.".into() }],
+            remove_parameters: vec!["sid".into(), "UTM_SOURCE".into()],
+            lowercase: true,
+            ..Default::default()
+        };
+        let m = UrlMapper::from_config(&cfg).unwrap();
+        assert_eq!(m.map("https://staging.Example.com/A?sid=1&page=2&utm_source=x"), "https://www.example.com/a?page=2");
+        assert_eq!(m.map("https://staging.example.com/b?sid=9"), "https://www.example.com/b");
+        let all = UrlMapper::from_config(&CompareConfig { remove_all_parameters: true, ..Default::default() }).unwrap();
+        assert_eq!(all.map("https://x.com/p?a=1&b=2"), "https://x.com/p");
+        assert_eq!(test_mapping_config(&cfg, "https://staging.example.com/C").unwrap(), "https://www.example.com/c");
     }
 
     #[test]

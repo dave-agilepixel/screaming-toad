@@ -739,6 +739,7 @@ fn main() {
             compare::get_compare_config,
             compare::set_compare_config,
             compare::test_url_mapping,
+            compare::compare_screenshots,
             compare::run_compare,
             compare::open_comparison,
             compare::close_comparison,

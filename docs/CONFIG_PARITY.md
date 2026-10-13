@@ -10,7 +10,7 @@
 
 The scores below are as audited. Since then:
 
-- **Compare mode (§1.34):** built. It covers Change Detection (14 elements, similarity %, ignore non-indexable), URL Mapping (Regex Replace and Test), the six grid states, overview, issues, site-structure deltas, URL details and link diffs, exports and the CLI. Not built yet: the URL Mapping Options and Remove Parameters tabs, View Source and Rendered Page compare (they need WP2 and WP9), and Auto Compare (WP13). See `docs/COMPARE_MODE.md`.
+- **Compare mode (§1.34):** built. It covers Change Detection (14 elements, similarity %, ignore non-indexable), URL Mapping (Regex Replace and Test), the six grid states, overview, issues, site-structure deltas, URL details and link diffs, exports and the CLI. View Source and Rendered Page compare, and the URL Mapping Options and Remove Parameters tabs, were added in WP2 and WP11. Not built yet: Auto Compare (WP13). See `docs/COMPARE_MODE.md`.
 - **WP1, Config foundation:** done.
   - The tree dialog exposes every honoured control: all of Spider > Crawl, Limits, Advanced and Preferences, plus Content Area, Duplicates, robots.txt, URL Rewriting, Speed, User-Agent, HTTP Header, and Custom with case sensitivity, move and duplicate. Store boxes that are not yet honoured are shown disabled. That moves those Partials to Done.
   - Also added: search, "Changed from default" (Ctrl+Shift+C), live validation, and the profiles Load, Load Recent, Save As, Save as Default and Clear Default. The app starts with the saved default.
@@ -183,7 +183,7 @@ The scores below are as audited. Since then:
     - Trusted certificates in the renderer (Chrome uses the OS store).
     - Proxy credentials and site credentials together on one rendered page (site credentials win).
     - The proxy password is stored in plain text in the app settings file.
-- **WP11, Crawl Analysis, Segments and Compare:** in progress.
+- **WP11, Crawl Analysis, Segments and Compare:** done, apart from the items listed below.
   - **Batch A (done): Crawl Analysis.**
     - Crawl Analysis > Configure: Auto-analyse at End of Crawl (on by default, deliberate deviation 2) and the Link Score and Content (near duplicates) areas.
     - Link counts and redirect chains are always worked out when a crawl ends. With Auto-analyse off, the status bar shows "Crawl Analysis Required" and Crawl Analysis > Start runs it.
@@ -211,6 +211,13 @@ The scores below are as audited. Since then:
       - The segments bar in the Issues tab.
       - Segment-specific Looker Studio exports (not applicable).
       - Crawl visualisations (deferred).
+  - **Batch C (done): Compare.**
+    - URL Mapping gains Remove Parameters (named query parameters) and Options (Remove all parameters, Lowercase URLs). The Options contents are [inferred] from URL Rewriting's Options tab.
+    - Mapping runs on previous-crawl URLs in URL Rewriting's order: parameters, then Regex Replace, then lowercase. The Test tab uses all of them. CLI: `--remove-param`, `--remove-all-params`, `--lowercase-urls`.
+    - Rendered Page compare in the lower window: Auto, Current, Previous, or Compare (both screenshots side by side).
+    - **Still open:**
+      - Auto Compare (WP13).
+      - The `--crawl-comparison <id> <id>` spelling. `toad compare` covers it.
 
 ## How to read this
 

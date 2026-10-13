@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { CHANGE_ELEMENTS, CHANGE_ELEMENT_NAMES, compareApi, type CompareConfig, type UrlMapping } from "../api";
 
 type Section = "change" | "mapping";
-type MappingTab = "regex" | "test";
+type MappingTab = "regex" | "test" | "options" | "parameters";
 
 /** Config > Compare: "Crawl Comparison Configuration". */
 export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => void }) {
@@ -23,7 +23,7 @@ export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => 
       return;
     }
     compareApi
-      .testMapping(cfg.url_mapping, testUrl.trim())
+      .testMapping({ ...cfg, url_mapping: cfg.url_mapping.filter((r) => r.regex.trim() !== "") }, testUrl.trim())
       .then((r) => setTestResult(r))
       .catch((e) => setTestResult(String(e)));
   }, [cfg, testUrl]);
@@ -36,7 +36,11 @@ export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => 
 
   const save = async () => {
     try {
-      await compareApi.setConfig({ ...cfg, url_mapping: cfg.url_mapping.filter((r) => r.regex.trim() !== "") });
+      await compareApi.setConfig({
+        ...cfg,
+        url_mapping: cfg.url_mapping.filter((r) => r.regex.trim() !== ""),
+        remove_parameters: cfg.remove_parameters.map((p) => p.trim()).filter(Boolean),
+      });
       onClose(true);
     } catch (e) {
       setError(String(e));
@@ -114,7 +118,40 @@ export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => 
                   <button className={mappingTab === "test" ? "active" : ""} onClick={() => setMappingTab("test")}>
                     Test
                   </button>
+                  <button className={mappingTab === "options" ? "active" : ""} onClick={() => setMappingTab("options")}>
+                    Options
+                  </button>
+                  <button className={mappingTab === "parameters" ? "active" : ""} onClick={() => setMappingTab("parameters")}>
+                    Remove Parameters
+                  </button>
                 </div>
+                {mappingTab === "options" && (
+                  <div>
+                    <p className="hint">Applied to previous crawl URLs after Remove Parameters and Regex Replace.</p>
+                    <label className="check wide">
+                      <input type="checkbox" checked={cfg.remove_all_parameters} onChange={(e) => set("remove_all_parameters", e.target.checked)} />
+                      Remove all parameters
+                    </label>
+                    <label className="check wide">
+                      <input type="checkbox" checked={cfg.lowercase} onChange={(e) => set("lowercase", e.target.checked)} />
+                      Lowercase URLs
+                    </label>
+                  </div>
+                )}
+                {mappingTab === "parameters" && (
+                  <div className="form">
+                    <p className="hint">Query parameters to drop from previous crawl URLs before matching, one per line (for example session IDs or tracking tags).</p>
+                    <label className="wide">
+                      <textarea
+                        rows={8}
+                        value={cfg.remove_parameters.join("\n")}
+                        onChange={(e) => set("remove_parameters", e.target.value.split("\n"))}
+                        placeholder={"sid\nutm_source"}
+                        spellCheck={false}
+                      />
+                    </label>
+                  </div>
+                )}
                 {mappingTab === "regex" && (
                   <div className="rules">
                     <p className="hint">
@@ -169,7 +206,15 @@ export function CompareConfigDialog({ onClose }: { onClose: (saved: boolean) => 
         <div className="modal-actions">
           <button
             onClick={() =>
-              setCfg({ elements: [...CHANGE_ELEMENTS], similarity_change_pct: 10, ignore_non_indexable: false, url_mapping: [] })
+              setCfg({
+                elements: [...CHANGE_ELEMENTS],
+                similarity_change_pct: 10,
+                ignore_non_indexable: false,
+                url_mapping: [],
+                remove_parameters: [],
+                remove_all_parameters: false,
+                lowercase: false,
+              })
             }
           >
             Reset to defaults

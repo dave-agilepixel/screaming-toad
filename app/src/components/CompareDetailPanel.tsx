@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { compareApi, type LinkState, type SourceCompare, type Table } from "../api";
 import { SourceCompareView, SourceView } from "./SourceView";
 
-type View = "details" | "inlinks" | "outlinks" | "source";
+type View = "details" | "inlinks" | "outlinks" | "source" | "rendered";
 type SourceChoice = "Auto" | "Current" | "Previous" | "Compare";
 type LinkChoice = "Auto" | LinkState;
 
@@ -11,6 +11,7 @@ const LABELS: Record<View, string> = {
   inlinks: "Inlinks",
   outlinks: "Outlinks",
   source: "View Source",
+  rendered: "Rendered Page",
 };
 
 const LINK_TEXT: Record<LinkState, string> = {
@@ -34,6 +35,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
   const [onlyChanged, setOnlyChanged] = useState(false);
   const [table, setTable] = useState<Table | null>(null);
   const [src, setSrc] = useState<SourceCompare | null>(null);
+  const [shots, setShots] = useState<[string | null, string | null] | null>(null);
   const [sourceChoice, setSourceChoice] = useState<SourceChoice>("Auto");
   const [showDifferences, setShowDifferences] = useState(true);
   const [onlyChanges, setOnlyChanges] = useState(false);
@@ -48,6 +50,13 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
     if (view === "source") {
       setSrc(null);
       compareApi.source(url).then((s) => live && setSrc(s)).catch(console.error);
+      return () => {
+        live = false;
+      };
+    }
+    if (view === "rendered") {
+      setShots(null);
+      compareApi.screenshots(url).then((s) => live && setShots(s)).catch(console.error);
       return () => {
         live = false;
       };
@@ -75,7 +84,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
             {LABELS[v]}
           </button>
         ))}
-        {view === "source" ? (
+        {view === "source" || view === "rendered" ? (
           <>
             <select value={sourceChoice} onChange={(e) => setSourceChoice(e.target.value as SourceChoice)} title="Compare: side-by-side comparison of current and previous URL">
               {(["Auto", "Current", "Previous", "Compare"] as SourceChoice[]).map((s) => (
@@ -84,7 +93,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
                 </option>
               ))}
             </select>
-            {sourceMode === "Compare" && (
+            {view === "source" && sourceMode === "Compare" && (
               <>
                 <label className="check inline">
                   <input type="checkbox" checked={showDifferences} onChange={(e) => setShowDifferences(e.target.checked)} /> Show Differences
@@ -110,7 +119,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
           </label>
         )}
         <span className="detail-url" title={url ?? ""}>
-          {url ? (view === "details" || view === "source" ? url : `${LINK_TEXT[linkState]} · ${url}`) : "Select a URL"}
+          {url ? (view === "details" || view === "source" || view === "rendered" ? url : `${LINK_TEXT[linkState]} · ${url}`) : "Select a URL"}
         </span>
       </div>
       <div className="detail-body">
@@ -119,6 +128,19 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
           <SourceCompareView current={src.current} previous={src.previous} lines={src.lines} showDifferences={showDifferences} onlyChanges={onlyChanges} />
         )}
         {url && view === "source" && src && sourceMode !== "Compare" && <SourceView source={sourceMode === "Current" ? src.current : src.previous} />}
+        {url && view === "rendered" && shots && (
+          <div className={sourceMode === "Compare" ? "screenshot-pair" : ""}>
+            {(sourceMode === "Compare" ? (["Current", "Previous"] as const) : [sourceMode as "Current" | "Previous"]).map((side) => {
+              const shot = side === "Current" ? shots[0] : shots[1];
+              return (
+                <div key={side} className="screenshot">
+                  {sourceMode === "Compare" && <h4>{side}</h4>}
+                  {shot ? <img src={shot} alt={`${side} crawl: ${url}`} /> : <p className="empty">No screenshot in the {side.toLowerCase()} crawl.</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         {url && table && view === "details" && (
           <table className="kv compare-kv">
             <thead>
@@ -161,7 +183,7 @@ export function CompareDetailPanel({ url, refreshKey, previousSide }: Props) {
             </tbody>
           </table>
         )}
-        {url && table && view !== "source" && rows.length === 0 && <p className="empty">Nothing to show.</p>}
+        {url && table && view !== "source" && view !== "rendered" && rows.length === 0 && <p className="empty">Nothing to show.</p>}
       </div>
     </section>
   );

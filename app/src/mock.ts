@@ -190,6 +190,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "compare_screenshots":
+      return [null, null] as T;
     case "get_segments_overview":
       return {
         columns: ["Segment", "URLs", "Indexable", "Non-Indexable", "Issues", "Warnings", "Opportunities"],
@@ -287,7 +289,7 @@ const COMPARE_SUMMARY: CompareSummary = {
   previous_urls: 1180,
   in_both: 1143,
   content_available: true,
-  config: { elements: ["PageTitles", "Content"], similarity_change_pct: 10, ignore_non_indexable: false, url_mapping: [] },
+  config: { elements: ["PageTitles", "Content"], similarity_change_pct: 10, ignore_non_indexable: false, url_mapping: [], remove_parameters: [], remove_all_parameters: false, lowercase: false },
 };
 
 const COMPARE_OVERVIEW: CompareOverviewRow[] = [

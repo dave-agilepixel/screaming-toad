@@ -166,6 +166,16 @@ struct CompareArgs {
     /// Ignore non-indexable URLs for Change Detection.
     #[arg(long)]
     ignore_non_indexable: bool,
+    /// URL Mapping > Remove Parameters: drop these query parameters from
+    /// previous-crawl URLs (comma-separated or repeated).
+    #[arg(long, value_delimiter = ',')]
+    remove_param: Vec<String>,
+    /// URL Mapping > Options: drop every query parameter from previous-crawl URLs.
+    #[arg(long)]
+    remove_all_params: bool,
+    /// URL Mapping > Options: lowercase previous-crawl URLs.
+    #[arg(long)]
+    lowercase_urls: bool,
 }
 
 /// Authentication, proxy and trusted certificates.
@@ -642,6 +652,9 @@ fn compare(args: CompareArgs) -> anyhow::Result<()> {
         similarity_change_pct: args.similarity_change,
         ignore_non_indexable: args.ignore_non_indexable,
         url_mapping,
+        remove_parameters: args.remove_param.clone(),
+        remove_all_parameters: args.remove_all_params,
+        lowercase: args.lowercase_urls,
     };
     let started = Instant::now();
     let cmp = Comparison::build(&current, &previous, &args.out, &cfg)?;

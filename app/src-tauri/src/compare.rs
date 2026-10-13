@@ -6,8 +6,8 @@ use serde::Deserialize;
 use std::path::Path;
 use tauri::{AppHandle, Manager, State};
 use toad_store::compare::{
-    test_mapping, ChangeElement, CompareConfig, CompareIssueRow, CompareOverviewRow, CompareState, CompareSummary, LinkState,
-    SourceCompare, UrlMapping,
+    ChangeElement, CompareConfig, CompareIssueRow, CompareOverviewRow, CompareState, CompareSummary, LinkState,
+    SourceCompare,
 };
 use toad_store::{Comparison, CrawlEntry, FilterDef, RowQuery, TabDef, Table};
 
@@ -35,14 +35,25 @@ pub fn get_compare_config(state: State<'_, AppState>) -> CmdResult<CompareConfig
 
 #[tauri::command]
 pub fn set_compare_config(state: State<'_, AppState>, config: CompareConfig) -> CmdResult<()> {
-    toad_store::compare::UrlMapper::new(&config.url_mapping).map_err(err)?;
+    toad_store::compare::UrlMapper::from_config(&config).map_err(err)?;
     *state.compare_config.lock().map_err(err)? = config;
     Ok(())
 }
 
 #[tauri::command]
-pub fn test_url_mapping(rules: Vec<UrlMapping>, url: String) -> CmdResult<String> {
-    test_mapping(&rules, &url).map_err(err)
+pub fn test_url_mapping(config: CompareConfig, url: String) -> CmdResult<String> {
+    toad_store::compare::test_mapping_config(&config, &url).map_err(err)
+}
+
+/// Rendered Page compare: (current, previous) screenshots as PNG data URLs.
+#[tauri::command]
+pub fn compare_screenshots(state: State<'_, AppState>, url: String) -> CmdResult<(Option<String>, Option<String>)> {
+    use base64::Engine;
+    let enc = |png: Option<Vec<u8>>| png.map(|p| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(p)));
+    with_cmp(&state, |c| {
+        let (cur, prev) = c.screenshots(&url)?;
+        Ok((enc(cur), enc(prev)))
+    })
 }
 
 /// Compare two crawls with the current Compare configuration. The result is

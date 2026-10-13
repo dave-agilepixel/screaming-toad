@@ -394,3 +394,13 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .segment-card .button-row + .button-row {
   margin-top: 4px;
 }
+
+.screenshot-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.screenshot-pair h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+}
