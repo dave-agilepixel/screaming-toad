@@ -190,6 +190,11 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "get_notification_settings":
+      return { smtp_host: "smtp.example.com", smtp_port: 587, security: "start_tls", username: "toad@example.com", from: "", default_recipients: ["seo@example.com"] } as T;
+    case "set_notification_settings":
+    case "send_test_email":
+      return undefined as T;
     case "multi_export":
       return ["C:/exports/internal_all.csv"] as T;
     case "get_export_presets":

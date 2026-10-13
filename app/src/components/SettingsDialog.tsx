@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { crawlsApi, type AppSettings, type ProxyConfig } from "../api";
+import { crawlsApi, notifyApi, type AppSettings, type NotificationSettings, type ProxyConfig } from "../api";
+import { ApiKeyField } from "./ApiFields";
 
 const PRESETS: [string, number | null][] = [
   ["Never", null],
@@ -12,9 +13,12 @@ const PRESETS: [string, number | null][] = [
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [s, setS] = useState<AppSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mail, setMail] = useState<NotificationSettings | null>(null);
+  const [mailNote, setMailNote] = useState<string | null>(null);
 
   useEffect(() => {
     crawlsApi.getSettings().then(setS).catch((e) => setError(String(e)));
+    notifyApi.get().then(setMail).catch((e) => setError(String(e)));
   }, []);
 
   if (!s) return null;
@@ -35,8 +39,21 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setCerts([...certs, ...paths.filter((p) => !certs.includes(p))]);
   };
 
+  const testMail = async () => {
+    if (!mail) return;
+    setMailNote("Sending…");
+    try {
+      await notifyApi.set(mail);
+      await notifyApi.test([]);
+      setMailNote(`Sent to ${mail.default_recipients.join(", ")}.`);
+    } catch (e) {
+      setMailNote(String(e));
+    }
+  };
+
   const apply = async () => {
     try {
+      if (mail) await notifyApi.set(mail);
       await crawlsApi.setSettings(s);
       onClose();
     } catch (e) {
@@ -151,6 +168,45 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </fieldset>
+        {mail && (
+          <fieldset className="config-group">
+            <legend>Notifications (Email)</legend>
+            <p className="hint">Email a summary when a scheduled crawl (or a CLI crawl with --email-on-complete) finishes.</p>
+            <div className="field">
+              <div className="button-row">
+                <input className="grow" placeholder="SMTP server" value={mail.smtp_host} onChange={(e) => setMail({ ...mail, smtp_host: e.target.value })} spellCheck={false} />
+                <input type="number" min={1} max={65535} value={mail.smtp_port} onChange={(e) => setMail({ ...mail, smtp_port: Number(e.target.value) })} style={{ width: "6em" }} />
+                <select value={mail.security} onChange={(e) => setMail({ ...mail, security: e.target.value as NotificationSettings["security"] })}>
+                  <option value="start_tls">STARTTLS</option>
+                  <option value="tls">TLS</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <div className="button-row">
+                <input className="grow" placeholder="Username" value={mail.username} onChange={(e) => setMail({ ...mail, username: e.target.value })} spellCheck={false} />
+                <input className="grow" placeholder="From (default: username)" value={mail.from} onChange={(e) => setMail({ ...mail, from: e.target.value })} spellCheck={false} />
+              </div>
+            </div>
+            <ApiKeyField secret="smtp_password" label="Password" help="Saved in the OS credential store. For Gmail or Outlook, use an app password." />
+            <div className="field">
+              <label className="stack">
+                Send to
+                <input
+                  value={mail.default_recipients.join(", ")}
+                  placeholder="you@example.com, team@example.com"
+                  onChange={(e) => setMail({ ...mail, default_recipients: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })}
+                  spellCheck={false}
+                />
+              </label>
+              <div className="button-row">
+                <button onClick={testMail} disabled={!mail.smtp_host.trim() || mail.default_recipients.length === 0}>
+                  Send Test Email
+                </button>
+                {mailNote && <span className="hint">{mailNote}</span>}
+              </div>
+            </div>
+          </fieldset>
+        )}
         {error && <p className="error">{error}</p>}
         <div className="modal-actions">
           <span className="spacer" />

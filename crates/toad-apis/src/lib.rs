@@ -10,7 +10,9 @@
 
 pub mod ai;
 pub mod google;
+pub mod keystore;
 pub mod links;
+pub mod notify;
 pub mod psi;
 mod throttle;
 
@@ -81,8 +83,10 @@ pub mod keys {
     pub const MAJESTIC: &str = "majestic_key";
     /// Moz: "access_id:secret_key".
     pub const MOZ: &str = "moz_key";
+    /// Notifications: the SMTP account's password.
+    pub const SMTP: &str = "smtp_password";
     pub const ALL: &[&str] =
-        &[PSI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, OPENAI, ANTHROPIC, GEMINI, COMPATIBLE, AHREFS, MAJESTIC, MOZ];
+        &[PSI, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, OPENAI, ANTHROPIC, GEMINI, COMPATIBLE, AHREFS, MAJESTIC, MOZ, SMTP];
 }
 
 /// API keys and tokens, held in memory only.

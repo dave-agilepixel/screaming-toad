@@ -261,6 +261,21 @@ export interface ExportPreset {
   export: MultiExport;
 }
 
+export interface NotificationSettings {
+  smtp_host: string;
+  smtp_port: number;
+  security: "start_tls" | "tls" | "none";
+  username: string;
+  from: string;
+  default_recipients: string[];
+}
+
+export const notifyApi = {
+  get: () => invoke<NotificationSettings>("get_notification_settings"),
+  set: (settings: NotificationSettings) => invoke<void>("set_notification_settings", { settings }),
+  test: (to: string[]) => invoke<void>("send_test_email", { to }),
+};
+
 export const exportApi = {
   multiExport: (spec: MultiExport, dir: string) => invoke<string[]>("multi_export", { spec, dir }),
   presets: () => invoke<ExportPreset[]>("get_export_presets"),

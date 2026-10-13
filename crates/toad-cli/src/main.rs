@@ -389,6 +389,10 @@ struct CrawlArgs {
     /// Write an images sitemap into the output folder after the crawl.
     #[arg(long)]
     create_images_sitemap: bool,
+    /// Email a summary when the crawl ends (File > Settings > Notifications
+    /// in the app). Addresses comma-separated; none: the default recipients.
+    #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "ADDRESSES")]
+    email_on_complete: Option<String>,
     /// Folder for exports.
     #[arg(long, default_value = "exports")]
     output_folder: PathBuf,
@@ -525,7 +529,7 @@ async fn main() -> anyhow::Result<()> {
                 bail!("no API is switched on in this crawl's configuration; pass --config with API Access settings");
             }
             let start = store.meta("start_url")?.and_then(|u| Url::parse(&u).ok());
-            let mut runner = toad_apis::ApiRunner::new(cfg, toad_apis::Secrets::from_env()).with_progress(std::sync::Arc::new(|p: toad_apis::ApiProgress| {
+            let mut runner = toad_apis::ApiRunner::new(cfg, toad_apis::Secrets::load()).with_progress(std::sync::Arc::new(|p: toad_apis::ApiProgress| {
                 eprint!("\r{} {}/{}   ", p.source, p.done, p.total);
             }));
             if let Some(s) = start {
@@ -740,7 +744,7 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     if let Some(parent) = args.out.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
-    let runner = cfg.apis.any_enabled().then(|| toad_apis::ApiRunner::new(cfg.clone(), toad_apis::Secrets::from_env()).with_site(start.clone()));
+    let runner = cfg.apis.any_enabled().then(|| toad_apis::ApiRunner::new(cfg.clone(), toad_apis::Secrets::load()).with_site(start.clone()));
     // Search Console and GA4 before the crawl, so their URLs can be crawled too.
     let mut seeds = seeds;
     let bulk = match &runner {
@@ -781,22 +785,42 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
 
     print_issues(&store, 15)?;
 
+    let mut written: Vec<PathBuf> = Vec::new();
     if !multi.items.is_empty() {
         for f in store.multi_export(&multi, &args.output_folder)? {
             println!("Exported {}", f.display());
+            written.push(f);
         }
     }
     if args.create_sitemap {
         for f in store.generate_sitemap(&args.output_folder, &SitemapOptions::default())? {
             println!("Sitemap {}", f.display());
+            written.push(f);
         }
     }
     if args.create_images_sitemap {
         for f in store.generate_images_sitemap(&args.output_folder, &SitemapOptions::default(), &toad_store::ImageSitemapOptions::default())? {
             println!("Images sitemap {}", f.display());
+            written.push(f);
         }
     }
+    if let Some(to) = &args.email_on_complete {
+        let mut summary = toad_apis::notify::CrawlSummary::from_store(&store)?;
+        summary.files = written.iter().map(|p| p.display().to_string()).collect();
+        let to: Vec<String> = to.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect();
+        email(&summary, &to).await;
+    }
     Ok(())
+}
+
+/// Send the crawl-complete email; a failure is reported, not fatal.
+async fn email(summary: &toad_apis::notify::CrawlSummary, to: &[String]) {
+    let settings = toad_apis::notify::load_settings();
+    let password = toad_apis::Secrets::load().get(toad_apis::keys::SMTP).map(str::to_string);
+    match toad_apis::notify::notify(&settings, password.as_deref(), to, summary).await {
+        Ok(()) => println!("Emailed the crawl summary."),
+        Err(e) => eprintln!("Email not sent: {e:#}"),
+    }
 }
 
 /// --export-tabs, --bulk-export, --save-report and --export-preset as one Multi Export.

@@ -9,19 +9,13 @@ use tauri::{AppHandle, Emitter, State};
 use toad_apis::{keys, ApiRunner, Secrets};
 use toad_core::CrawlConfig;
 
-const SERVICE: &str = "Screaming Toad";
-
-fn entry(key: &str) -> CmdResult<keyring::Entry> {
-    keyring::Entry::new(SERVICE, key).map_err(err)
-}
-
 fn read_secret(key: &str) -> Option<String> {
-    entry(key).ok()?.get_password().ok().filter(|s| !s.is_empty())
+    toad_apis::keystore::get(key)
 }
 
 /// Every stored secret, for one run.
 pub fn load_secrets() -> Secrets {
-    Secrets::new(keys::ALL.iter().filter_map(|k| read_secret(k).map(|v| (k.to_string(), v))).collect())
+    Secrets::load()
 }
 
 /// An API runner for a crawl, reporting progress to the UI.
@@ -48,15 +42,33 @@ pub fn set_api_secret(key: String, value: String) -> CmdResult<()> {
     if !keys::ALL.contains(&key.as_str()) {
         return Err(format!("unknown key {key}"));
     }
-    let e = entry(&key)?;
-    if value.trim().is_empty() {
-        match e.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(x) => Err(err(x)),
+    toad_apis::keystore::set(&key, &value).map_err(err)
+}
+
+/// File > Settings > Notifications.
+#[tauri::command]
+pub fn get_notification_settings() -> toad_apis::notify::NotificationSettings {
+    toad_apis::notify::load_settings()
+}
+
+#[tauri::command]
+pub fn set_notification_settings(settings: toad_apis::notify::NotificationSettings) -> CmdResult<()> {
+    toad_apis::notify::save_settings(&settings).map_err(err)
+}
+
+/// Send a test email with the open crawl's summary (or an empty one).
+#[tauri::command]
+pub async fn send_test_email(state: State<'_, AppState>, to: Vec<String>) -> CmdResult<()> {
+    let summary = {
+        let guard = state.store.lock().map_err(err)?;
+        match guard.as_ref() {
+            Some(s) => toad_apis::notify::CrawlSummary::from_store(s).map_err(err)?,
+            None => toad_apis::notify::CrawlSummary { name: "Test email".into(), ..Default::default() },
         }
-    } else {
-        e.set_password(value.trim()).map_err(err)
-    }
+    };
+    let settings = toad_apis::notify::load_settings();
+    let password = read_secret(keys::SMTP);
+    toad_apis::notify::notify(&settings, password.as_deref(), &to, &summary).await.map_err(err)
 }
 
 /// Open a URL in the default browser.
