@@ -112,6 +112,20 @@ The scores below are as audited. Since then:
     - A full Re-run after changing the language or content area (it needs Store HTML to re-extract text).
     - PDF spelling (WP8).
     - The per-language Grammar Rules checklist; it is a rule-id list instead.
+- **WP8, Structured data and PDF:** done, apart from the items listed below.
+  - **Structured Data:**
+    - Separate JSON-LD, Microdata and RDFa toggles (JSON-LD, Microdata and both validations on by default; deliberate deviation 1).
+    - A new RDFa parser.
+    - Schema.org Validation against the bundled vocabulary (`scripts/gen_schemaorg.py`): unknown types and properties, and properties not valid for the type or its ancestors.
+    - Google Rich Result Feature Validation as a separate toggle, with its own filters and columns.
+    - Case-Sensitive, the RDFa URLs filter, and Reports > Google Rich Results Features Summary.
+  - **PDF:**
+    - Store PDF: text, giving word count, readability, Custom Search (the tab includes PDFs) and spelling, plus Bulk Export > All PDF Content.
+    - Extract PDF Properties: Subject, Author, Created, Modified and Page Count columns; Title and Keywords fill Title 1 and Meta Keywords.
+    - Extract PDF Links: URI annotations, with Link Position "PDF page N"; they are followed for discovery.
+    - Parsing runs under `catch_unwind`.
+  - **Fixed along the way:** List mode now audits every uploaded URL fully, whatever its host. Before, only URLs on the first URL's host were parsed.
+  - **Not done:** PDF link anchor text (`lopdf` gives the link rectangle, not the text under it), and storing PDF files themselves (Bulk Export > All PDF Documents).
 
 ## How to read this
 

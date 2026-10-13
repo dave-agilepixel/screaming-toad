@@ -273,7 +273,8 @@ impl Crawler {
                 let rules = self.rules.clone();
                 let hsts = self.hsts.clone();
                 let language = self.language.clone();
-                let is_internal = self.scope.is_internal(&item.url);
+                // List mode audits every uploaded URL fully, whatever its host.
+                let is_internal = self.scope.is_internal(&item.url) || (self.cfg.mode == crate::config::Mode::List && item.depth == 0);
                 tasks.spawn(async move {
                     let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts, &language).await;
                     (item, record)
@@ -714,6 +715,48 @@ async fn process(
     let mut self_refresh = false;
     if res.truncated {
         r.error = Some(format!("Not processed: larger than the Max Page Size ({} KB)", cfg.max_page_size_kb));
+    } else if is_internal
+        && r.status_code == 200
+        && r.content_type.to_ascii_lowercase().contains("pdf")
+        && (cfg.store_pdf || cfg.extract_pdf_properties || cfg.extract_pdf_links)
+    {
+        match crate::pdf::parse(&res.body, &item.url) {
+            Ok(doc) => {
+                let mut page = crate::model::PageData::default();
+                // Title and Keywords are always read when a PDF is parsed.
+                page.titles = doc.info.title.clone().into_iter().collect();
+                page.meta_keywords = doc.info.keywords.clone().into_iter().collect();
+                if cfg.store_pdf {
+                    let text = doc.text.split_whitespace().collect::<Vec<_>>().join(" ");
+                    crate::extract::text_metrics(&mut page, &text);
+                    if !rules.is_empty() {
+                        let targets = crate::custom::SearchTargets {
+                            html: &text,
+                            head_html: "",
+                            body_html: &text,
+                            page_text: &text,
+                            page_text_no_anchors: &text,
+                            content_text: &text,
+                            xpath: None,
+                        };
+                        page.custom_search = crate::custom::run_searches(rules, &targets);
+                    }
+                    if language.enabled() {
+                        page.language_issues = language.check(&text, None).await;
+                    }
+                    page.content_text = text.clone();
+                    r.pdf_text = Some(text);
+                }
+                if cfg.extract_pdf_links {
+                    page.links = doc.links;
+                }
+                if cfg.extract_pdf_properties {
+                    r.pdf = Some(doc.info);
+                }
+                r.page = Some(page);
+            }
+            Err(e) => r.error = Some(format!("PDF could not be read: {e}")),
+        }
     } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
         let html = String::from_utf8_lossy(&res.body);
         let mut page = extract(&html, &item.url, cfg, rules);

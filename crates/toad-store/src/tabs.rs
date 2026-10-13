@@ -182,6 +182,9 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         if !hide.is_empty() {
             t.base = format!("({}) AND NOT ({})", t.base, hide.join(" OR "));
         }
+        if t.name == "Internal" && cfg.extract_pdf_properties {
+            t.columns.extend(["PDF Title", "PDF Subject", "PDF Author", "PDF Creation Date", "PDF Modification Date", "PDF Page Count"]);
+        }
         if t.name == "Internal" && x.cookies {
             t.columns.push("Cookies");
         }
@@ -628,7 +631,12 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Rich Result Validation Warnings", "u.sd_rich_warnings > 0".into(), Some((Opportunity, Low)), "Missing properties Google recommends for a rich result."),
             ],
         },
-        custom_search_tab(cfg, html),
+        // Custom Search covers internal HTML pages and, with Store PDF, PDFs.
+        custom_search_tab(cfg, &if cfg.store_pdf {
+            format!("({html} OR (u.is_internal = 1 AND u.status_code = 200 AND u.content_type LIKE '%pdf%'))")
+        } else {
+            html.to_string()
+        }),
         custom_extraction_tab(cfg, html),
     ]
 }

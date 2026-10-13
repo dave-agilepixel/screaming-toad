@@ -126,6 +126,12 @@ CREATE TABLE IF NOT EXISTS language_errors (
 );
 CREATE INDEX IF NOT EXISTS language_errors_url ON language_errors(url_id);
 
+-- Store PDF: deflate-compressed PDF text, one row per URL.
+CREATE TABLE IF NOT EXISTS pdf_text (
+    url_id INTEGER PRIMARY KEY,
+    body BLOB NOT NULL
+);
+
 -- Store HTML: deflate-compressed page source, one row per URL.
 CREATE TABLE IF NOT EXISTS html (
     url_id INTEGER PRIMARY KEY,

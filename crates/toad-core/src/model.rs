@@ -177,6 +177,11 @@ pub struct PageRecord {
     /// The page's HTML, when Store HTML is on (internal HTML pages only).
     #[serde(skip)]
     pub html: Option<String>,
+    /// PDF document properties (Extract PDF Properties).
+    pub pdf: Option<crate::pdf::PdfInfo>,
+    /// PDF text (Store PDF), for Bulk Export > All PDF Content.
+    #[serde(skip)]
+    pub pdf_text: Option<String>,
 }
 
 impl PageRecord {

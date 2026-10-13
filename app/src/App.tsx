@@ -33,6 +33,7 @@ type CompareStatus = "idle" | "comparing" | "ready";
 
 const BROWSE = "__browse__";
 const PAGE_SOURCE = "__page_source__";
+const PDF_TEXT = "__pdf_text__";
 
 function crawlLabel(c: CrawlInfo): string {
   const when = c.modified ? new Date(c.modified * 1000).toLocaleString() : "";
@@ -291,6 +292,17 @@ export default function App() {
 
   const runReport = async (name: string) => {
     if (!name) return;
+    if (name === PDF_TEXT) {
+      const dir = await open({ directory: true, title: "Choose a folder for the PDF text files" });
+      if (typeof dir !== "string") return;
+      try {
+        const n = await api.exportPdfText(dir);
+        setMessage(n ? `All PDF Content: ${n.toLocaleString()} PDFs → ${dir}` : "No PDF text stored. Switch on Configuration > Spider > Extraction > Store PDF and crawl again.");
+      } catch (e) {
+        setMessage(String(e));
+      }
+      return;
+    }
     if (name === PAGE_SOURCE) {
       const dir = await open({ directory: true, title: "Choose a folder for the page source files" });
       if (typeof dir !== "string") return;
@@ -507,6 +519,9 @@ export default function App() {
               <optgroup label="Bulk Export">
                 <option value={PAGE_SOURCE} title="One .html file per page, plus index.csv (needs Store HTML)">
                   All Page Source (to folder)
+                </option>
+                <option value={PDF_TEXT} title="One .txt file per PDF, plus index.csv (needs Store PDF)">
+                  All PDF Content (to folder)
                 </option>
                 {reports.filter((r) => r.kind === "BulkExport").map((r) => (
                   <option key={r.name} value={r.name} title={r.description}>

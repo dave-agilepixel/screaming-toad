@@ -218,6 +218,15 @@ pub struct CrawlConfig {
     // internal pages (View Source, page-source exports, Compare "Content").
     pub store_html: bool,
 
+    // Configuration > Spider > Extraction > PDF
+    /// Parse PDF text: word count, readability, Custom Search, spelling,
+    /// and Bulk Export > All PDF Content.
+    pub store_pdf: bool,
+    /// Subject, Author, Creation/Modification Date and Page Count columns.
+    pub extract_pdf_properties: bool,
+    /// Record links found in PDFs (with their page) for discovery and inlinks.
+    pub extract_pdf_links: bool,
+
     // Configuration > Content > Duplicates
     pub near_duplicates: bool,
     pub near_duplicate_threshold: f64,
@@ -337,6 +346,9 @@ impl Default for CrawlConfig {
             content_area: ContentArea::default(),
             structured_data: StructuredDataConfig::default(),
             store_html: false,
+            store_pdf: false,
+            extract_pdf_properties: false,
+            extract_pdf_links: false,
             extraction: Extraction::default(),
             near_duplicates: false,
             near_duplicate_threshold: 0.90,

@@ -219,6 +219,15 @@ struct CrawlArgs {
     /// Store HTML (View Source, page-source export, Compare > Content).
     #[arg(long)]
     store_html: bool,
+    /// Read PDF text (word count, Custom Search, spelling on PDFs).
+    #[arg(long)]
+    store_pdf: bool,
+    /// PDF Subject, Author, dates and page count columns.
+    #[arg(long)]
+    pdf_properties: bool,
+    /// Follow and report links inside PDFs.
+    #[arg(long)]
+    pdf_links: bool,
     /// Spell check page text. Dictionaries are downloaded to ~/.toad/dictionaries
     /// on first use; words in ~/.toad/dictionary.txt are always accepted.
     #[arg(long)]
@@ -461,6 +470,9 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     if args.near_duplicates { cfg.near_duplicates = true; }
     if args.store_html { cfg.store_html = true; }
     if args.spelling { cfg.spelling.spell_check = true; }
+    if args.store_pdf { cfg.store_pdf = true; }
+    if args.pdf_properties { cfg.extract_pdf_properties = true; }
+    if args.pdf_links { cfg.extract_pdf_links = true; }
     if let Some(server) = &args.grammar_server {
         cfg.spelling.grammar_check = true;
         cfg.spelling.grammar_server = server.clone();

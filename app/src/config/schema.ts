@@ -186,6 +186,9 @@ export interface CrawlConfig {
   content_area: ContentArea;
   structured_data: StructuredDataConfig;
   store_html: boolean;
+  store_pdf: boolean;
+  extract_pdf_properties: boolean;
+  extract_pdf_links: boolean;
   extraction: Extraction;
   near_duplicates: boolean;
   near_duplicate_threshold: number;
@@ -373,6 +376,14 @@ export const NODES: Node[] = [
             disabledIf: (c) => !c.structured_data.schema_org_validation,
           },
           { kind: "note", text: "JSON-LD, Microdata and validation are on by default in Toad (Screaming Frog has them off)." },
+        ],
+      },
+      {
+        title: "PDF",
+        fields: [
+          { kind: "bool", key: "store_pdf", label: "Store PDF", help: "Read PDF text: word count, readability, Custom Search and spelling on PDFs, and Bulk Export > All PDF Content." },
+          { kind: "bool", key: "extract_pdf_properties", label: "Extract PDF Properties", help: "Subject, Author, Creation/Modification Date and Page Count columns. The PDF Title and Keywords are always read into Title and Meta Keywords." },
+          { kind: "bool", key: "extract_pdf_links", label: "Extract PDF Links", help: "Follow and report links inside PDFs (Link Position shows the PDF page). Link anchor text isn't read." },
         ],
       },
       {

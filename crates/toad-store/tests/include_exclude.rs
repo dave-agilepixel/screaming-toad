@@ -117,3 +117,18 @@ async fn custom_robots_and_report_mode() {
     assert!(blog.iter().all(|r| r.status_code == 200 && r.indexable && r.blocked_by_robots_line.is_none()));
     assert!(blog.iter().all(|r| r.robots_report_line.as_deref() == Some("Line 2: Disallow: /blog/")));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn list_mode_urls_on_other_hosts_are_audited() {
+    // Two servers = two hosts (ports); the second list URL is on the other one.
+    let hits = Arc::new(AtomicUsize::new(0));
+    let a = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let b = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (oa, ob) = (format!("http://127.0.0.1:{}", a.local_addr().unwrap().port()), format!("http://localhost:{}", b.local_addr().unwrap().port()));
+    tokio::spawn(serve(a, hits.clone()));
+    tokio::spawn(serve(b, hits.clone()));
+    let list = CrawlConfig { threads: 1, ..CrawlConfig::default() }.for_list_mode();
+    let got = crawl(vec![Url::parse(&format!("{oa}/blog/a")).unwrap(), Url::parse(&format!("{ob}/blog/b")).unwrap()], list, CrawlControl::default()).await;
+    assert_eq!(got.len(), 2);
+    assert!(got.iter().all(|r| r.is_internal && r.page.is_some()), "both list URLs are parsed");
+}

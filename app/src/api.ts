@@ -117,6 +117,7 @@ export const api = {
   setDictionaryWords: (words: string[]) => invoke<void>("set_dictionary_words", { words }),
   cookies: (url: string) => invoke<Table>("get_cookies", { url }),
   exportPageSource: (dir: string) => invoke<number>("export_page_source", { dir }),
+  exportPdfText: (dir: string) => invoke<number>("export_pdf_text", { dir }),
   exportCsv: (tab: string, filter: string, search: string | undefined, path: string) =>
     invoke<number>("export_csv", { req: { tab, filter, search, path } }),
   openCrawl: (path: string) => invoke<void>("open_crawl", { path }),

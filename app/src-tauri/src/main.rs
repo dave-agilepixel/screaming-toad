@@ -408,6 +408,12 @@ fn get_page_source(state: State<'_, AppState>, url: String) -> CmdResult<Option<
     with_store(&state, |s| s.page_source(&url))
 }
 
+/// Bulk Export > Web > All PDF Content.
+#[tauri::command]
+fn export_pdf_text(state: State<'_, AppState>, dir: String) -> CmdResult<u64> {
+    with_store(&state, |s| s.export_pdf_text(std::path::Path::new(&dir)))
+}
+
 /// Bulk Export > Web > All Page Source.
 #[tauri::command]
 fn export_page_source(state: State<'_, AppState>, dir: String) -> CmdResult<u64> {
@@ -586,6 +592,7 @@ fn main() {
             settings::set_dictionary_words,
             get_cookies,
             export_page_source,
+            export_pdf_text,
             get_near_duplicates,
             get_reports,
             export_report,

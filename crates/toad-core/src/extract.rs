@@ -262,20 +262,7 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         }
     }
     let content = collapse_ws(&content);
-    let words: Vec<&str> = content.split_whitespace().collect();
-    p.word_count = words.len() as u32;
-    p.sentence_count = content
-        .split(|c| c == '.' || c == '!' || c == '?')
-        .filter(|s| s.split_whitespace().count() > 0)
-        .count() as u32;
-    if p.word_count >= 1 && p.sentence_count >= 1 {
-        let syllables: usize = words.iter().map(|w| syllables(w)).sum();
-        let wps = p.word_count as f64 / p.sentence_count as f64;
-        let spw = syllables as f64 / p.word_count as f64;
-        let score = 206.835 - 1.015 * wps - 84.6 * spw;
-        p.flesch_reading_ease = Some((score.clamp(0.0, 100.0) * 10.0).round() / 10.0);
-    }
-    p.lorem_ipsum = content.to_ascii_lowercase().contains("lorem ipsum");
+    text_metrics(&mut p, &content);
     // The content signature feeds near duplicates and Compare > Content.
     if cfg.near_duplicates || cfg.store_html {
         p.minhash = minhash::signature(&content);
@@ -317,6 +304,25 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
     p.head_tags = head_re.find_iter(html).count() as u32;
     p.body_tags = body_re.find_iter(html).count() as u32;
     p
+}
+
+/// Word count, sentence count, Flesch reading ease and lorem ipsum for a
+/// text (HTML content area or PDF text).
+pub fn text_metrics(p: &mut PageData, content: &str) {
+    let words: Vec<&str> = content.split_whitespace().collect();
+    p.word_count = words.len() as u32;
+    p.sentence_count = content
+        .split(|c| c == '.' || c == '!' || c == '?')
+        .filter(|s| s.split_whitespace().count() > 0)
+        .count() as u32;
+    if p.word_count >= 1 && p.sentence_count >= 1 {
+        let syllables: usize = words.iter().map(|w| syllables(w)).sum();
+        let wps = p.word_count as f64 / p.sentence_count as f64;
+        let spw = syllables as f64 / p.word_count as f64;
+        let score = 206.835 - 1.015 * wps - 84.6 * spw;
+        p.flesch_reading_ease = Some((score.clamp(0.0, 100.0) * 10.0).round() / 10.0);
+    }
+    p.lorem_ipsum = content.to_ascii_lowercase().contains("lorem ipsum");
 }
 
 fn tag_regexes() -> &'static (Regex, Regex) {

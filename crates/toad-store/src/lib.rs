@@ -194,6 +194,10 @@ impl Store {
                     cookie_stmt.execute(params![source_id, c.name, c.value, c.domain, c.path, c.expires, c.secure, c.http_only, c.same_site])?;
                 }
             }
+            if let Some(text) = &rec.pdf_text {
+                tx.prepare_cached("INSERT OR REPLACE INTO pdf_text (url_id, body) VALUES (?1, ?2)")?
+                    .execute(params![source_id, compress(text.as_bytes())?])?;
+            }
             if let Some(html) = &rec.html {
                 tx.prepare_cached("INSERT OR REPLACE INTO html (url_id, body) VALUES (?1, ?2)")?
                     .execute(params![source_id, compress(html.as_bytes())?])?;
@@ -325,6 +329,27 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(n as u64)
+    }
+
+    /// Bulk Export > Web > All PDF Content: one `.txt` per stored PDF, plus
+    /// `index.csv`. Returns the count.
+    pub fn export_pdf_text(&self, dir: &Path) -> anyhow::Result<u64> {
+        std::fs::create_dir_all(dir)?;
+        let mut stmt = self.conn.prepare("SELECT u.address, t.body FROM pdf_text t JOIN urls u ON u.id = t.url_id ORDER BY u.crawl_order")?;
+        let mut rows = stmt.query([])?;
+        let mut index = csv::Writer::from_path(dir.join("index.csv"))?;
+        index.write_record(["File", "Address"])?;
+        let mut n = 0u64;
+        while let Some(row) = rows.next()? {
+            let address: String = row.get(0)?;
+            let body: Vec<u8> = row.get(1)?;
+            n += 1;
+            let file = format!("{n:06}.txt");
+            std::fs::write(dir.join(&file), decompress(&body)?)?;
+            index.write_record([file.as_str(), address.as_str()])?;
+        }
+        index.flush()?;
+        Ok(n)
     }
 
     /// Whether any page source was stored in this crawl.
@@ -599,6 +624,13 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("sd_rich_errors", int(sd_count(sd, Severity::Error, toad_core::structured::GOOGLE))),
         ("sd_rich_warnings", int(sd_count(sd, Severity::Warning, toad_core::structured::GOOGLE))),
         ("sd_parse_errors", int(sd.map_or(0, |s| s.parse_errors.len() as i64))),
+        ("pdf_title", opt(rec.pdf.as_ref().and_then(|p| p.title.as_deref()))),
+        ("pdf_subject", opt(rec.pdf.as_ref().and_then(|p| p.subject.as_deref()))),
+        ("pdf_author", opt(rec.pdf.as_ref().and_then(|p| p.author.as_deref()))),
+        ("pdf_keywords", opt(rec.pdf.as_ref().and_then(|p| p.keywords.as_deref()))),
+        ("pdf_created", opt(rec.pdf.as_ref().and_then(|p| p.created.as_deref()))),
+        ("pdf_modified", opt(rec.pdf.as_ref().and_then(|p| p.modified.as_deref()))),
+        ("pdf_pages", rec.pdf.as_ref().map(|p| int(p.pages as i64)).unwrap_or(Value::Null)),
         ("spelling_errors", if cfg.spelling.spell_check && page.is_some() {
             int(page.map_or(0, |p| p.language_issues.iter().filter(|i| i.kind == "Spelling").count() as i64))
         } else {

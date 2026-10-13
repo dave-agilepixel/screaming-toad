@@ -7,6 +7,7 @@ pub mod extract;
 pub mod fetch;
 pub mod minhash;
 pub mod model;
+pub mod pdf;
 pub mod pixel;
 pub mod robots;
 pub mod sitemap;
