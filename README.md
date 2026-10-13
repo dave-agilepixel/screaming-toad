@@ -17,7 +17,14 @@ It's built in Rust, with a Tauri 2 desktop app and a React interface. Everything
 
 ## Download
 
-Installers for Windows (`-setup.exe` and `.msi`) and macOS (a universal `.dmg` for Apple Silicon and Intel) are built automatically by [GitHub Actions](.github/workflows/ci.yml) on every push. Download links will be added here.
+**Latest release: [Screaming Toad 0.1.0](https://github.com/wrenda-admin/screaming-toad/releases/latest)**
+
+| Platform | Download |
+|---|---|
+| **Windows** (64-bit) | [ScreamingToad-windows-x64-setup.exe](https://github.com/wrenda-admin/screaming-toad/releases/download/v0.1.0/ScreamingToad-windows-x64-setup.exe) (recommended) or [ScreamingToad-windows-x64.msi](https://github.com/wrenda-admin/screaming-toad/releases/download/v0.1.0/ScreamingToad-windows-x64.msi) (for IT deployment) |
+| **macOS** (Apple Silicon and Intel) | [ScreamingToad-macos-universal.dmg](https://github.com/wrenda-admin/screaming-toad/releases/download/v0.1.0/ScreamingToad-macos-universal.dmg) |
+
+Checksums are in [SHA256SUMS.txt](https://github.com/wrenda-admin/screaming-toad/releases/download/v0.1.0/SHA256SUMS.txt). Each installer includes the `toad` command-line tool. Builds come from [GitHub Actions](.github/workflows/ci.yml), which also produces fresh installers for every push.
 
 The builds aren't code-signed yet:
 - **Windows:** SmartScreen may warn on first run. Choose *More info > Run anyway*.
