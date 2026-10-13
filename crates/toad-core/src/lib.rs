@@ -1,5 +1,6 @@
 //! Screaming Toad crawl engine.
 
+pub mod api_config;
 pub mod auth;
 pub mod config;
 pub mod crawler;

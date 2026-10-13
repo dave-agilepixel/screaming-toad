@@ -300,6 +300,9 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         p.custom_extraction = run_extractors(rules, &doc, html, xdoc.as_ref());
     }
     p.content_text = content;
+    if cfg.apis.needs_text().0 {
+        p.page_text = collapse_ws(&all_text);
+    }
 
     let (head_re, body_re) = tag_regexes();
     p.head_tags = head_re.find_iter(html).count() as u32;

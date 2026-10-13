@@ -435,7 +435,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         response_filters.push(f(&format!("External {name}"), format!("u.is_internal = 0 AND {sql}"), ext_issue, desc));
     }
 
-    vec![
+    let mut tabs = vec![
         TabDef {
             name: "Internal",
             base: "u.is_internal = 1".into(),
@@ -796,7 +796,17 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         }),
         custom_extraction_tab(cfg, html),
         custom_javascript_tab(cfg, html),
-    ]
+    ];
+    // PageSpeed, Search Console, Analytics, Link Metrics and AI.
+    tabs.extend(crate::api::api_tabs(cfg, html, "(SELECT value FROM meta WHERE key = 'start_url')"));
+    if cfg.apis.embeddings.enabled {
+        let (filters, cols) = crate::api::embedding_filters(cfg);
+        if let Some(content) = tabs.iter_mut().find(|t| t.name == "Content") {
+            content.filters.extend(filters);
+            content.extra_columns.extend(cols);
+        }
+    }
+    tabs
 }
 
 fn custom_search_tab(cfg: &CrawlConfig, base: &str) -> TabDef {

@@ -132,6 +132,9 @@ pub struct PageData {
     pub flesch_reading_ease: Option<f64>,
     pub text_ratio: f64,
     pub content_text: String,
+    /// All visible body text, kept when an AI prompt or embeddings use it.
+    #[serde(skip)]
+    pub page_text: String,
     pub form_actions: Vec<String>,
     pub head_tags: u32,
     pub body_tags: u32,

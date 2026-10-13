@@ -143,6 +143,30 @@ CREATE TABLE IF NOT EXISTS language_errors (
 );
 CREATE INDEX IF NOT EXISTS language_errors_url ON language_errors(url_id);
 
+-- API data: one row per provider URL, source and metric. `address` is the
+-- crawled URL it matched (NULL for orphans).
+CREATE TABLE IF NOT EXISTS api_values (
+    url TEXT NOT NULL,
+    address TEXT,
+    source TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    value TEXT,
+    PRIMARY KEY (url, source, metric)
+);
+CREATE INDEX IF NOT EXISTS api_values_address ON api_values(address, source, metric);
+-- Content > Embeddings: one little-endian f32 vector per page.
+CREATE TABLE IF NOT EXISTS embeddings (
+    address TEXT PRIMARY KEY,
+    vector BLOB NOT NULL
+);
+-- Page text for AI prompts and embeddings: kind 'page' or 'content'.
+CREATE TABLE IF NOT EXISTS page_text (
+    url_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    body BLOB NOT NULL,
+    PRIMARY KEY (url_id, kind)
+);
+
 -- Store PDF: deflate-compressed PDF text, one row per URL.
 CREATE TABLE IF NOT EXISTS pdf_text (
     url_id INTEGER PRIMARY KEY,

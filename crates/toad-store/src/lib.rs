@@ -2,6 +2,7 @@
 //! every link, and the configuration the crawl ran with.
 
 mod analysis;
+pub mod api;
 pub mod compare;
 pub mod crawls;
 mod query;
@@ -219,6 +220,16 @@ impl Store {
                 for (_, raw) in rec.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
                     let c = parse_set_cookie(raw);
                     cookie_stmt.execute(params![source_id, c.name, c.value, c.domain, c.path, c.expires, c.secure, c.http_only, c.same_site])?;
+                }
+            }
+            if let Some(page) = &rec.page {
+                let (full, content) = self.cfg.apis.needs_text();
+                let mut text_stmt = tx.prepare_cached("INSERT OR REPLACE INTO page_text (url_id, kind, body) VALUES (?1, ?2, ?3)")?;
+                if full && !page.page_text.is_empty() {
+                    text_stmt.execute(params![source_id, "page", compress(page.page_text.as_bytes())?])?;
+                }
+                if content && !page.content_text.is_empty() {
+                    text_stmt.execute(params![source_id, "content", compress(page.content_text.as_bytes())?])?;
                 }
             }
             if let Some(text) = &rec.pdf_text {

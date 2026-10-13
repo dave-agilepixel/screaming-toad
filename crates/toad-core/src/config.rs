@@ -236,6 +236,9 @@ pub struct CrawlConfig {
     // Configuration > Segments, in order of precedence.
     pub segments: Vec<Segment>,
 
+    // Configuration > API Access and Content > Embeddings (no secrets).
+    pub apis: crate::api_config::ApiConfig,
+
     // Configuration > Content > Duplicates
     pub near_duplicates: bool,
     pub near_duplicate_threshold: f64,
@@ -360,6 +363,7 @@ impl Default for CrawlConfig {
             rendering: RenderingConfig::default(),
             crawl_analysis: CrawlAnalysisConfig::default(),
             segments: vec![],
+            apis: crate::api_config::ApiConfig::default(),
             store_pdf: false,
             extract_pdf_properties: false,
             extract_pdf_links: false,

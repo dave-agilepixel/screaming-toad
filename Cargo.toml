@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/toad-core", "crates/toad-store", "crates/toad-cli", "app/src-tauri"]
+members = ["crates/toad-core", "crates/toad-store", "crates/toad-apis", "crates/toad-cli", "app/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,7 @@ license = "UNLICENSED"
 [workspace.dependencies]
 toad-core = { path = "crates/toad-core" }
 toad-store = { path = "crates/toad-store" }
+toad-apis = { path = "crates/toad-apis" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 md5 = "0.7"
