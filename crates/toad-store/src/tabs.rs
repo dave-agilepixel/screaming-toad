@@ -143,6 +143,27 @@ const COLUMNS: &[(&str, &str)] = &[
     ("PDF Modification Date", "u.pdf_modified"),
     ("PDF Page Count", "u.pdf_pages"),
     ("Cookies", "(SELECT COUNT(*) FROM cookies c WHERE c.url_id = u.id)"),
+    ("HTML Word Count", "u.orig_word_count"),
+    ("Rendered HTML Word Count", "CASE WHEN u.rendered = 1 THEN u.word_count END"),
+    ("Word Count Change", "CASE WHEN u.rendered = 1 THEN u.word_count - u.orig_word_count END"),
+    ("JS Word Count %", "CASE WHEN u.rendered = 1 AND u.word_count > 0 THEN round(100.0 * (u.word_count - u.orig_word_count) / u.word_count, 1) END"),
+    ("HTML Title", "u.orig_title"),
+    ("Rendered HTML Title", "CASE WHEN u.rendered = 1 THEN u.title_1 END"),
+    ("HTML Meta Description", "u.orig_meta_description"),
+    ("Rendered HTML Meta Description", "CASE WHEN u.rendered = 1 THEN u.meta_description_1 END"),
+    ("HTML H1", "u.orig_h1"),
+    ("Rendered HTML H1", "CASE WHEN u.rendered = 1 THEN u.h1_1 END"),
+    ("HTML Canonical", "u.orig_canonical"),
+    ("Rendered HTML Canonical", "CASE WHEN u.rendered = 1 THEN u.canonical_1 END"),
+    ("HTML Meta Robots", "u.orig_directives"),
+    ("Rendered HTML Meta Robots", "CASE WHEN u.rendered = 1 THEN u.meta_robots_1 END"),
+    ("Unique JS Outlinks", "u.js_link_count"),
+    ("JS Errors", "u.js_errors"),
+    ("JS Warnings", "u.js_warnings"),
+    ("Blocked Resources", "u.blocked_resources"),
+    ("Render Error", "u.render_error"),
+    ("CO2 (mg)", "u.co2_mg"),
+    ("Carbon Rating", "u.carbon_rating"),
     ("Spelling Errors", "u.spelling_errors"),
     ("Grammar Errors", "u.grammar_errors"),
 ];
@@ -207,6 +228,55 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         }
     }
     tabs
+}
+
+/// JavaScript tab: what changed between the original and the rendered HTML.
+/// Filters other than the old AJAX scheme need Rendering: JavaScript.
+fn javascript_tab(html: &str, ix: &str) -> TabDef {
+    use IssueType::*;
+    use Priority::*;
+    let f = |name: &str, sql: String, issue: Option<(IssueType, Priority)>, description: &str| FilterDef {
+        name: name.to_string(),
+        sql,
+        issue,
+        description: description.to_string(),
+    };
+    let r = "u.rendered = 1";
+    // `orig_directives` holds the raw meta robots contents, comma-joined.
+    let orig_has = |d: &str| format!("lower(coalesce(u.orig_directives, '')) LIKE '%{d}%'");
+    let now_has = |d: &str| format!("coalesce(u.directives, '') LIKE '%,{d},%'");
+    let only_rendered = |o: &str, n: &str| format!("{r} AND coalesce(u.{o}, '') = '' AND coalesce(u.{n}, '') <> ''{ix}");
+    let updated = |o: &str, n: &str| format!("{r} AND coalesce(u.{o}, '') <> '' AND coalesce(u.{n}, '') <> '' AND u.{o} <> u.{n}{ix}");
+    TabDef {
+        name: "JavaScript",
+        base: html.into(),
+        extra_columns: vec![],
+        columns: vec![
+            "Address", "Status Code", "Status", "Indexability", "Indexability Status", "HTML Word Count", "Rendered HTML Word Count",
+            "Word Count Change", "JS Word Count %", "HTML Title", "Rendered HTML Title", "HTML Meta Description",
+            "Rendered HTML Meta Description", "HTML H1", "Rendered HTML H1", "HTML Meta Robots", "Rendered HTML Meta Robots",
+            "HTML Canonical", "Rendered HTML Canonical", "Unique JS Outlinks", "JS Errors", "JS Warnings", "Blocked Resources", "Render Error",
+        ],
+        filters: vec![
+            f("All", "1 = 1".into(), None, "Every HTML page."),
+            f("Pages with Blocked Resources", format!("{r} AND u.blocked_resources > 0"), Some((Warning, High)), "The page requested resources (scripts, styles, images) that robots.txt blocks, so search engines may render it differently."),
+            f("Contains JavaScript Links", format!("{r} AND u.js_link_count > 0"), Some((Warning, Low)), "Links that only exist after JavaScript runs."),
+            f("Contains JavaScript Content", format!("{r} AND u.word_count > coalesce(u.orig_word_count, 0)"), Some((Warning, Low)), "Body text that only exists after JavaScript runs."),
+            f("Noindex Only in Original HTML", format!("{r} AND {} AND NOT {}", orig_has("noindex"), now_has("noindex")), Some((Issue, High)), "The original HTML says noindex but JavaScript removes it. Google may not render a noindexed page, so it stays out of the index."),
+            f("Nofollow Only in Original HTML", format!("{r} AND {} AND NOT {}", orig_has("nofollow"), now_has("nofollow")), Some((Issue, High)), "The original HTML says nofollow but JavaScript removes it. Google may not follow the page's links."),
+            f("Canonical Only in Rendered HTML", only_rendered("orig_canonical", "canonical_1"), Some((Warning, High)), "The canonical is added by JavaScript. Put it in the original HTML."),
+            f("Canonical Mismatch", updated("orig_canonical", "canonical_1"), Some((Issue, High)), "JavaScript changes the canonical, sending search engines mixed signals."),
+            f("Page Title Only in Rendered HTML", only_rendered("orig_title", "title_1"), Some((Warning, Medium)), "The title is added by JavaScript."),
+            f("Page Title Updated by JavaScript", updated("orig_title", "title_1"), Some((Warning, Medium)), "JavaScript changes the title."),
+            f("Meta Description Only in Rendered HTML", only_rendered("orig_meta_description", "meta_description_1"), Some((Warning, Medium)), "The meta description is added by JavaScript."),
+            f("Meta Description Updated by JavaScript", updated("orig_meta_description", "meta_description_1"), Some((Warning, Medium)), "JavaScript changes the meta description."),
+            f("H1 Only in Rendered HTML", only_rendered("orig_h1", "h1_1"), Some((Warning, Medium)), "The H1 is added by JavaScript."),
+            f("H1 Updated by JavaScript", updated("orig_h1", "h1_1"), Some((Warning, Medium)), "JavaScript changes the H1."),
+            f("Uses Old AJAX Crawling Scheme URLs", "(u.address LIKE '%#!%' OR u.address LIKE '%_escaped_fragment_=%')".into(), Some((Issue, High)), "Hashbang (#!) or _escaped_fragment_ URLs from Google's deprecated AJAX crawling scheme."),
+            f("Uses Old AJAX Crawling Scheme Meta Fragment Tag", "u.ajax_fragment_meta = 1".into(), Some((Warning, High)), "<meta name=\"fragment\" content=\"!\"> from Google's deprecated AJAX crawling scheme."),
+            f("Pages with JavaScript Errors", format!("{r} AND u.js_errors > 0"), Some((Issue, High)), "Errors in the Chrome console while rendering (needs Enable JavaScript Error Reporting)."),
+        ],
+    }
 }
 
 fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
@@ -556,6 +626,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Outside <head>", "u.hreflang_outside_head = 1".into(), Some((Issue, High)), "Hreflang link element outside the head."),
             ],
         },
+        javascript_tab(html, ix),
         TabDef {
             name: "Links",
             base: html.into(),

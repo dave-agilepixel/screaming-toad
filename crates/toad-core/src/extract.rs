@@ -53,6 +53,7 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                     }
                     "keywords" => p.meta_keywords.push(content),
                     "viewport" => p.has_viewport = true,
+                    "fragment" => p.ajax_fragment_meta |= content == "!",
                     n if n == "robots" || (!robots_token.is_empty() && n == robots_token) => {
                         p.meta_robots.push(content);
                         p.robots_outside_head |= !in_head(&el);

@@ -135,7 +135,9 @@ The scores below are as audited. Since then:
     - Stored: Chrome console messages, screenshots, Store Rendered HTML, and blocked resources (requests that robots.txt disallows).
     - CO2 (mg) and Carbon Rating use everything the browser transferred, or the page's own transfer size in Text Only mode.
     - **Deviation:** subresources are fetched by the browser itself, not routed through Toad's fetcher. Blocked resources are worked out after the page renders.
-  - **Next:** B, the JavaScript tab filters. C, the Rendered Page and Chrome Console lower tabs, View Source > Rendered HTML, and the High Carbon Rating UI. D, Accessibility (axe-core). E, Custom JavaScript.
+  - **Batch B (done): JavaScript tab.** It has all 16 filters, placed after Hreflang, with original-vs-rendered columns (word count change, JS word count %, title, description, H1, meta robots, canonical, unique JS outlinks, JS errors and warnings, blocked resources).
+    - **Deviation:** fragments are stripped during normalisation, so "Old AJAX Crawling Scheme URLs" only matches `_escaped_fragment_` (and `#!` where it survives).
+  - **Next:** C, the Rendered Page and Chrome Console lower tabs, View Source > Rendered HTML, and the High Carbon Rating UI. D, Accessibility (axe-core). E, Custom JavaScript.
 
 ## How to read this
 

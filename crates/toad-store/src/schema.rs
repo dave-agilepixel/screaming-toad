@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS urls (
     js_warnings INTEGER,
     blocked_resources INTEGER,
     co2_mg REAL,
-    carbon_rating TEXT
+    carbon_rating TEXT,
+    ajax_fragment_meta INTEGER NOT NULL DEFAULT 0
 );
 
 -- Structured data items and validation issues per URL.
@@ -273,6 +274,7 @@ pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[
     ("blocked_resources", "INTEGER"),
     ("co2_mg", "REAL"),
     ("carbon_rating", "TEXT"),
+    ("ajax_fragment_meta", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Columns added to other tables: (table, column, type).

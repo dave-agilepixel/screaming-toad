@@ -136,6 +136,8 @@ pub struct PageData {
     pub head_tags: u32,
     pub body_tags: u32,
     pub lorem_ipsum: bool,
+    /// `<meta name="fragment" content="!">` (old AJAX crawling scheme).
+    pub ajax_fragment_meta: bool,
     pub links: Vec<Link>,
     /// Match count per Custom Search, in configuration order.
     pub custom_search: Vec<u32>,

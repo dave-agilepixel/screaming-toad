@@ -666,6 +666,7 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("flesch", real(page.and_then(|p| p.flesch_reading_ease).filter(|_| x.readability))),
         ("text_ratio", real(page.map(|p| p.text_ratio).filter(|_| x.text_to_code_ratio))),
         ("lorem_ipsum", flag(page.is_some_and(|p| p.lorem_ipsum))),
+        ("ajax_fragment_meta", flag(page.is_some_and(|p| p.ajax_fragment_meta))),
         ("head_tags", page.map(|p| int(p.head_tags)).unwrap_or(Value::Null)),
         ("body_tags", page.map(|p| int(p.body_tags)).unwrap_or(Value::Null)),
         ("hsts", opt(rec.header("strict-transport-security"))),

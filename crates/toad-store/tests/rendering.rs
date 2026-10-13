@@ -113,4 +113,16 @@ async fn javascript_rendering() {
     let png = store.screenshot(&home).unwrap().expect("a screenshot");
     assert!(png.starts_with(b"\x89PNG"));
     assert!(store.rendered_source(&home).unwrap().unwrap().contains("Made by JS"));
+
+    // JavaScript tab.
+    let count = |filter: &str| store.count("JavaScript", filter).unwrap();
+    assert_eq!(count("Page Title Updated by JavaScript"), 1);
+    assert_eq!(count("H1 Only in Rendered HTML"), 1);
+    assert_eq!(count("Contains JavaScript Links"), 1);
+    assert_eq!(count("Contains JavaScript Content"), 1);
+    assert_eq!(count("Pages with JavaScript Errors"), 1);
+    assert_eq!(count("Pages with Blocked Resources"), 1);
+    assert_eq!(count("Page Title Only in Rendered HTML"), 0);
+    assert_eq!(count("Canonical Mismatch"), 0);
+    assert_eq!(count("Noindex Only in Original HTML"), 0);
 }
