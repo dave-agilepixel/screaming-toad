@@ -101,6 +101,7 @@ export const api = {
   outlinks: (url: string) => invoke<Table>("get_outlinks", { url }),
   reports: () => invoke<ReportDef[]>("get_reports"),
   exportReport: (name: string, path: string) => invoke<number>("export_report", { name, path }),
+  report: (name: string) => invoke<Table>("get_report", { name }),
   structuredDetails: (url: string) => invoke<Table>("get_structured_details", { url }),
   nearDuplicates: (url: string) => invoke<Table>("get_near_duplicates", { url }),
   generateSitemap: (dir: string, options: SitemapOptions) => invoke<string[]>("generate_sitemap", { dir, options }),

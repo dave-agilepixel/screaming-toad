@@ -251,10 +251,9 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
     let mut all_text = String::new();
     let body_el = root.descendants().filter_map(ElementRef::wrap).find(|e| e.value().name() == "body");
     if let Some(body) = body_el {
-        let start_included = cfg.content_area.include_elements.is_empty()
-            && cfg.content_area.include_classes.is_empty()
-            && cfg.content_area.include_ids.is_empty();
-        collect_text(body, &cfg.content_area, start_included, &mut content);
+        let area = cfg.content_area.effective();
+        let start_included = area.include_elements.is_empty() && area.include_classes.is_empty() && area.include_ids.is_empty();
+        collect_text(body, &area, start_included, &mut content);
 
         collect_text(body, &ContentArea { exclude_elements: vec![], ..Default::default() }, true, &mut all_text);
         let visible_chars = all_text.split_whitespace().map(|w| w.chars().count() + 1).sum::<usize>();
@@ -428,6 +427,12 @@ fn collect_text(el: ElementRef, area: &ContentArea, included: bool, out: &mut St
                 {
                     continue;
                 }
+                if name == "img" && included && area.check_alt_text {
+                    if let Some(alt) = e.attr("alt").map(str::trim).filter(|a| !a.is_empty()) {
+                        out.push_str(alt);
+                        out.push(' ');
+                    }
+                }
                 let now_included = included
                     || area.include_elements.iter().any(|x| x == name)
                     || e.id().is_some_and(|id| area.include_ids.iter().any(|x| x == id))
@@ -484,6 +489,26 @@ mod tests {
 <a href="/img-link"><img src="/t.png"></a><img src="/t2.png" alt="A toad">
 <a href="https://other.com/" rel="nofollow sponsored" target="_blank">Other</a>
 <a href="mailto:x@y.com">mail</a><footer><a href="/privacy">Privacy</a></footer></body></html>"#;
+
+    #[test]
+    fn content_area_modes_and_alt_text() {
+        use crate::config::{AreaMode, ContentArea};
+        let html = r#"<html><body><nav>Menu words</nav><main>Main copy <img src="/a.png" alt="A toad"></main><footer>Foot text</footer></body></html>"#;
+        let url = Url::parse("https://x.com/").unwrap();
+        let text = |area: ContentArea| extract(html, &url, &CrawlConfig { content_area: area, ..CrawlConfig::default() }, &CustomRules::default()).content_text;
+        // Exclude (default): nav and footer left out; include lists ignored.
+        let ex = text(ContentArea { include_elements: vec!["footer".into()], ..ContentArea::default() });
+        assert_eq!(ex, "Main copy");
+        // Include: only the include lists apply.
+        let inc = text(ContentArea { mode: AreaMode::Include, include_elements: vec!["main".into()], ..ContentArea::default() });
+        assert_eq!(inc, "Main copy");
+        // Both: include main, exclude nothing else of note.
+        let both = text(ContentArea { mode: AreaMode::Both, include_elements: vec!["nav".into()], ..ContentArea::default() });
+        assert_eq!(both, "", "nav is excluded as well as included, so nothing is left");
+        // Check Alt Text adds image alt text.
+        let alt = text(ContentArea { check_alt_text: true, ..ContentArea::default() });
+        assert_eq!(alt, "Main copy A toad");
+    }
 
     #[test]
     fn srcset_images_when_enabled() {

@@ -25,6 +25,8 @@ export interface CustomExtractor {
 }
 
 export interface ContentArea {
+  mode: "exclude" | "include" | "both";
+  check_alt_text: boolean;
   include_elements: string[];
   exclude_elements: string[];
   include_classes: string[];
@@ -72,6 +74,7 @@ export interface Preferences {
   high_internal_outlinks: number;
   high_external_outlinks: number;
   html_max_mb: number;
+  resource_max_mb: number;
   non_descriptive_anchor_text: string[];
   soft_404_phrases: string[];
 }
@@ -454,6 +457,7 @@ export const NODES: Node[] = [
           { kind: "number", key: "preferences.high_internal_outlinks", label: "High internal outlinks", min: 0 },
           { kind: "number", key: "preferences.high_external_outlinks", label: "High external outlinks", min: 0 },
           { kind: "number", key: "preferences.html_max_mb", label: "HTML document size limit", min: 1, unit: "MB" },
+          { kind: "number", key: "preferences.resource_max_mb", label: "Resource size limit", min: 1, unit: "MB", help: "Validation > Resource Over X MB (CSS, JavaScript, images and other files)." },
           { kind: "lines", key: "preferences.non_descriptive_anchor_text", label: "Non-Descriptive Anchor Text", rows: 5, help: "One phrase per line." },
           { kind: "lines", key: "preferences.soft_404_phrases", label: "Soft 404 error text", rows: 3, help: "Pages whose title or H1 contains one of these phrases (any case) are flagged as soft 404s." },
         ],
@@ -470,8 +474,20 @@ export const NODES: Node[] = [
         fields: [
           {
             kind: "note",
-            text: "The content area is the text used for word count, readability, near duplicates and Custom Search > Content Area. Include lists take effect when they are not empty; exclude lists always apply.",
+            text: "The content area is the text used for word count, readability, near duplicates, Compare > Content and Custom Search > Content Area. It does not affect link discovery.",
           },
+          {
+            kind: "select",
+            key: "content_area.mode",
+            label: "Mode",
+            options: [
+              ["exclude", "Exclude (the exclude lists apply)"],
+              ["include", "Include (only the include lists apply)"],
+              ["both", "Both (include and exclude lists together)"],
+            ],
+            help: "With Include and empty include lists, the whole body counts.",
+          },
+          { kind: "bool", key: "content_area.check_alt_text", label: "Check Alt Text", help: "Count image alt text as content." },
           { kind: "lines", key: "content_area.include_elements", label: "Include HTML elements", rows: 2, placeholder: "main" },
           { kind: "lines", key: "content_area.exclude_elements", label: "Exclude HTML elements", rows: 3 },
           { kind: "lines", key: "content_area.include_classes", label: "Include classes", rows: 2 },

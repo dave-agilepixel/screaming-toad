@@ -654,6 +654,10 @@ pub enum ExtractWhat {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ContentArea {
+    /// Which lists apply: Exclude (default), Include, or Both (Toad's superset).
+    pub mode: AreaMode,
+    /// Count image alt text as content.
+    pub check_alt_text: bool,
     pub include_elements: Vec<String>,
     pub exclude_elements: Vec<String>,
     pub include_classes: Vec<String>,
@@ -662,9 +666,43 @@ pub struct ContentArea {
     pub exclude_ids: Vec<String>,
 }
 
+/// Content > Area > Mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AreaMode {
+    #[default]
+    Exclude,
+    Include,
+    /// Apply the include lists and the exclude lists together.
+    Both,
+}
+
+impl ContentArea {
+    /// The lists that apply under the chosen mode.
+    pub fn effective(&self) -> ContentArea {
+        let mut a = self.clone();
+        match self.mode {
+            AreaMode::Exclude => {
+                a.include_elements.clear();
+                a.include_classes.clear();
+                a.include_ids.clear();
+            }
+            AreaMode::Include => {
+                a.exclude_elements.clear();
+                a.exclude_classes.clear();
+                a.exclude_ids.clear();
+            }
+            AreaMode::Both => {}
+        }
+        a
+    }
+}
+
 impl Default for ContentArea {
     fn default() -> Self {
         Self {
+            mode: AreaMode::Exclude,
+            check_alt_text: false,
             include_elements: vec![],
             exclude_elements: vec!["nav".into(), "footer".into()],
             include_classes: vec![],
@@ -697,6 +735,8 @@ pub struct Preferences {
     pub high_internal_outlinks: u32,
     pub high_external_outlinks: u32,
     pub html_max_mb: u32,
+    /// Validation > Resource Over X MB (CSS, JavaScript, images and other files).
+    pub resource_max_mb: u32,
     pub non_descriptive_anchor_text: Vec<String>,
     pub soft_404_phrases: Vec<String>,
 }
@@ -722,6 +762,7 @@ impl Default for Preferences {
             high_internal_outlinks: 1000,
             high_external_outlinks: 10,
             html_max_mb: 2,
+            resource_max_mb: 2,
             non_descriptive_anchor_text: [
                 "click here", "click this", "find out more", "go", "here", "learn more", "more",
                 "over here", "read here", "read more", "right here", "start", "this",

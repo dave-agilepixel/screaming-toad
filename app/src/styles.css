@@ -334,3 +334,6 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .bulk-add h4 { margin: 0; }
 .bulk-add textarea { width: 100%; font-family: Consolas, monospace; }
 .bulk-add label.check input:not([type=checkbox]) { margin-left: 6px; }
+
+.times .bar-cell { width: 40%; }
+.times .bar { display: block; height: 10px; background: var(--accent); border-radius: 2px; min-width: 1px; }

@@ -559,16 +559,18 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         },
         TabDef {
             name: "Validation",
-            base: html.into(),
+            // HTML checks plus oversized resources: internal URLs that returned 200.
+            base: "u.is_internal = 1 AND u.status_code = 200".into(),
             extra_columns: vec![],
             columns: vec!["Address", "Content Type", "Status Code", "Status", "Indexability", "Indexability Status", "Size (bytes)"],
             filters: vec![
-                all(),
-                f("Missing <head> Tag", "u.head_tags = 0".into(), Some((Issue, High)), "No head element in the source."),
-                f("Multiple <head> Tags", "u.head_tags > 1".into(), Some((Issue, High)), "More than one head element."),
-                f("Missing <body> Tag", "u.body_tags = 0".into(), Some((Issue, High)), "No body element in the source."),
-                f("Multiple <body> Tags", "u.body_tags > 1".into(), Some((Issue, High)), "More than one body element."),
-                f(&format!("HTML Document Over {} MB", p.html_max_mb), format!("u.size > {}", p.html_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "HTML larger than the preference."),
+                f("All", "u.is_html = 1".into(), None, "Every HTML page."),
+                f("Missing <head> Tag", "u.is_html = 1 AND u.head_tags = 0".into(), Some((Issue, High)), "No head element in the source."),
+                f("Multiple <head> Tags", "u.is_html = 1 AND u.head_tags > 1".into(), Some((Issue, High)), "More than one head element."),
+                f("Missing <body> Tag", "u.is_html = 1 AND u.body_tags = 0".into(), Some((Issue, High)), "No body element in the source."),
+                f("Multiple <body> Tags", "u.is_html = 1 AND u.body_tags > 1".into(), Some((Issue, High)), "More than one body element."),
+                f(&format!("HTML Document Over {} MB", p.html_max_mb), format!("u.is_html = 1 AND u.size > {}", p.html_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "HTML larger than the preference."),
+                f(&format!("Resource Over {} MB", p.resource_max_mb), format!("u.is_html = 0 AND u.size > {}", p.resource_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "A CSS, JavaScript, image or other file larger than the preference."),
             ],
         },
         TabDef {

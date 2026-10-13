@@ -129,6 +129,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return "User-agent: *\nDisallow: /private/\nSitemap: https://www.example.com/sitemap.xml\n" as T;
     case "check_expression":
       return (String(args?.expression).includes("[") && !String(args?.expression).includes("]") ? "invalid XPath: unclosed [" : null) as T;
+    case "get_report":
+      return {
+        columns: ["Response Time (s)", "URLs", "% of Total"],
+        rows: [["0 - 1", "1102", "88.16"], ["1 - 2", "110", "8.8"], ["2 - 3", "28", "2.24"], ["3 - 4", "7", "0.56"], ["10+", "3", "0.24"]],
+        total: 5,
+      } as T;
     case "recent_profiles":
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
@@ -255,7 +261,7 @@ const DEFAULT_CONFIG = {
   custom_headers: [["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"], ["Accept-Encoding", "gzip"], ["Cache-Control", "no-cache"], ["Pragma", "no-cache"]] as [string, string][],
   include: [] as string[], exclude: [] as string[], remove_all_parameters: false, remove_parameters: [] as string[],
   url_rewrite_rules: [] as { regex: string; replace: string }[], lowercase_urls: false, percent_encoding_case: "uppercase" as const, cdns: [] as string[],
-  content_area: { include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
+  content_area: { mode: "exclude" as const, check_alt_text: false, include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
   custom_search: [], custom_extraction: [],
@@ -265,7 +271,7 @@ const DEFAULT_CONFIG = {
     title_min_chars: 30, title_max_chars: 60, title_min_px: 200, title_max_px: 561,
     description_min_chars: 70, description_max_chars: 155, description_min_px: 400, description_max_px: 985,
     url_max_chars: 115, h1_max_chars: 70, h2_max_chars: 70, alt_text_max_chars: 100, image_max_kb: 100,
-    low_content_words: 200, high_crawl_depth: 3, high_internal_outlinks: 1000, high_external_outlinks: 10, html_max_mb: 2,
+    low_content_words: 200, high_crawl_depth: 3, high_internal_outlinks: 1000, high_external_outlinks: 10, html_max_mb: 2, resource_max_mb: 2,
     non_descriptive_anchor_text: ["click here", "click this", "find out more", "go", "here", "learn more", "more", "over here", "read here", "read more", "right here", "start", "this"],
     soft_404_phrases: ["Page Not Found", "404 Page Can't Be Found"],
   },

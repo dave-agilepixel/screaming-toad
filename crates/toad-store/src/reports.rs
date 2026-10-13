@@ -29,6 +29,15 @@ const LINK_FROM: &str = "FROM links l JOIN urls s ON s.id = l.source_id LEFT JOI
 
 /// Name, kind, description, SQL. Redirect Chains is built in Rust instead.
 const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
+    ("Response Times", ReportKind::Report, "Internal URLs by server response time, in one-second buckets (the Response Times panel).",
+     "WITH b AS (
+        SELECT CASE WHEN response_time >= 10 THEN 10 ELSE CAST(response_time AS INTEGER) END AS bucket
+        FROM urls WHERE is_internal = 1 AND response_time IS NOT NULL AND status_code > 0
+      )
+      SELECT CASE WHEN bucket = 10 THEN '10+' ELSE bucket || ' - ' || (bucket + 1) END AS \"Response Time (s)\",
+             COUNT(*) AS \"URLs\",
+             round(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM b), 2) AS \"% of Total\"
+      FROM b GROUP BY bucket ORDER BY bucket"),
     ("Canonical Chains", ReportKind::Report, "Pages whose canonical target is itself canonicalised elsewhere or redirects (Advanced > Always Follow Canonicals follows them).",
      "SELECT u.address AS \"Address\", coalesce(u.canonical_1, u.http_canonical) AS \"Canonical\",
              t.status_code AS \"Canonical Status Code\",

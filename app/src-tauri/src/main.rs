@@ -306,6 +306,15 @@ fn get_reports(state: State<'_, AppState>) -> CmdResult<Vec<ReportDef>> {
     with_store(&state, |s| Ok(s.reports()))
 }
 
+/// A report as a table (panels that show a report, e.g. Response Times).
+#[tauri::command]
+fn get_report(state: State<'_, AppState>, name: String) -> CmdResult<Table> {
+    if state.store.lock().map_err(err)?.is_none() {
+        return Ok(Table::default());
+    }
+    with_store(&state, |s| s.report(&name))
+}
+
 #[tauri::command]
 fn export_report(state: State<'_, AppState>, name: String, path: String) -> CmdResult<u64> {
     with_store(&state, |s| {
@@ -526,6 +535,7 @@ fn main() {
             get_near_duplicates,
             get_reports,
             export_report,
+            get_report,
             get_structured_details,
             generate_sitemap,
             export_csv,
