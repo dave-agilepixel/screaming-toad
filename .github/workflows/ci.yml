@@ -32,6 +32,9 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Build the CLI sidecar (Tauri's build script checks it exists)
+        working-directory: app
+        run: npm run sidecar:dev
       - name: Check the whole workspace
         run: cargo check --workspace --all-targets
       - name: Test

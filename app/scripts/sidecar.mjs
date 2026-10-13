@@ -38,8 +38,13 @@ mkdirSync(outDir, { recursive: true });
 const out = join(outDir, `toad-${triple}${ext}`);
 if (triple === "universal-apple-darwin") {
   // `tauri build --target universal-apple-darwin`: one fat binary for
-  // Apple Silicon and Intel Macs.
-  const parts = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map(build);
+  // Apple Silicon and Intel Macs. Tauri compiles the app once per
+  // architecture first, and each of those builds wants its own sidecar.
+  const parts = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map((t) => {
+    const built = build(t);
+    copyFileSync(built, join(outDir, `toad-${t}`));
+    return built;
+  });
   execFileSync("lipo", ["-create", "-output", out, ...parts], { stdio: "inherit" });
   console.log(`sidecar: lipo ${parts.join(" + ")} -> ${out}`);
 } else {
