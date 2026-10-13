@@ -71,6 +71,45 @@ pub async fn send_test_email(state: State<'_, AppState>, to: Vec<String>) -> Cmd
     toad_apis::notify::notify(&settings, password.as_deref(), &to, &summary).await.map_err(err)
 }
 
+#[derive(Serialize)]
+pub struct LocalModel {
+    id: &'static str,
+    label: &'static str,
+    size_mb: u32,
+    downloaded: bool,
+}
+
+/// Content > Embeddings > Built-in: the models and whether each is on disk.
+#[tauri::command]
+pub fn local_models() -> Vec<LocalModel> {
+    toad_embed::MODELS
+        .iter()
+        .map(|m| LocalModel { id: m.id, label: m.label, size_mb: m.size_mb, downloaded: m.is_downloaded(&toad_apis::local_embed::model_dir(m)) })
+        .collect()
+}
+
+#[derive(Clone, Serialize)]
+struct ModelProgress {
+    id: String,
+    done_mb: u64,
+    total_mb: u64,
+}
+
+/// Download a built-in model now (otherwise it downloads on first use).
+#[tauri::command]
+pub async fn download_local_model(app: AppHandle, id: String) -> CmdResult<()> {
+    let info = toad_apis::local_embed::model(&id).map_err(err)?;
+    let dir = toad_apis::local_embed::model_dir(info);
+    let report = {
+        let app = app.clone();
+        let id = id.clone();
+        move |done: u64, total: Option<u64>| {
+            let _ = app.emit("model-download", ModelProgress { id: id.clone(), done_mb: done / 1_000_000, total_mb: total.unwrap_or(0) / 1_000_000 });
+        }
+    };
+    toad_apis::local_embed::download(&reqwest::Client::new(), info, &dir, &report).await.map_err(err)
+}
+
 /// Open a URL in the default browser.
 fn open_url(url: &str) {
     #[cfg(windows)]

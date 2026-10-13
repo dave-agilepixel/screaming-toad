@@ -1,0 +1,19 @@
+[package]
+name = "toad-embed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Built-in text embeddings: small BERT-family models run on the CPU with candle (pure Rust)"
+
+[dependencies]
+anyhow.workspace = true
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
+rayon = "1"
+serde.workspace = true
+serde_json.workspace = true
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
+
+[dev-dependencies]
+anyhow.workspace = true

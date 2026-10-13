@@ -192,6 +192,14 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         mcp_server: false,
         mcp_port: 11435,
       } as T;
+    case "local_models":
+      return [
+        { id: "bge-small-en-v1.5", label: "BGE Small (English, recommended)", size_mb: 134, downloaded: true },
+        { id: "all-MiniLM-L6-v2", label: "MiniLM L6 (English, fastest)", size_mb: 91, downloaded: false },
+        { id: "multilingual-e5-small", label: "E5 Small (multilingual, ~100 languages)", size_mb: 471, downloaded: false },
+      ] as T;
+    case "download_local_model":
+      return undefined as T;
     case "get_tasks":
       return [
         {
@@ -399,7 +407,7 @@ const DEFAULT_CONFIG = {
       temperature: 0.2, max_output_tokens: 500, max_input_chars: 20000, requests_per_minute: 60, indexable_only: true,
     },
     embeddings: {
-      enabled: false, provider: "open_ai" as const, model: "text-embedding-3-small", content: "content_area" as const, include_regex: "", semantic_similarity: true,
+      enabled: false, provider: "local" as const, model: "bge-small-en-v1.5", content: "content_area" as const, include_regex: "", semantic_similarity: true,
       similarity_threshold: 0.95, similarity_indexable_only: true, low_relevance: true, low_relevance_threshold: 0.4, low_relevance_indexable_only: true,
     },
     ahrefs: { enabled: false, target: "url" as const, organic: false },

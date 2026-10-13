@@ -209,6 +209,8 @@ pub enum AiProvider {
     Ollama,
     /// Any OpenAI-compatible endpoint (Azure, DeepSeek, Grok, OpenRouter, LM Studio...).
     OpenAiCompatible,
+    /// The built-in embedding model, run on this computer (embeddings only).
+    Local,
 }
 
 impl AiProvider {
@@ -219,6 +221,7 @@ impl AiProvider {
             Self::Gemini => "Gemini",
             Self::Ollama => "Ollama",
             Self::OpenAiCompatible => "OpenAI-compatible",
+            Self::Local => "Built-in",
         }
     }
 }
@@ -310,8 +313,9 @@ impl Default for EmbeddingsConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            provider: AiProvider::OpenAi,
-            model: "text-embedding-3-small".into(),
+            // On this computer by default: no key, no cost, nothing sent out.
+            provider: AiProvider::Local,
+            model: "bge-small-en-v1.5".into(),
             content: AiContent::ContentArea,
             include_regex: String::new(),
             semantic_similarity: true,

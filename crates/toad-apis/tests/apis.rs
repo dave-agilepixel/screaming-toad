@@ -203,6 +203,9 @@ async fn api_access_end_to_end() {
     apis.ai.requests_per_minute = 0;
     apis.ai.indexable_only = false;
     apis.embeddings.enabled = true;
+    // The mock OpenAI endpoint (the default is the built-in model).
+    apis.embeddings.provider = AiProvider::OpenAi;
+    apis.embeddings.model = "text-embedding-3-small".into();
     apis.embeddings.similarity_threshold = 0.9;
     apis.embeddings.low_relevance_threshold = 0.5;
     apis.ahrefs.enabled = true;

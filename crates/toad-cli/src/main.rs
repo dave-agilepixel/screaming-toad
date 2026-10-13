@@ -475,8 +475,13 @@ struct CrawlArgs {
     extract: Vec<String>,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    // Before the async runtime starts any threads.
+    toad_embed::configure_threads();
+    tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Crawl(args) => crawl(args).await.map(|_| ()),
         Command::RunTask { id } => run_task(&id).await,

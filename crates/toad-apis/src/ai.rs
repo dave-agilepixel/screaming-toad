@@ -33,7 +33,7 @@ impl ApiRunner {
             AiProvider::Gemini => Some(self.secrets.require(keys::GEMINI, "Gemini")?),
             // Local servers usually need no key.
             AiProvider::OpenAiCompatible => self.secrets.get(keys::COMPATIBLE),
-            AiProvider::Ollama => None,
+            AiProvider::Ollama | AiProvider::Local => None,
         })
     }
 
@@ -65,6 +65,7 @@ impl ApiRunner {
                 let body = json!({"contents": [{"role": "user", "parts": [{"text": user}]}], "generationConfig": {"temperature": ai.temperature, "maxOutputTokens": ai.max_output_tokens}});
                 send_json(|| self.client.post(&url).header("x-goog-api-key", key.unwrap_or("")).json(&body)).await?
             }
+            AiProvider::Local => anyhow::bail!("the built-in model only makes embeddings; choose a provider for AI prompts"),
             AiProvider::Ollama => {
                 let url = format!("{}/api/chat", self.ollama_base());
                 let body = json!({"model": model, "messages": [{"role": "user", "content": user}], "stream": false, "options": {"temperature": ai.temperature, "num_predict": ai.max_output_tokens}});
@@ -81,6 +82,7 @@ impl ApiRunner {
                 .and_then(Value::as_array)
                 .map(|parts| parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join("")),
             AiProvider::Ollama => json.pointer("/message/content").and_then(Value::as_str).map(str::to_string),
+            AiProvider::Local => None,
         };
         text.map(|t| t.trim().to_string()).ok_or_else(|| anyhow::anyhow!("{} returned no text", provider.name()))
     }
@@ -110,13 +112,20 @@ impl ApiRunner {
                 let url = format!("{}/api/embed", self.ollama_base());
                 send_json(|| self.client.post(&url).json(&json!({"model": model, "input": text}))).await?
             }
-            AiProvider::Anthropic => anyhow::bail!("Anthropic has no embeddings API; choose OpenAI, Gemini, Ollama or an OpenAI-compatible provider"),
+            AiProvider::Anthropic => anyhow::bail!("Anthropic has no embeddings API; choose Built-in, OpenAI, Gemini, Ollama or an OpenAI-compatible provider"),
+            AiProvider::Local => {
+                let info = crate::local_embed::model(model)?;
+                let dir = crate::local_embed::model_dir(info);
+                let text = text.to_string();
+                let (info, dir2) = (*info, dir.clone());
+                return tokio::task::spawn_blocking(move || toad_embed::Embedder::load(&info, &dir2)?.embed(&text)).await?;
+            }
         };
         let values = match provider {
             AiProvider::OpenAi | AiProvider::OpenAiCompatible => json.pointer("/data/0/embedding"),
             AiProvider::Gemini => json.pointer("/embedding/values"),
             AiProvider::Ollama => json.pointer("/embeddings/0"),
-            AiProvider::Anthropic => None,
+            AiProvider::Anthropic | AiProvider::Local => None,
         };
         let v: Vec<f32> = values.and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_f64().map(|f| f as f32)).collect()).unwrap_or_default();
         anyhow::ensure!(!v.is_empty(), "{} returned no embedding", provider.name());
@@ -128,7 +137,7 @@ fn cut(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars.max(1)).collect()
 }
 
-fn page_content(store: &dyn StoreLock, url: &str, content: AiContent, max_chars: usize) -> anyhow::Result<String> {
+pub(crate) fn page_content(store: &dyn StoreLock, url: &str, content: AiContent, max_chars: usize) -> anyhow::Result<String> {
     let s = store.lock_store()?;
     let text = s.content_for(url, content)?.ok_or_else(|| match content {
         AiContent::Html => anyhow::anyhow!("no stored HTML (switch on Store HTML)"),
@@ -181,6 +190,9 @@ pub async fn run_embeddings(runner: &ApiRunner, store: &dyn StoreLock) -> anyhow
         let have: std::collections::HashSet<String> = s.embeddings()?.into_iter().map(|(a, _)| a).collect();
         s.api_targets(false)?.into_iter().filter(|u| !have.contains(u) && include.as_ref().is_none_or(|re| re.is_match(u))).collect()
     };
+    if e.provider == AiProvider::Local {
+        return crate::local_embed::run(runner, store, todo).await;
+    }
     let max_chars = runner.cfg.apis.ai.max_input_chars;
     let throttle = Throttle::new(4, runner.cfg.apis.ai.requests_per_minute.max(60));
     crate::for_each_url(runner, store, toad_store::api::EMBED, todo, throttle, |url| async move {

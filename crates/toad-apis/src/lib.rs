@@ -12,6 +12,7 @@ pub mod ai;
 pub mod google;
 pub mod keystore;
 pub mod links;
+pub mod local_embed;
 pub mod notify;
 pub mod psi;
 mod throttle;

@@ -24,7 +24,7 @@ export interface CustomExtractor {
   extract: "element" | "inner_html" | "text" | "function_value";
 }
 
-export type AiProvider = "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible";
+export type AiProvider = "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible" | "local";
 export type AiContent = "page_text" | "content_area" | "html" | "url_only";
 export type LinkTarget = "url" | "subdomain" | "root_domain";
 
@@ -409,6 +409,7 @@ export type Field =
   | { kind: "google-account"; label: string }
   | { kind: "google-property"; key: string; which: "gsc" | "ga4"; label: string }
   | { kind: "ai-prompts"; key: string; label: string }
+  | { kind: "embedding-model"; key: string; label: string }
   | { kind: "note"; text: string };
 
 export interface Group {
@@ -833,8 +834,20 @@ export const NODES: Node[] = [
             label: "Enable Embeddings",
             help: "Page text is turned into vectors by the provider below (API keys under API Access > AI), for Content > Semantically Similar and Low Relevance Content.",
           },
-          { kind: "select", key: "apis.embeddings.provider", label: "Provider", options: [["open_ai", "OpenAI"], ["gemini", "Gemini"], ["ollama", "Ollama"], ["open_ai_compatible", "OpenAI-compatible"]] },
-          { kind: "text", key: "apis.embeddings.model", label: "Embedding Model", placeholder: "text-embedding-3-small" },
+          {
+            kind: "select",
+            key: "apis.embeddings.provider",
+            label: "Provider",
+            options: [
+              ["local", "Built-in (on this computer)"],
+              ["open_ai", "OpenAI"],
+              ["gemini", "Gemini"],
+              ["ollama", "Ollama"],
+              ["open_ai_compatible", "OpenAI-compatible"],
+            ],
+            help: "Built-in runs a small embedding model on this computer: no API key, no cost, and page text never leaves the machine.",
+          },
+          { kind: "embedding-model", key: "apis.embeddings.model", label: "Embedding Model" },
           { kind: "select", key: "apis.embeddings.content", label: "Content", options: [["content_area", "Content Area"], ["page_text", "Page Text"], ["html", "HTML"]] },
           { kind: "text", key: "apis.embeddings.include_regex", label: "Embedding Filter Rules", placeholder: "Only URLs matching this regex (blank: all)" },
         ],

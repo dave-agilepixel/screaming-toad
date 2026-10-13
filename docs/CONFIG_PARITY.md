@@ -258,6 +258,13 @@ The scores below are as audited. Since then:
     - Local Lighthouse.
     - AI prompt library and per-prompt advanced overrides.
     - Embeddings are compared all-pairs: O(n²), fine for tens of thousands of pages, not millions.
+  - **Built-in embeddings (`toad-embed`, added after WP13):**
+    - Content > Embeddings defaults to the Built-in provider: a small sentence-embedding model run on the CPU with candle (pure Rust, no native libraries). No key, no cost, and no page text leaves the machine.
+    - Models: BGE Small (English, default, 134 MB), MiniLM L6 (English, 91 MB) and multilingual E5 Small (471 MB). Each downloads once from Hugging Face into `~/.toad/models` (Download button, or on first use).
+    - Pages are embedded as chunks of up to 200 words (first 4 chunks), averaged, one page per core with single-threaded maths inside (`toad_embed::configure_threads`).
+    - Speed: about 3–4 pages/s on a 15 W laptop CPU (i7-1265U), more on desktops.
+    - Scores run lower than OpenAI's: paraphrased pages score about 0.78 and unrelated ones about 0.45 with BGE Small, so thresholds may need adjusting per model.
+    - Real-model tests: `cargo test --release -p toad-apis --test local_embed -- --ignored`.
 - **WP13, Automation and output:** done, apart from the items listed below.
   - **Exports:**
     - XLSX (`rust_xlsxwriter`: numbers as numbers, bold frozen header, 31-character unique sheet names).

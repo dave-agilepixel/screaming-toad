@@ -51,6 +51,7 @@ const API_NAMES: Record<string, string> = {
   gsc_inspect: "URL Inspection",
   ai: "AI",
   embed: "Embeddings",
+  embed_download: "Downloading model (MB)",
   ahrefs: "Ahrefs",
   majestic: "Majestic",
   moz: "Moz",

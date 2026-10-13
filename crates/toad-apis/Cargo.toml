@@ -18,9 +18,13 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 toad-core.workspace = true
+toad-embed.workspace = true
 toad-store.workspace = true
 tokio = { workspace = true, features = ["net", "io-util"] }
 url.workspace = true
 
 [dev-dependencies]
+toad-core.workspace = true
+url.workspace = true
+candle-core = "0.11"
 tokio = { workspace = true, features = ["net", "io-util", "macros", "rt-multi-thread"] }

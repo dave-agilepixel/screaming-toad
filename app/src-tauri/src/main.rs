@@ -695,6 +695,8 @@ fn reset_config(app: AppHandle, state: State<'_, AppState>) -> CmdResult<CrawlCo
 }
 
 fn main() {
+    // Before Tauri starts any threads (see toad_embed::configure_threads).
+    toad_embed::configure_threads();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
@@ -726,6 +728,8 @@ fn main() {
             apis::google_properties,
             apis::test_ai_prompt,
             apis::request_api_data,
+            apis::local_models,
+            apis::download_local_model,
             apis::get_notification_settings,
             apis::set_notification_settings,
             apis::send_test_email,

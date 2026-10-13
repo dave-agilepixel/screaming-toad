@@ -19,4 +19,5 @@ toad-store.workspace = true
 toad-apis.workspace = true
 toad-sched.workspace = true
 toad-mcp.workspace = true
+toad-embed.workspace = true
 url.workspace = true

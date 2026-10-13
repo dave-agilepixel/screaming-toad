@@ -21,6 +21,7 @@ toad-store.workspace = true
 toad-apis.workspace = true
 toad-sched.workspace = true
 toad-mcp.workspace = true
+toad-embed.workspace = true
 reqwest.workspace = true
 url.workspace = true
 tauri = { version = "2", features = [] }

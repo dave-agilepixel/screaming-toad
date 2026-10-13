@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiAccess } from "../api";
+import { apiAccess, events, type LocalModel } from "../api";
 import type { AiPrompt, CrawlConfig } from "../config/schema";
 
 /**
@@ -181,7 +181,93 @@ const DEFAULT_MODEL: Record<AiPrompt["provider"], string> = {
   gemini: "gemini-2.5-flash",
   ollama: "llama3.2",
   open_ai_compatible: "",
+  local: "bge-small-en-v1.5",
 };
+
+const CLOUD_EMBEDDING_MODEL: Partial<Record<AiPrompt["provider"], string>> = {
+  open_ai: "text-embedding-3-small",
+  gemini: "text-embedding-004",
+  ollama: "nomic-embed-text",
+};
+
+/**
+ * Content > Embeddings > Model. Built-in: a model picker with download
+ * status (models download on first use, or now with Download). Other
+ * providers: the provider's model name.
+ */
+export function EmbeddingModelField({ cfg, set, label }: { cfg: CrawlConfig; set: (key: string, value: unknown) => void; label: string }) {
+  const e = cfg.apis.embeddings;
+  const [models, setModels] = useState<LocalModel[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const local = e.provider === "local";
+  const refresh = () => apiAccess.localModels().then(setModels).catch((err) => setError(String(err)));
+  useEffect(() => {
+    if (local) refresh();
+  }, [local]);
+  useEffect(() => {
+    const un = events.onModelDownload((p) => setProgress(`${p.done_mb} / ${p.total_mb} MB`));
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+  // Switching provider: offer that provider's usual model.
+  useEffect(() => {
+    if (local && !models.some((m) => m.id === e.model) && models.length) set("apis.embeddings.model", models[0].id);
+    if (!local && models.some((m) => m.id === e.model)) set("apis.embeddings.model", CLOUD_EMBEDDING_MODEL[e.provider] ?? "");
+  }, [local, models.length]);
+
+  if (!local) {
+    return (
+      <div className="field">
+        <label className="stack">
+          {label}
+          <input value={e.model} placeholder={CLOUD_EMBEDDING_MODEL[e.provider] ?? "model name"} onChange={(x) => set("apis.embeddings.model", x.target.value)} spellCheck={false} />
+        </label>
+      </div>
+    );
+  }
+  const current = models.find((m) => m.id === e.model);
+  const download = async () => {
+    setError(null);
+    setProgress("Starting…");
+    try {
+      await apiAccess.downloadLocalModel(e.model);
+      setProgress(null);
+      refresh();
+    } catch (err) {
+      setProgress(null);
+      setError(String(err));
+    }
+  };
+  return (
+    <div className="field">
+      <label className="stack">
+        {label}
+        <span className="button-row">
+          <select className="grow" value={e.model} onChange={(x) => set("apis.embeddings.model", x.target.value)}>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label} — {m.size_mb} MB{m.downloaded ? " ✓" : ""}
+              </option>
+            ))}
+          </select>
+          {current && !current.downloaded && (
+            <button onClick={download} disabled={!!progress}>
+              {progress ?? "Download"}
+            </button>
+          )}
+          {current?.downloaded && <span className="pill good-pill">Downloaded</span>}
+        </span>
+      </label>
+      <p className="hint">
+        Runs on this computer's CPU (several pages a second; faster on desktop processors). The model downloads once from Hugging Face into ~/.toad/models, here or
+        on first use. Long pages are represented by their first 800 words.
+      </p>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
 
 /** API Access > AI > Prompt Configuration: one column per prompt. */
 export function AiPromptsEditor({ cfg, set }: { cfg: CrawlConfig; set: (key: string, value: unknown) => void }) {

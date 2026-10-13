@@ -182,6 +182,8 @@ export const events = {
   onAuthRequired: (cb: (r: AuthRequired) => void): Promise<UnlistenFn> => listen<AuthRequired>("auth-required", (e) => cb(e.payload)),
   onApiProgress: (cb: (p: ApiProgress) => void): Promise<UnlistenFn> => listen<ApiProgress>("api-progress", (e) => cb(e.payload)),
   onApiMessage: (cb: (m: string) => void): Promise<UnlistenFn> => listen<string>("api-message", (e) => cb(e.payload)),
+  onModelDownload: (cb: (p: { id: string; done_mb: number; total_mb: number }) => void): Promise<UnlistenFn> =>
+    listen<{ id: string; done_mb: number; total_mb: number }>("model-download", (e) => cb(e.payload)),
 };
 
 // ---------------------------------------------------------------- Authentication and network
@@ -322,7 +324,16 @@ export const exportApi = {
   savePresets: (presets: ExportPreset[]) => invoke<void>("save_export_presets", { presets }),
 };
 
+export interface LocalModel {
+  id: string;
+  label: string;
+  size_mb: number;
+  downloaded: boolean;
+}
+
 export const apiAccess = {
+  localModels: () => invoke<LocalModel[]>("local_models"),
+  downloadLocalModel: (id: string) => invoke<void>("download_local_model", { id }),
   secretStatus: () => invoke<Record<string, boolean>>("api_secret_status"),
   setSecret: (key: string, value: string) => invoke<void>("set_api_secret", { key, value }),
   googleConnect: () => invoke<void>("google_connect"),

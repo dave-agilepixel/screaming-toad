@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
 import { AuthenticationPanel } from "../components/AuthenticationPanel";
 import { SegmentsEditor } from "../components/SegmentsEditor";
-import { AiPromptsEditor, ApiKeyField, GoogleAccountField, GooglePropertyField } from "../components/ApiFields";
+import { AiPromptsEditor, ApiKeyField, EmbeddingModelField, GoogleAccountField, GooglePropertyField } from "../components/ApiFields";
 import { HEADER_NAMES, USER_AGENT_PRESETS, WINDOW_PRESETS, validHeaderName } from "./presets";
 import type { RobotsTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomJavaScript, type CustomSearch, type Field } from "./schema";
@@ -433,6 +433,9 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
 
     case "ai-prompts":
       return <AiPromptsEditor cfg={cfg} set={set} />;
+
+    case "embedding-model":
+      return <EmbeddingModelField cfg={cfg} set={set} label={f.label} />;
 
     case "segments":
       return <SegmentsEditor segments={cfg.segments} onChange={(v) => set("segments", v)} />;
