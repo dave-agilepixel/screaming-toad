@@ -172,6 +172,71 @@ export const events = {
     listen<Progress>("crawl-progress", (e) => cb(e.payload)),
   onAnalysing: (cb: () => void): Promise<UnlistenFn> => listen("crawl-analysing", () => cb()),
   onFinished: (cb: () => void): Promise<UnlistenFn> => listen("crawl-finished", () => cb()),
+  onAuthRequired: (cb: (r: AuthRequired) => void): Promise<UnlistenFn> => listen<AuthRequired>("auth-required", (e) => cb(e.payload)),
+};
+
+// ---------------------------------------------------------------- Authentication and network
+
+export interface Credential {
+  url: string;
+  username: string;
+  password: string;
+}
+
+export interface AuthCookie {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  http_only: boolean;
+  host_only: boolean;
+}
+
+export interface FormLogin {
+  name: string;
+  login_url: string;
+  cookies: AuthCookie[];
+}
+
+export interface AuthConfig {
+  prompt: boolean;
+  standards: Credential[];
+  forms: FormLogin[];
+}
+
+export interface ProxyConfig {
+  enabled: boolean;
+  kind: "http" | "https" | "socks5";
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  no_proxy: string[];
+}
+
+export interface NetworkSettings {
+  proxy: ProxyConfig;
+  trusted_certificates: string[];
+}
+
+/** A Basic/Digest challenge during a crawl, waiting for the user. */
+export interface AuthRequired {
+  id: number;
+  url: string;
+  realm: string;
+  scheme: string;
+}
+
+export const authApi = {
+  get: () => invoke<AuthConfig>("get_auth_config"),
+  set: (auth: AuthConfig) => invoke<void>("set_auth_config", { auth }),
+  answer: (id: number, url: string, credentials: [string, string] | null) => invoke<void>("answer_auth", { id, url, credentials }),
+  exportTo: (path: string, password: string) => invoke<void>("export_auth", { path, password }),
+  importFrom: (path: string, password: string) => invoke<AuthConfig>("import_auth", { path, password }),
+  startFormLogin: (url: string) => invoke<void>("start_form_login", { url }),
+  finishFormLogin: (name: string, loginUrl: string) => invoke<FormLogin>("finish_form_login", { name, loginUrl }),
+  cancelFormLogin: () => invoke<void>("cancel_form_login"),
 };
 
 // ---------------------------------------------------------------- Compare mode
@@ -361,6 +426,7 @@ export interface AppSettings {
   storage_dir: string | null;
   retention_days: number | null;
   last_mode: string;
+  network: NetworkSettings;
 }
 
 export const crawlsApi = {

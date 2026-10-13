@@ -26,6 +26,8 @@ import { CompareConfigDialog } from "./components/CompareConfigDialog";
 import { CrawlsDialog } from "./components/CrawlsDialog";
 import { ListModeDialog } from "./components/ListModeDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { AuthPromptDialog } from "./components/AuthenticationPanel";
+import type { AuthRequired } from "./api";
 
 type Status = "idle" | "crawling" | "paused" | "analysing" | "done";
 type Mode = "spider" | "list" | "compare";
@@ -73,6 +75,8 @@ export default function App() {
   // File > Crawls, File > Settings, List mode.
   const [showCrawls, setShowCrawls] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Basic/Digest challenges waiting for the user, oldest first.
+  const [authPrompts, setAuthPrompts] = useState<AuthRequired[]>([]);
   const [showList, setShowList] = useState(false);
   /** The open crawl was stopped or interrupted, so it can be resumed. */
   const [resumable, setResumable] = useState(false);
@@ -108,6 +112,7 @@ export default function App() {
         }
       }),
       events.onAnalysing(() => setStatus("analysing")),
+      events.onAuthRequired((r) => setAuthPrompts((q) => [...q, r])),
       events.onFinished(() => {
         setStatus("done");
         refresh();
@@ -694,6 +699,7 @@ export default function App() {
         <CrawlsDialog onClose={() => setShowCrawls(false)} onOpen={openCrawlAt} onResume={resumeCrawl} onCompare={compareFromCrawls} />
       )}
       {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
+      {authPrompts.length > 0 && <AuthPromptDialog key={authPrompts[0].id} req={authPrompts[0]} onDone={() => setAuthPrompts((q) => q.slice(1))} />}
       {showList && <ListModeDialog onClose={() => setShowList(false)} onStart={startList} />}
       {showCompareConfig && (
         <CompareConfigDialog

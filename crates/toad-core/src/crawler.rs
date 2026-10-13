@@ -99,6 +99,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Proxy, trusted certificates and authentication.
+    network: Arc<crate::auth::Network>,
     /// Rendering: JavaScript (launched when the crawl starts).
     renderer: Option<Arc<crate::render::Renderer>>,
     /// Content > Spelling & Grammar (dictionaries shared by every page).
@@ -139,6 +141,7 @@ impl Crawler {
             live_exclude: Arc::default(),
             language: Arc::new(crate::spelling::LanguageChecker::new(&cfg)),
             renderer: None,
+            network: Arc::new(crate::auth::Network::default()),
             path_limits: cfg
                 .path_limits
                 .iter()
@@ -147,6 +150,14 @@ impl Crawler {
                 .collect::<Result<Vec<_>, regex::Error>>()?,
             cfg: Arc::new(cfg),
         })
+    }
+
+    /// Use a proxy, trusted certificates and authentication
+    /// (File > Settings and Configuration > Authentication).
+    pub fn with_network(mut self, network: Arc<crate::auth::Network>) -> anyhow::Result<Self> {
+        self.fetcher = Fetcher::with_network(&self.cfg, network.clone())?;
+        self.network = network;
+        Ok(self)
     }
 
     pub async fn run(mut self, seeds: Vec<Url>, tx: mpsc::Sender<CrawlEvent>, control: CrawlControl) -> anyhow::Result<Progress> {
@@ -350,7 +361,7 @@ impl Crawler {
     /// Rendering: JavaScript needs a browser for the whole crawl.
     async fn start_renderer(&mut self) -> anyhow::Result<()> {
         if self.cfg.rendering.javascript() && self.renderer.is_none() {
-            self.renderer = Some(Arc::new(crate::render::Renderer::launch(&self.cfg).await?));
+            self.renderer = Some(Arc::new(crate::render::Renderer::launch(&self.cfg, self.network.clone()).await?));
         }
         Ok(())
     }

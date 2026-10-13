@@ -261,6 +261,7 @@ export type Field =
   | { kind: "custom-search" }
   | { kind: "custom-extraction" }
   | { kind: "custom-javascript" }
+  | { kind: "authentication"; label: string }
   | { kind: "note"; text: string };
 
 export interface Group {
@@ -902,6 +903,11 @@ export const NODES: Node[] = [
         ],
       },
     ],
+  },
+  {
+    id: "authentication",
+    label: "Authentication",
+    groups: [{ fields: [{ kind: "authentication", label: "Authentication login password Basic Digest forms cookies" }] }],
   },
 ];
 

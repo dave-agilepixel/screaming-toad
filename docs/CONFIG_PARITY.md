@@ -160,6 +160,29 @@ The scores below are as audited. Since then:
     - Visual Custom Extraction.
     - Green Hosting Carbon Calculation.
     - Old AJAX `_escaped_fragment_` crawling.
+- **WP10, Authentication, proxy and certificates:** done, apart from the items listed below.
+  - **Where things are kept.** Credentials are held for the session in `toad_core::auth::Network`, outside `CrawlConfig`, so they are never written into `.toad` files or profiles.
+    - Export/Import writes them to a `.toadauth` file encrypted with AES-256-GCM, using a PBKDF2-SHA256 key at 600k iterations.
+    - The CLI reads that file with `--auth-config`, taking the password from `TOAD_AUTH_PASSWORD`.
+  - **Standards-based:**
+    - Basic and Digest (MD5, MD5-sess, SHA-256; qop=auth; stale nonces retried), with Host or URL prefix rows.
+    - Credentials are sent up front once an origin has challenged.
+    - An in-crawl Authentication Required dialog appears once per realm; Skip declines that realm for the crawl.
+    - Answered credentials are reused for the rest of the session.
+  - **Forms-based:**
+    - A visible Chrome/Edge window opens at the login page. On Done, all its cookies are captured.
+    - Matching cookies (domain, path, secure) are sent with every request and set in the renderer.
+  - **File > Settings:**
+    - Proxy: HTTP, HTTPS or SOCKS5, with optional credentials and a no-proxy list. It is used by the fetcher, the renderer (`--proxy-server`, with credentials answered over CDP) and the login window. CLI: `--proxy` and `--no-proxy`.
+    - Trusted Certificates: PEM/DER files added to the fetcher's roots and validated on save. CLI: `--trusted-cert`.
+  - The UI warns users to exclude logout and admin URLs when crawling logged in.
+  - Tests: `tests/network.rs` (Basic, Digest, prompt, forms cookies, authenticating proxy, certificate files), plus unit tests against the RFC 2617 and RFC 7616 vectors, header parsing, matching and the encrypted round trip.
+  - **Not done:**
+    - localStorage and sessionStorage capture for forms logins (cookies only).
+    - NTLM and Negotiate.
+    - Trusted certificates in the renderer (Chrome uses the OS store).
+    - Proxy credentials and site credentials together on one rendered page (site credentials win).
+    - The proxy password is stored in plain text in the app settings file.
 
 ## How to read this
 

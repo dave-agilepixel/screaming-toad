@@ -42,6 +42,8 @@ enum Command {
         max_urls: Option<u64>,
         #[arg(long)]
         threads: Option<usize>,
+        #[command(flatten)]
+        net: NetworkArgs,
     },
     /// Compare two crawls (Compare mode) and save the comparison.
     Compare(CompareArgs),
@@ -166,10 +168,53 @@ struct CompareArgs {
     ignore_non_indexable: bool,
 }
 
+/// Authentication, proxy and trusted certificates.
+#[derive(Args, Clone)]
+struct NetworkArgs {
+    /// Encrypted authentication file exported from Configuration >
+    /// Authentication. Its password is read from TOAD_AUTH_PASSWORD.
+    #[arg(long)]
+    auth_config: Option<PathBuf>,
+    /// Proxy as scheme://[user:pass@]host:port (http, https or socks5).
+    #[arg(long)]
+    proxy: Option<String>,
+    /// Hosts that bypass the proxy.
+    #[arg(long, value_delimiter = ',')]
+    no_proxy: Vec<String>,
+    /// A PEM or DER certificate to trust (repeatable).
+    #[arg(long = "trusted-cert")]
+    trusted_certs: Vec<String>,
+}
+
+impl NetworkArgs {
+    fn network(&self) -> anyhow::Result<std::sync::Arc<toad_core::auth::Network>> {
+        use toad_core::auth::{AuthConfig, Network, NetworkSettings, ProxyConfig};
+        let auth = match &self.auth_config {
+            Some(path) => {
+                let password = std::env::var("TOAD_AUTH_PASSWORD")
+                    .map_err(|_| anyhow::anyhow!("set TOAD_AUTH_PASSWORD to the password of {}", path.display()))?;
+                let text = std::fs::read_to_string(path)?;
+                toad_core::auth::import_encrypted(&text, &password)?
+            }
+            None => AuthConfig::default(),
+        };
+        let mut proxy = match &self.proxy {
+            Some(p) => ProxyConfig::parse(p)?,
+            None => ProxyConfig::default(),
+        };
+        proxy.no_proxy = self.no_proxy.clone();
+        let settings = NetworkSettings { proxy, trusted_certificates: self.trusted_certs.clone() };
+        // No prompts on the command line: unknown realms stay 401.
+        Ok(Network::new(settings, AuthConfig { prompt: false, ..auth }, None).shared())
+    }
+}
+
 #[derive(Args)]
 struct CrawlArgs {
     /// Start URL (Spider mode).
     url: Option<String>,
+    #[command(flatten)]
+    net: NetworkArgs,
     /// File of URLs, one per line (List mode).
     #[arg(long, conflicts_with = "url")]
     list: Option<PathBuf>,
@@ -260,7 +305,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Issues { crawl, json } => issues(&crawl, json),
         Command::Compare(args) => compare(args),
         Command::Crawls { dir } => list_crawls(&dir),
-        Command::Resume { crawl, max_urls, threads } => resume(&crawl, max_urls, threads).await,
+        Command::Resume { crawl, max_urls, threads, net } => resume(&crawl, max_urls, threads, &net).await,
         Command::CompareShow { comparison, issues, change_detection, out } => {
             let cmp = Comparison::open(&comparison)?;
             if let Some(path) = out {
@@ -498,7 +543,7 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     if let Some(inputs) = &list_inputs {
         store.set_list_inputs(inputs)?;
     }
-    let crawler = Crawler::new(cfg, &start)?;
+    let crawler = Crawler::new(cfg, &start)?.with_network(args.net.network()?)?;
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
     let handle = tokio::spawn(crawler.run(seeds, tx, CrawlControl::default()));
     println!("Crawling {start} → {}", args.out.display());
@@ -710,7 +755,7 @@ async fn drive(
     Ok(progress)
 }
 
-async fn resume(path: &Path, max_urls: Option<u64>, threads: Option<usize>) -> anyhow::Result<()> {
+async fn resume(path: &Path, max_urls: Option<u64>, threads: Option<usize>, net: &NetworkArgs) -> anyhow::Result<()> {
     let mut store = Store::open(path)?;
     let start = store
         .meta("start_url")?
@@ -726,7 +771,7 @@ async fn resume(path: &Path, max_urls: Option<u64>, threads: Option<usize>) -> a
     println!("Resuming {start}: {} URLs crawled, {} links to follow up", crawled.len(), pending.len());
     let mode = store.meta("mode")?.unwrap_or_else(|| "spider".into());
     store.mark_started("", &mode)?;
-    let crawler = Crawler::new(cfg, &start)?;
+    let crawler = Crawler::new(cfg, &start)?.with_network(net.network()?)?;
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
     let handle = tokio::spawn(crawler.resume(crawled, pending, tx, CrawlControl::default()));
     drive(&mut store, rx, handle).await?;

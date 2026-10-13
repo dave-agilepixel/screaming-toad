@@ -60,6 +60,12 @@ const OVERVIEW: OverviewRow[] = TABS.flatMap((t) =>
   t.filters.map((f, i) => ({ tab: t.name, filter: f.name, urls: i === 0 ? TOTAL : (f.name.length * 7) % 120 })),
 );
 
+let MOCK_AUTH = {
+  prompt: true,
+  standards: [{ url: "staging.example.com", username: "toad", password: "secret" }],
+  forms: [] as { name: string; login_url: string; cookies: { name: string; value: string; domain: string; path: string; secure: boolean; http_only: boolean; host_only: boolean }[] }[],
+};
+
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((r) => setTimeout(r, 30));
   switch (cmd) {
@@ -178,7 +184,30 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "current_crawl_path":
       return MOCK_CRAWLS[0].path as T;
     case "get_app_settings":
-      return { storage_dir: null, retention_days: null, last_mode: "spider" } as T;
+      return {
+        storage_dir: null,
+        retention_days: null,
+        last_mode: "spider",
+        network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
+      } as T;
+    case "get_auth_config":
+      return MOCK_AUTH as T;
+    case "set_auth_config":
+      MOCK_AUTH = (args as { auth: typeof MOCK_AUTH }).auth;
+      return undefined as T;
+    case "start_form_login":
+    case "cancel_form_login":
+    case "answer_auth":
+    case "export_auth":
+      return undefined as T;
+    case "finish_form_login": {
+      const a = args as { name: string; loginUrl: string };
+      const login = { name: a.name, login_url: a.loginUrl, cookies: [{ name: "session", value: "abc", domain: "www.example.com", path: "/", secure: true, http_only: true, host_only: true }] };
+      MOCK_AUTH = { ...MOCK_AUTH, forms: [...MOCK_AUTH.forms.filter((f) => f.name !== a.name), login] };
+      return login as T;
+    }
+    case "import_auth":
+      return MOCK_AUTH as T;
     case "read_url_file":
     case "fetch_sitemap_urls":
       return ["https://www.example.com/a", "https://www.example.com/b", "https://www.example.com/a"] as T;

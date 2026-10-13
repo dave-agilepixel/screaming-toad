@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod auth;
 mod compare;
 mod profiles;
 mod settings;
@@ -25,6 +26,12 @@ struct AppState {
     compare_config: Mutex<CompareConfig>,
     /// File > Settings (storage folder, retention, last mode).
     settings: Mutex<settings::AppSettings>,
+    /// Configuration > Authentication, held for the session only.
+    auth: std::sync::RwLock<toad_core::auth::AuthConfig>,
+    /// Login prompts waiting for the user, by id.
+    pending_auth: Arc<Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<Option<(String, String)>>>>>,
+    /// Forms Based: the open login window.
+    login: tokio::sync::Mutex<Option<toad_core::render::LoginWindow>>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -102,7 +109,8 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
     *state.store.lock().map_err(err)? = Some(store);
     *state.crawl_path.lock().map_err(err)? = Some(path.clone());
 
-    let crawler = Crawler::new(cfg, &start).map_err(err)?;
+    let network = auth::crawl_network(&app, &state)?;
+    let crawler = Crawler::new(cfg, &start).and_then(|c| c.with_network(network)).map_err(err)?;
     let control = CrawlControl::default();
     *state.control.lock().map_err(err)? = Some(control.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
@@ -130,7 +138,8 @@ async fn continue_crawl(app: AppHandle, state: State<'_, AppState>, path: String
     *state.store.lock().map_err(err)? = Some(store);
     *state.crawl_path.lock().map_err(err)? = Some(path);
 
-    let crawler = Crawler::new(cfg, &start).map_err(err)?;
+    let network = auth::crawl_network(&app, &state)?;
+    let crawler = Crawler::new(cfg, &start).and_then(|c| c.with_network(network)).map_err(err)?;
     let control = CrawlControl::default();
     *state.control.lock().map_err(err)? = Some(control.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
@@ -530,7 +539,8 @@ async fn download_robots(state: State<'_, AppState>, host: String) -> CmdResult<
     let h = host.trim();
     let base = if h.contains("://") { h.to_string() } else { format!("https://{h}") };
     let url = Url::parse(&base).and_then(|u| u.join("/robots.txt")).map_err(err)?;
-    let res = toad_core::fetch::Fetcher::new(&cfg).map_err(err)?.fetch(&url).await;
+    let network = auth::quiet_network(&state)?;
+    let res = toad_core::fetch::Fetcher::with_network(&cfg, network).map_err(err)?.fetch(&url).await;
     match res.status {
         200 => Ok(String::from_utf8_lossy(&res.body).into_owned()),
         0 => Err(format!("{url}: no response ({})", res.error.unwrap_or(res.status_text))),
@@ -591,6 +601,14 @@ fn main() {
             start_crawl,
             continue_crawl,
             settings::get_app_settings,
+            auth::get_auth_config,
+            auth::set_auth_config,
+            auth::answer_auth,
+            auth::export_auth,
+            auth::import_auth,
+            auth::start_form_login,
+            auth::finish_form_login,
+            auth::cancel_form_login,
             settings::set_app_settings,
             settings::crawls_list,
             settings::crawl_rename,

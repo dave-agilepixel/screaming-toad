@@ -69,11 +69,14 @@ pub struct AppSettings {
     pub retention_days: Option<u64>,
     /// Mode menu: the last mode used ("spider", "list" or "compare").
     pub last_mode: String,
+    /// Proxy and Trusted Certificates.
+    #[serde(default)]
+    pub network: toad_core::auth::NetworkSettings,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { storage_dir: None, retention_days: None, last_mode: "spider".into() }
+        Self { storage_dir: None, retention_days: None, last_mode: "spider".into(), network: Default::default() }
     }
 }
 
@@ -124,6 +127,12 @@ pub fn set_app_settings(app: AppHandle, state: State<'_, AppState>, settings: Ap
     if settings.retention_days == Some(0) {
         return Err("Crawl Retention needs at least 1 day.".into());
     }
+    if settings.network.proxy.enabled && settings.network.proxy.host.trim().is_empty() {
+        return Err("Enter the proxy's address, or switch the proxy off.".into());
+    }
+    // Check the proxy and certificate files load before saving them.
+    let net = toad_core::auth::Network::new(settings.network.clone(), Default::default(), None).shared();
+    Fetcher::with_network(&toad_core::CrawlConfig::default(), net).map_err(err)?;
     let path = settings_path(&app).ok_or("no settings folder")?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(err)?;
@@ -199,7 +208,7 @@ pub fn crawl_export(path: String, dest: String) -> CmdResult<()> {
 #[tauri::command]
 pub async fn fetch_sitemap_urls(state: State<'_, AppState>, urls: Vec<String>) -> CmdResult<Vec<String>> {
     let cfg = state.config.lock().map_err(err)?.clone();
-    let fetcher = Fetcher::new(&cfg).map_err(err)?;
+    let fetcher = Fetcher::with_network(&cfg, crate::auth::quiet_network(&state)?).map_err(err)?;
     let mut pending: Vec<String> = urls.into_iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty()).collect();
     let mut fetched = std::collections::HashSet::new();
     let mut out = Vec::new();

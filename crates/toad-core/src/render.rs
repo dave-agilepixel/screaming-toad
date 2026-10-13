@@ -215,6 +215,7 @@ pub struct Renderer {
     user_agent: String,
     profile_dir: PathBuf,
     custom_js: Vec<CustomJs>,
+    network: Arc<crate::auth::Network>,
 }
 
 /// Flattens shadow roots (Flatten Shadow DOM) and same-origin iframes
@@ -256,7 +257,7 @@ const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
 })"#;
 
 impl Renderer {
-    pub async fn launch(cfg: &CrawlConfig) -> anyhow::Result<Self> {
+    pub async fn launch(cfg: &CrawlConfig, network: Arc<crate::auth::Network>) -> anyhow::Result<Self> {
         let r = &cfg.rendering;
         let exe = find_browser(r).ok_or_else(|| {
             anyhow::anyhow!("JavaScript rendering needs Chrome, Edge or Chromium. None was found; set its path in Configuration > Spider > Rendering.")
@@ -264,7 +265,16 @@ impl Renderer {
         // A private profile per crawl, so crawls don't share cookies or caches.
         let profile_dir = std::env::temp_dir().join(format!("toad-render-{}-{}", std::process::id(), unique_suffix()));
         let (w, h) = window(r);
-        let config = BrowserConfig::builder()
+        let mut builder = BrowserConfig::builder();
+        // File > Settings > Proxy. Proxy credentials are answered per page.
+        if let Some(proxy) = network.settings.proxy.url() {
+            builder = builder.arg(format!("--proxy-server={}", proxy.replace("socks5h://", "socks5://")));
+            let bypass: Vec<&str> = network.settings.proxy.no_proxy.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            if !bypass.is_empty() {
+                builder = builder.arg(format!("--proxy-bypass-list={}", bypass.join(";")));
+            }
+        }
+        let config = builder
             .chrome_executable(&exe)
             .new_headless_mode()
             .user_data_dir(&profile_dir)
@@ -286,6 +296,7 @@ impl Renderer {
             user_agent: cfg.user_agent.clone(),
             profile_dir,
             custom_js: cfg.custom_javascript.iter().filter(|s| !s.code.trim().is_empty()).cloned().collect(),
+            network,
         })
     }
 
@@ -296,6 +307,38 @@ impl Renderer {
         let result = self.render_on(&page, url, content_type).await;
         let _ = page.close().await;
         result
+    }
+
+    /// Configuration > Authentication in the browser: forms-based login
+    /// cookies, and Basic/Digest (or proxy) credentials for challenges.
+    async fn authenticate(&self, page: &chromiumoxide::Page, url: &Url) -> anyhow::Result<()> {
+        use chromiumoxide::cdp::browser_protocol::network::{CookieParam, SetCookiesParams};
+        let auth = self.network.auth();
+        let cookies: Vec<CookieParam> = auth
+            .forms
+            .iter()
+            .flat_map(|f| f.cookies.iter())
+            .filter_map(|c| {
+                let mut b = CookieParam::builder().name(&c.name).value(&c.value).path(if c.path.is_empty() { "/" } else { c.path.as_str() }).secure(c.secure).http_only(c.http_only);
+                b = if c.host_only {
+                    let scheme = if c.secure { "https" } else { "http" };
+                    b.url(format!("{scheme}://{}{}", c.domain.trim_start_matches('.'), if c.path.is_empty() { "/" } else { c.path.as_str() }))
+                } else {
+                    b.domain(&c.domain)
+                };
+                b.build().ok()
+            })
+            .collect();
+        if !cookies.is_empty() {
+            page.execute(SetCookiesParams::new(cookies)).await?;
+        }
+        let site = auth.standards.iter().find(|c| c.matches(url)).map(|c| (c.username.clone(), c.password.clone()));
+        let proxy = &self.network.settings.proxy;
+        let proxy = (proxy.enabled && !proxy.username.is_empty()).then(|| (proxy.username.clone(), proxy.password.clone()));
+        if let Some((username, password)) = site.or(proxy) {
+            page.authenticate(chromiumoxide::auth::Credentials { username, password }).await?;
+        }
+        Ok(())
     }
 
     /// Custom JavaScript: Actions first, then Extractions, each with its own timeout.
@@ -375,6 +418,7 @@ impl Renderer {
             }));
         }
 
+        self.authenticate(page, url).await?;
         page.goto(url.as_str()).await?;
         if r.ajax_timeout_secs > 0.0 {
             tokio::time::sleep(Duration::from_secs_f64(r.ajax_timeout_secs)).await;
@@ -415,6 +459,69 @@ impl Renderer {
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
         Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, custom_js, saved_urls })
+    }
+
+    pub async fn close(mut self) {
+        let _ = self.browser.close().await;
+        let _ = self.browser.wait().await;
+        self.handler.abort();
+        let _ = std::fs::remove_dir_all(&self.profile_dir);
+    }
+}
+
+/// Configuration > Authentication > Forms Based: a visible browser window
+/// the user logs in with. Its cookies are captured when they finish.
+pub struct LoginWindow {
+    browser: Browser,
+    handler: tokio::task::JoinHandle<()>,
+    profile_dir: PathBuf,
+}
+
+impl LoginWindow {
+    pub async fn open(rendering: &RenderingConfig, network: &crate::auth::Network, url: &Url) -> anyhow::Result<Self> {
+        let exe = find_browser(rendering).ok_or_else(|| {
+            anyhow::anyhow!("Forms-based login needs Chrome, Edge or Chromium. None was found; set its path in Configuration > Spider > Rendering.")
+        })?;
+        let profile_dir = std::env::temp_dir().join(format!("toad-login-{}-{}", std::process::id(), unique_suffix()));
+        let mut builder = BrowserConfig::builder()
+            .chrome_executable(&exe)
+            .with_head()
+            .user_data_dir(&profile_dir)
+            .window_size(1100, 850)
+            .arg("--no-first-run")
+            .arg("--disable-extensions");
+        if let Some(proxy) = network.settings.proxy.url() {
+            builder = builder.arg(format!("--proxy-server={}", proxy.replace("socks5h://", "socks5://")));
+        }
+        let config = builder.build().map_err(|e| anyhow::anyhow!("browser configuration: {e}"))?;
+        let (browser, mut handler) = Browser::launch(config).await.map_err(|e| anyhow::anyhow!("could not start {}: {e}", exe.display()))?;
+        let handler = tokio::spawn(async move { while handler.next().await.is_some() {} });
+        let page = browser.new_page("about:blank").await?;
+        let proxy = &network.settings.proxy;
+        if proxy.enabled && !proxy.username.is_empty() {
+            page.authenticate(chromiumoxide::auth::Credentials { username: proxy.username.clone(), password: proxy.password.clone() }).await?;
+        }
+        page.goto(url.as_str()).await?;
+        Ok(Self { browser, handler, profile_dir })
+    }
+
+    /// Every cookie the browser holds now.
+    pub async fn cookies(&self) -> anyhow::Result<Vec<crate::auth::AuthCookie>> {
+        Ok(self
+            .browser
+            .get_cookies()
+            .await?
+            .into_iter()
+            .map(|c| crate::auth::AuthCookie {
+                host_only: !c.domain.starts_with('.'),
+                name: c.name,
+                value: c.value,
+                domain: c.domain,
+                path: c.path,
+                secure: c.secure,
+                http_only: c.http_only,
+            })
+            .collect())
     }
 
     pub async fn close(mut self) {
