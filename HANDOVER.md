@@ -82,6 +82,8 @@ In this order (spec §9–10):
 
 `cd app && npm run tauri build` (or `-- --bundles nsis` for just the Windows installer). The build first runs `npm run sidecar`, which compiles the `toad` CLI in release mode and copies it to `app/src-tauri/binaries/toad-<target-triple>.exe`. Tauri bundles it next to the app executable as `toad.exe`; File > Scheduling registers tasks that run it. `tauri dev` does the same with a debug build (`npm run sidecar:dev`). Output: `target/release/bundle/`.
 
+GitHub Actions (`.github/workflows/ci.yml`, job "Installers") builds both installers on every push to the private repo: the Windows NSIS `.exe` and `.msi`, and a universal macOS `.dmg` for Apple Silicon and Intel (`--target universal-apple-darwin`; the sidecar script builds both architectures and joins them with `lipo`). Download them from the run's Artifacts. The Mac build is unsigned, so the first launch needs right-click > Open; signing and notarising need an Apple Developer ID.
+
 ## Look and feel
 
 The default UI theme is dark, styled after jellyfish.com (File > Settings > Appearance also offers Light, Match the system, and any accent colour; see `app/src/appearance.ts`): black surfaces, amber `#F8B133` accent, DM Sans text, Big Shoulders Display (800) for the wordmark and dialog titles, pill-shaped buttons and inputs, and segmented pill tabs (active = amber with black text). The fonts are bundled from `@fontsource` (no network needed). All colours are CSS variables in the theme block at the end of `app/src/styles.css`.

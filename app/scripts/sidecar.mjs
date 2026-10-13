@@ -20,17 +20,30 @@ if (!host) throw new Error("could not read the Rust host target from `rustc -vV`
 const triple = process.env.TAURI_ENV_TARGET_TRIPLE || host;
 const ext = triple.includes("windows") ? ".exe" : "";
 
-const args = ["build", "-p", "toad-cli"];
-if (!debug) args.push("--release");
-if (triple !== host) args.push("--target", triple);
-console.log(`sidecar: cargo ${args.join(" ")}`);
-execFileSync("cargo", args, { cwd: root, stdio: "inherit" });
-
 const targetDir = process.env.CARGO_TARGET_DIR ? resolve(process.env.CARGO_TARGET_DIR) : join(root, "target");
-const built = join(targetDir, ...(triple !== host ? [triple] : []), debug ? "debug" : "release", `toad${ext}`);
-if (!existsSync(built)) throw new Error(`sidecar: ${built} was not built`);
+
+function build(t) {
+  const args = ["build", "-p", "toad-cli"];
+  if (!debug) args.push("--release");
+  if (t !== host) args.push("--target", t);
+  console.log(`sidecar: cargo ${args.join(" ")}`);
+  execFileSync("cargo", args, { cwd: root, stdio: "inherit" });
+  const built = join(targetDir, ...(t !== host ? [t] : []), debug ? "debug" : "release", `toad${ext}`);
+  if (!existsSync(built)) throw new Error(`sidecar: ${built} was not built`);
+  return built;
+}
+
 const outDir = join(app, "src-tauri", "binaries");
 mkdirSync(outDir, { recursive: true });
 const out = join(outDir, `toad-${triple}${ext}`);
-copyFileSync(built, out);
-console.log(`sidecar: ${built} -> ${out}`);
+if (triple === "universal-apple-darwin") {
+  // `tauri build --target universal-apple-darwin`: one fat binary for
+  // Apple Silicon and Intel Macs.
+  const parts = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map(build);
+  execFileSync("lipo", ["-create", "-output", out, ...parts], { stdio: "inherit" });
+  console.log(`sidecar: lipo ${parts.join(" + ")} -> ${out}`);
+} else {
+  const built = build(triple);
+  copyFileSync(built, out);
+  console.log(`sidecar: ${built} -> ${out}`);
+}

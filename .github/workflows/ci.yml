@@ -41,19 +41,32 @@ jobs:
           cargo run -q -p toad-cli -- config default.toadconfig
           python3 scripts/check_config_schema.py default.toadconfig
 
+  # Runs alongside the tests rather than after them, so a flaky test on one
+  # OS doesn't hold back the installers. Check the Test jobs before shipping.
   installers:
-    name: Installers (${{ matrix.os }})
-    needs: test
+    name: Installers (${{ matrix.name }})
     if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - name: windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - name: macos-universal
+            os: macos-latest
+            target: universal-apple-darwin
+            bundles: app,dmg
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: installer-${{ matrix.target }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -63,16 +76,12 @@ jobs:
         working-directory: app
         run: |
           npm ci
-          npm run tauri build
-      - name: Build CLI
-        run: cargo build --release -p toad-cli
+          npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
       - uses: actions/upload-artifact@v4
         with:
-          name: screaming-toad-${{ matrix.os }}
+          name: screaming-toad-${{ matrix.name }}
           path: |
-            target/release/bundle/**/*.msi
-            target/release/bundle/**/*.exe
-            target/release/bundle/**/*.dmg
-            target/release/toad
-            target/release/toad.exe
-          if-no-files-found: warn
+            target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            target/${{ matrix.target }}/release/bundle/msi/*.msi
+            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
