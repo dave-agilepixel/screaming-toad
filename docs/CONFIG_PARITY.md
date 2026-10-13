@@ -792,7 +792,7 @@ The packages are ordered by user value and dependency. Sizes: **S** ≈ under 1 
   - Response-code inclusion checkboxes.
   - Per-depth priority/changefreq dropdowns.
 - §2.1:
-  - Theme: Light/Dark. Today the app follows the OS via `prefers-color-scheme` (`styles.css:20`).
+  - Theme: Light/Dark. The app now has one dark theme styled after jellyfish.com (see HANDOVER.md, Look and feel); a light variant would only need new token values in the theme block of `styles.css`.
   - Accent colour.
   - UI language.
 
