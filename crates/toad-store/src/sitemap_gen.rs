@@ -24,7 +24,7 @@ pub enum ChangeFreq {
     None,
     /// Daily if Last-Modified is within 24 hours, otherwise monthly.
     FromLastModified,
-    /// By crawl depth: 0–1 daily, 2 weekly, 3+ monthly.
+    /// By crawl depth, from `change_freq_by_depth`.
     ByDepth,
 }
 
@@ -37,14 +37,27 @@ pub struct SitemapOptions {
     pub include_canonicalised: bool,
     pub include_paginated: bool,
     pub include_pdfs: bool,
+    /// Pages > Response Codes: 2xx are always included; these add other
+    /// status classes (pages that return them are still crawled URLs).
+    pub include_3xx: bool,
+    pub include_4xx: bool,
+    pub include_5xx: bool,
     pub last_mod: LastMod,
-    /// Priority by crawl depth: 1.0, 0.9, 0.8, 0.7, 0.6, then 0.5.
+    /// Priority by crawl depth (`priority_by_depth`, depth 0–5+).
     pub priority: bool,
+    pub priority_by_depth: [f64; 6],
     pub change_freq: ChangeFreq,
+    /// Change Frequency by crawl depth 0–5+ (always, hourly, daily, weekly,
+    /// monthly, yearly or never).
+    pub change_freq_by_depth: [String; 6],
     pub max_urls_per_file: usize,
     /// One sitemap per segment (Configuration > Segments), plus an index.
-    #[serde(default)]
     pub by_segment: bool,
+    /// Images: list each page's images in the sitemap (`image:image`).
+    pub include_images: bool,
+    pub images: ImageSitemapOptions,
+    /// Hreflang: each page's alternates (`xhtml:link rel="alternate"`).
+    pub include_hreflang: bool,
 }
 
 impl Default for SitemapOptions {
@@ -54,19 +67,31 @@ impl Default for SitemapOptions {
             include_canonicalised: false,
             include_paginated: false,
             include_pdfs: false,
+            include_3xx: false,
+            include_4xx: false,
+            include_5xx: false,
             last_mod: LastMod::ServerResponse,
             priority: true,
+            priority_by_depth: [1.0, 0.9, 0.8, 0.7, 0.6, 0.5],
             change_freq: ChangeFreq::FromLastModified,
+            change_freq_by_depth: ["daily", "daily", "weekly", "monthly", "monthly", "monthly"].map(String::from),
             max_urls_per_file: 49_999,
             by_segment: false,
+            include_images: false,
+            images: ImageSitemapOptions::default(),
+            include_hreflang: false,
         }
     }
 }
 
 struct Entry {
+    id: i64,
     loc: String,
     depth: u32,
     last_modified: Option<String>,
+    images: Vec<String>,
+    /// (hreflang, href)
+    alternates: Vec<(String, String)>,
 }
 
 impl Store {
@@ -74,15 +99,23 @@ impl Store {
     /// `sitemap_index.xml` when there are more URLs than fit in one file.
     /// Returns the files written.
     pub fn generate_sitemap(&self, dir: &Path, opts: &SitemapOptions) -> anyhow::Result<Vec<PathBuf>> {
-        let mut conditions = vec![
-            "is_internal = 1".to_string(),
-            "status_code = 200".to_string(),
-            "blocked_robots_line IS NULL".to_string(),
-        ];
+        let mut classes = vec!["status_code BETWEEN 200 AND 299".to_string()];
+        if opts.include_3xx {
+            classes.push("status_code BETWEEN 300 AND 399".into());
+        }
+        if opts.include_4xx {
+            classes.push("status_code BETWEEN 400 AND 499".into());
+        }
+        if opts.include_5xx {
+            classes.push("status_code >= 500".into());
+        }
+        let mut conditions = vec!["is_internal = 1".to_string(), format!("({})", classes.join(" OR ")), "blocked_robots_line IS NULL".to_string()];
+        // Non-2xx responses aren't HTML pages as such; keep them by status.
+        let html_or_status = if opts.include_3xx || opts.include_4xx || opts.include_5xx { " OR status_code >= 300" } else { "" };
         conditions.push(if opts.include_pdfs {
-            "(is_html = 1 OR content_type LIKE '%pdf%')".into()
+            format!("(is_html = 1 OR content_type LIKE '%pdf%'{html_or_status})")
         } else {
-            "is_html = 1".into()
+            format!("(is_html = 1{html_or_status})")
         });
         if !opts.include_noindex {
             conditions.push("coalesce(directives, '') NOT LIKE '%,noindex,%' AND coalesce(directives, '') NOT LIKE '%,none,%'".into());
@@ -98,15 +131,37 @@ impl Store {
             _ => "NULL".into(),
         };
         let sql = format!(
-            "SELECT address, depth, last_modified, {segment} FROM urls u WHERE {} ORDER BY depth, crawl_order",
+            "SELECT address, depth, last_modified, {segment}, id FROM urls u WHERE {} ORDER BY depth, crawl_order",
             conditions.join(" AND ")
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows: Vec<(Entry, Option<String>)> = stmt
+        let mut rows: Vec<(Entry, Option<String>)> = stmt
             .query_map([], |r| {
-                Ok((Entry { loc: r.get(0)?, depth: r.get::<_, Option<i64>>(1)?.unwrap_or(0) as u32, last_modified: r.get(2)? }, r.get(3)?))
+                Ok((
+                    Entry {
+                        id: r.get(4)?,
+                        loc: r.get(0)?,
+                        depth: r.get::<_, Option<i64>>(1)?.unwrap_or(0) as u32,
+                        last_modified: r.get(2)?,
+                        images: vec![],
+                        alternates: vec![],
+                    },
+                    r.get(3)?,
+                ))
             })?
             .collect::<Result<_, _>>()?;
+        if opts.include_images {
+            let mut by_page = self.page_images(&opts.images, None)?;
+            for (e, _) in &mut rows {
+                e.images = by_page.remove(&e.id).unwrap_or_default();
+            }
+        }
+        if opts.include_hreflang {
+            let mut by_page = self.page_alternates()?;
+            for (e, _) in &mut rows {
+                e.alternates = by_page.remove(&e.id).unwrap_or_default();
+            }
+        }
         if opts.by_segment && rows.iter().any(|(_, s)| s.is_some()) {
             return self.sitemaps_by_segment(dir, opts, rows);
         }
@@ -195,8 +250,64 @@ impl Store {
     }
 }
 
+impl Store {
+    /// Each page's images that pass the image options, by page id.
+    fn page_images(&self, opts: &ImageSitemapOptions, _limit: Option<usize>) -> anyhow::Result<std::collections::HashMap<i64, Vec<String>>> {
+        let cdn = if opts.cdn_regex.trim().is_empty() { None } else { Some(regex::Regex::new(opts.cdn_regex.trim())?) };
+        let mut stmt = self.conn.prepare(
+            "SELECT l.source_id, l.target, l.internal, coalesce(i.status_code, 0),
+                    (SELECT COUNT(DISTINCT l2.source_id) FROM links l2 WHERE l2.target = l.target AND l2.kind = 'Image'),
+                    coalesce(i.directives, '')
+             FROM links l LEFT JOIN urls i ON i.address = l.target
+             WHERE l.kind = 'Image' ORDER BY l.source_id, l.id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?, r.get::<_, i64>(3)?, r.get::<_, i64>(4)?, r.get::<_, String>(5)?))
+        })?;
+        let mut out: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+        for row in rows {
+            let (page, image, internal, status, inlinks, directives) = row?;
+            if !internal && !cdn.as_ref().is_some_and(|re| re.is_match(&image)) {
+                continue;
+            }
+            if !opts.include_non_200 && status != 200 {
+                continue;
+            }
+            if !opts.include_noindex && (directives.contains(",noindex,") || directives.contains(",none,")) {
+                continue;
+            }
+            if opts.max_inlinks.is_some_and(|m| inlinks > m as i64) {
+                continue;
+            }
+            let v = out.entry(page).or_default();
+            // The protocol allows 1,000 images per page.
+            if v.len() < 1000 && !v.contains(&image) {
+                v.push(image);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Each page's hreflang alternates (hreflang, href), by page id.
+    fn page_alternates(&self) -> anyhow::Result<std::collections::HashMap<i64, Vec<(String, String)>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT source_id, hreflang, target FROM links WHERE kind = 'Hreflang' AND hreflang IS NOT NULL AND hreflang <> '' ORDER BY source_id, id",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?;
+        let mut out: std::collections::HashMap<i64, Vec<(String, String)>> = std::collections::HashMap::new();
+        for row in rows {
+            let (page, lang, href) = row?;
+            let v = out.entry(page).or_default();
+            if !v.iter().any(|(l, h)| *l == lang && *h == href) {
+                v.push((lang, href));
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// Sitemaps > Images Sitemap options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ImageSitemapOptions {
     /// Leave out images linked from more than this many pages (logos,
@@ -207,12 +318,14 @@ pub struct ImageSitemapOptions {
     pub cdn_regex: String,
     /// Include images that didn't return 200 (or weren't crawled).
     pub include_non_200: bool,
+    /// Include images that are noindex (X-Robots-Tag).
+    pub include_noindex: bool,
     pub max_urls_per_file: usize,
 }
 
 impl Default for ImageSitemapOptions {
     fn default() -> Self {
-        Self { max_inlinks: Some(10), cdn_regex: String::new(), include_non_200: false, max_urls_per_file: 49_999 }
+        Self { max_inlinks: Some(10), cdn_regex: String::new(), include_non_200: false, include_noindex: false, max_urls_per_file: 49_999 }
     }
 }
 
@@ -309,10 +422,23 @@ fn slugify(name: &str) -> String {
 }
 
 fn urlset(entries: &[Entry], opts: &SitemapOptions, now: i64) -> String {
-    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"");
+    if opts.include_images {
+        out.push_str(" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\"");
+    }
+    if opts.include_hreflang {
+        out.push_str(" xmlns:xhtml=\"http://www.w3.org/1999/xhtml\"");
+    }
+    out.push_str(">\n");
     for e in entries {
         out.push_str("  <url>\n");
         let _ = writeln!(out, "    <loc>{}</loc>", escape(&e.loc));
+        for (lang, href) in &e.alternates {
+            let _ = writeln!(out, "    <xhtml:link rel=\"alternate\" hreflang=\"{}\" href=\"{}\"/>", escape(lang), escape(href));
+        }
+        for img in &e.images {
+            let _ = writeln!(out, "    <image:image>\n      <image:loc>{}</image:loc>\n    </image:image>", escape(img));
+        }
         let modified = e.last_modified.as_deref().and_then(parse_http_date);
         match &opts.last_mod {
             LastMod::None => {}
@@ -331,17 +457,13 @@ fn urlset(entries: &[Entry], opts: &SitemapOptions, now: i64) -> String {
                 Some(secs) if now - secs < 86_400 => "daily",
                 _ => "monthly",
             }),
-            ChangeFreq::ByDepth => Some(match e.depth {
-                0 | 1 => "daily",
-                2 => "weekly",
-                _ => "monthly",
-            }),
+            ChangeFreq::ByDepth => Some(opts.change_freq_by_depth[e.depth.min(5) as usize].as_str()).filter(|f| !f.is_empty()),
         };
         if let Some(f) = freq {
             let _ = writeln!(out, "    <changefreq>{f}</changefreq>");
         }
         if opts.priority {
-            let p = 1.0 - 0.1 * e.depth.min(5) as f64;
+            let p = opts.priority_by_depth[e.depth.min(5) as usize].clamp(0.0, 1.0);
             let _ = writeln!(out, "    <priority>{p:.1}</priority>");
         }
         out.push_str("  </url>\n");

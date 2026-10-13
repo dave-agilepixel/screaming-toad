@@ -166,6 +166,21 @@ struct SitemapArgs {
     /// "lastmod" or "depth".
     #[arg(long)]
     changefreq: Option<String>,
+    /// Also include pages with these status classes, e.g. "3xx,4xx".
+    #[arg(long, value_delimiter = ',')]
+    include_status: Vec<String>,
+    /// List each page's images (image:image).
+    #[arg(long)]
+    images: bool,
+    /// List each page's hreflang alternates (xhtml:link).
+    #[arg(long)]
+    hreflang: bool,
+    /// Priority for depths 0..5+, e.g. "1.0,0.9,0.8,0.7,0.6,0.5".
+    #[arg(long, value_delimiter = ',')]
+    priority_by_depth: Vec<f64>,
+    /// Change frequency for depths 0..5+ with --changefreq depth, e.g. "daily,daily,weekly,monthly,monthly,monthly".
+    #[arg(long, value_delimiter = ',')]
+    changefreq_by_depth: Vec<String>,
 }
 
 #[derive(Args)]
@@ -659,8 +674,22 @@ async fn run() -> anyhow::Result<()> {
                     Some("depth") => ChangeFreq::ByDepth,
                     Some(other) => bail!("--changefreq must be 'lastmod' or 'depth', not '{other}'"),
                 },
+                include_3xx: args.include_status.iter().any(|s| s.starts_with('3')),
+                include_4xx: args.include_status.iter().any(|s| s.starts_with('4')),
+                include_5xx: args.include_status.iter().any(|s| s.starts_with('5')),
+                include_images: args.images,
+                include_hreflang: args.hreflang,
                 ..Default::default()
             };
+            let mut opts = opts;
+            if !args.priority_by_depth.is_empty() {
+                anyhow::ensure!(args.priority_by_depth.len() == 6, "--priority-by-depth needs 6 values (depth 0 to 5+)");
+                opts.priority_by_depth.copy_from_slice(&args.priority_by_depth);
+            }
+            if !args.changefreq_by_depth.is_empty() {
+                anyhow::ensure!(args.changefreq_by_depth.len() == 6, "--changefreq-by-depth needs 6 values (depth 0 to 5+)");
+                opts.change_freq_by_depth = std::array::from_fn(|i| args.changefreq_by_depth[i].clone());
+            }
             for path in store.generate_sitemap(&args.out_dir, &opts)? {
                 println!("Wrote {}", path.display());
             }

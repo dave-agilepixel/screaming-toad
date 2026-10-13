@@ -785,12 +785,7 @@ The packages are ordered by user value and dependency. Sizes: **S** ≈ under 1 
 ### Deferred: Visualisations and settings polish
 
 - §2.6 (32 controls). Crawl/directory tree and force-directed graphs: d3-force in the React UI, fed by a store query. 3D and the Content Cluster Diagram come after WP12 embeddings.
-- §2.5:
-  - Images sitemap (include images, noindex images, relevant images with ≤ N inlinks, CDN regex).
-  - Hreflang alternates in sitemaps.
-  - By segment (after WP11).
-  - Response-code inclusion checkboxes.
-  - Per-depth priority/changefreq dropdowns.
+- §2.5: **done.** XML Sitemap dialog sections Pages (with Response Codes 3xx/4xx/5xx), Last Modified, Priority (editable per depth), Change Frequency (by Last-Modified or editable per depth), Images (image:image per page: noindex images, non-200 images, at most N inlinks, CDN regex), Hreflang (xhtml:link alternates) and By Segment; CLI `toad sitemap --include-status --images --hreflang --priority-by-depth --changefreq-by-depth`; the separate images sitemap from WP13.
 - §2.1:
   - Theme: Light/Dark. The app now has one dark theme styled after jellyfish.com (see HANDOVER.md, Look and feel); a light variant would only need new token values in the theme block of `styles.css`.
   - Accent colour.

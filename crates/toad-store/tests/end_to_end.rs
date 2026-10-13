@@ -214,6 +214,27 @@ async fn crawl_finds_known_issues() {
         assert!(!xml.contains(&format!("<loc>{origin}{excluded}</loc>")), "{excluded} should not be in the sitemap");
     }
 
+    // Images and hreflang inside the sitemap, other status classes, and
+    // per-depth priority / change frequency.
+    let mut opts = SitemapOptions {
+        include_images: true,
+        include_hreflang: true,
+        include_3xx: true,
+        include_4xx: true,
+        change_freq: toad_store::ChangeFreq::ByDepth,
+        ..SitemapOptions::default()
+    };
+    opts.images.include_non_200 = true;
+    opts.priority_by_depth = [1.0, 0.8, 0.5, 0.5, 0.5, 0.5];
+    opts.change_freq_by_depth[0] = "hourly".into();
+    let out = dir.join("sitemap-full");
+    let xml = std::fs::read_to_string(&store.generate_sitemap(&out, &opts).unwrap()[0]).unwrap();
+    assert!(xml.contains("xmlns:image=") && xml.contains("xmlns:xhtml="));
+    assert!(xml.contains(&format!("<image:loc>{origin}/img.png</image:loc>")), "{xml}");
+    assert!(xml.contains(&format!(r#"<xhtml:link rel="alternate" hreflang="fr" href="{origin}/fr"/>"#)), "{xml}");
+    assert!(xml.contains(&format!("<loc>{origin}/redirect</loc>")) && xml.contains(&format!("<loc>{origin}/missing</loc>")));
+    assert!(xml.contains("<changefreq>hourly</changefreq>") && xml.contains("<priority>0.8</priority>"));
+
     drop(store);
     let _ = std::fs::remove_dir_all(&dir);
 }

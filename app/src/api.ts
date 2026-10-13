@@ -76,16 +76,32 @@ import type { CrawlConfig } from "./config/schema";
 
 export type LastMod = "none" | "server_response" | { custom: string };
 
+export interface ImageSitemapOptions {
+  max_inlinks: number | null;
+  cdn_regex: string;
+  include_non_200: boolean;
+  include_noindex: boolean;
+  max_urls_per_file: number;
+}
+
 export interface SitemapOptions {
   include_noindex: boolean;
   include_canonicalised: boolean;
   include_paginated: boolean;
   include_pdfs: boolean;
+  include_3xx: boolean;
+  include_4xx: boolean;
+  include_5xx: boolean;
   last_mod: LastMod;
   priority: boolean;
+  priority_by_depth: number[];
   change_freq: "none" | "from_last_modified" | "by_depth";
+  change_freq_by_depth: string[];
   max_urls_per_file: number;
   by_segment: boolean;
+  include_images: boolean;
+  images: ImageSitemapOptions;
+  include_hreflang: boolean;
 }
 
 export const api = {
