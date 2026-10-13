@@ -10,6 +10,7 @@ pub mod model;
 pub mod pixel;
 pub mod robots;
 pub mod sitemap;
+pub mod spelling;
 pub mod structured;
 pub mod urlutil;
 pub mod xpath;

@@ -223,6 +223,9 @@ pub struct CrawlConfig {
     pub near_duplicate_threshold: f64,
     pub near_duplicates_indexable_only: bool,
 
+    // Configuration > Content > Spelling & Grammar
+    pub spelling: SpellingConfig,
+
     // Configuration > Custom > Search / Extraction
     pub custom_search: Vec<CustomSearch>,
     pub custom_extraction: Vec<CustomExtractor>,
@@ -338,6 +341,7 @@ impl Default for CrawlConfig {
             near_duplicates: false,
             near_duplicate_threshold: 0.90,
             near_duplicates_indexable_only: true,
+            spelling: SpellingConfig::default(),
             custom_search: vec![],
             custom_extraction: vec![],
             link_positions_enabled: true,
@@ -471,6 +475,56 @@ impl CrawlConfig {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
     }
+}
+
+/// Content > Spelling & Grammar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SpellingConfig {
+    pub spell_check: bool,
+    pub grammar_check: bool,
+    pub language_mode: LanguageMode,
+    /// BCP 47 code: the Manual language, and the dialect for a bare page
+    /// `lang` in Auto mode (e.g. `en` -> en-GB).
+    pub language: String,
+    /// LanguageTool server for grammar, e.g. http://localhost:8081. Empty: no grammar check.
+    pub grammar_server: String,
+    /// Grammar Rules switched off (LanguageTool rule ids).
+    pub disabled_grammar_rules: Vec<String>,
+    /// Ignore: words skipped in this crawl.
+    pub ignore_words: Vec<String>,
+    /// Dictionary: the user's global word list (kept outside profiles; set by
+    /// the app or CLI at crawl start).
+    #[serde(skip)]
+    pub dictionary_words: Vec<String>,
+    /// Where Hunspell dictionaries are stored and downloaded to.
+    #[serde(skip)]
+    pub dictionaries_dir: Option<std::path::PathBuf>,
+}
+
+impl Default for SpellingConfig {
+    fn default() -> Self {
+        Self {
+            spell_check: false,
+            grammar_check: false,
+            language_mode: LanguageMode::Auto,
+            language: "en-US".into(),
+            grammar_server: String::new(),
+            disabled_grammar_rules: vec![],
+            ignore_words: vec![],
+            dictionary_words: vec![],
+            dictionaries_dir: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageMode {
+    /// Each page's `lang` attribute.
+    #[default]
+    Auto,
+    Manual,
 }
 
 /// Custom > Link Positions: one row (name, link-path substring).

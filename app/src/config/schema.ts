@@ -35,6 +35,16 @@ export interface ContentArea {
   exclude_ids: string[];
 }
 
+export interface SpellingConfig {
+  spell_check: boolean;
+  grammar_check: boolean;
+  language_mode: "auto" | "manual";
+  language: string;
+  grammar_server: string;
+  disabled_grammar_rules: string[];
+  ignore_words: string[];
+}
+
 export interface Extraction {
   page_title: boolean;
   meta_description: boolean;
@@ -171,6 +181,7 @@ export interface CrawlConfig {
   near_duplicates: boolean;
   near_duplicate_threshold: number;
   near_duplicates_indexable_only: boolean;
+  spelling: SpellingConfig;
   custom_search: CustomSearch[];
   custom_extraction: CustomExtractor[];
   link_positions_enabled: boolean;
@@ -198,6 +209,8 @@ export type Field =
   | { kind: "custom-robots"; key: string; label: string; help?: string }
   | { kind: "ua-preset"; label: string }
   | { kind: "link-positions"; key: string; label: string }
+  | { kind: "spelling-language"; key: string; label: string; help?: string }
+  | { kind: "global-dictionary"; label: string; help?: string }
   | { kind: "rewrite-rules"; key: string; label: string; help?: string }
   /** A live test box: how one URL is rewritten / classified / matched. */
   | { kind: "url-test"; label: string; show: "rewrite" | "cdn" | "include" | "exclude" }
@@ -515,6 +528,56 @@ export const NODES: Node[] = [
             disabledIf: (c) => !c.near_duplicates,
           },
         ],
+      },
+    ],
+  },
+  {
+    id: "spelling",
+    label: "Spelling & Grammar",
+    parent: "content",
+    groups: [
+      {
+        title: "Spelling & Grammar",
+        fields: [
+          { kind: "bool", key: "spelling.spell_check", label: "Enable Spell Check", help: "Checks titles, meta descriptions and the content area. A language's dictionary is downloaded the first time it's needed." },
+          { kind: "bool", key: "spelling.grammar_check", label: "Enable Grammar Check" },
+          {
+            kind: "text",
+            key: "spelling.grammar_server",
+            label: "LanguageTool server",
+            placeholder: "http://localhost:8081",
+            help: "Grammar is checked by a LanguageTool server. Run one locally to keep page text on this computer; a remote address sends page text to that server.",
+          },
+          {
+            kind: "select",
+            key: "spelling.language_mode",
+            label: "Language",
+            options: [
+              ["auto", "Auto (each page's lang attribute)"],
+              ["manual", "Manual (one language for every page)"],
+            ],
+          },
+          {
+            kind: "spelling-language",
+            key: "spelling.language",
+            label: "Language / dialect",
+            help: "Manual: the language for every page. Auto: the dialect for a bare lang such as en, and the language for pages with no lang.",
+          },
+        ],
+      },
+      {
+        title: "Grammar Rules",
+        fields: [
+          { kind: "lines", key: "spelling.disabled_grammar_rules", label: "Disabled grammar rules", rows: 3, placeholder: "EN_A_VS_AN", help: "LanguageTool rule ids, one per line. Saved with the profile." },
+        ],
+      },
+      {
+        title: "Ignore",
+        fields: [{ kind: "lines", key: "spelling.ignore_words", label: "Ignore", rows: 3, help: "Words skipped in this crawl's configuration, one per line." }],
+      },
+      {
+        title: "Dictionary",
+        fields: [{ kind: "global-dictionary", label: "Dictionary", help: "Your words for every crawl and profile (kept by the app, not in profiles). Saved straight away." }],
       },
     ],
   },

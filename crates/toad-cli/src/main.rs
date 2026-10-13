@@ -219,6 +219,17 @@ struct CrawlArgs {
     /// Store HTML (View Source, page-source export, Compare > Content).
     #[arg(long)]
     store_html: bool,
+    /// Spell check page text. Dictionaries are downloaded to ~/.toad/dictionaries
+    /// on first use; words in ~/.toad/dictionary.txt are always accepted.
+    #[arg(long)]
+    spelling: bool,
+    /// Grammar check with this LanguageTool server (e.g. http://localhost:8081).
+    #[arg(long)]
+    grammar_server: Option<String>,
+    /// Spelling/grammar language (e.g. en-GB). With it, every page is checked
+    /// in this language (Manual); without, each page's lang attribute is used.
+    #[arg(long)]
+    language: Option<String>,
     /// Custom search, "Name=text" (case-insensitive). Prefix the text with
     /// "!" for Does Not Contain. Repeatable.
     #[arg(long)]
@@ -449,6 +460,22 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     cfg.sitemap_urls.extend(args.sitemap_url.iter().cloned());
     if args.near_duplicates { cfg.near_duplicates = true; }
     if args.store_html { cfg.store_html = true; }
+    if args.spelling { cfg.spelling.spell_check = true; }
+    if let Some(server) = &args.grammar_server {
+        cfg.spelling.grammar_check = true;
+        cfg.spelling.grammar_server = server.clone();
+    }
+    if let Some(lang) = &args.language {
+        cfg.spelling.language = lang.clone();
+        cfg.spelling.language_mode = toad_core::config::LanguageMode::Manual;
+    }
+    if cfg.spelling.spell_check || cfg.spelling.grammar_check {
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from).unwrap_or_default();
+        cfg.spelling.dictionaries_dir = Some(home.join(".toad").join("dictionaries"));
+        cfg.spelling.dictionary_words = std::fs::read_to_string(home.join(".toad").join("dictionary.txt"))
+            .map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
+            .unwrap_or_default();
+    }
     custom_rules(&args, &mut cfg)?;
     cfg.include.extend(args.include.iter().cloned());
     cfg.exclude.extend(args.exclude.iter().cloned());

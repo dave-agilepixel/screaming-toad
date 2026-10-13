@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Table } from "../api";
 import { SourceView } from "./SourceView";
 
-type View = "details" | "inlinks" | "outlinks" | "duplicates" | "structured" | "headers" | "cookies" | "source";
+type View = "details" | "inlinks" | "outlinks" | "duplicates" | "structured" | "spelling" | "headers" | "cookies" | "source";
 
 const LABELS: Record<View, string> = {
   details: "URL Details",
@@ -10,6 +10,7 @@ const LABELS: Record<View, string> = {
   outlinks: "Outlinks",
   duplicates: "Duplicate Details",
   structured: "Structured Data Details",
+  spelling: "Spelling & Grammar",
   headers: "HTTP Headers",
   cookies: "Cookies",
   source: "View Source",
@@ -38,7 +39,9 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
             ? api.outlinks(url)
             : view === "duplicates"
               ? api.nearDuplicates(url)
-              : view === "headers"
+              : view === "spelling"
+                ? api.languageDetails(url)
+                : view === "headers"
                 ? api.httpHeaders(url)
                 : view === "cookies"
                   ? api.cookies(url)

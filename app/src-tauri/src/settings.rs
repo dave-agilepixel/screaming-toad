@@ -12,6 +12,53 @@ use toad_store::Store;
 use url::Url;
 
 const SETTINGS_FILE: &str = "settings.json";
+/// Content > Spelling & Grammar > Dictionary: the user's words, one per line,
+/// shared by every crawl and profile.
+const DICTIONARY_FILE: &str = "dictionary.txt";
+
+fn dictionary_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join(DICTIONARY_FILE))
+}
+
+fn read_dictionary(app: &AppHandle) -> Vec<String> {
+    dictionary_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|t| t.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Before a crawl: where dictionaries live and the user's global word list.
+pub fn prepare_spelling(app: &AppHandle, cfg: &mut toad_core::CrawlConfig) {
+    cfg.spelling.dictionaries_dir = app.path().app_data_dir().ok().map(|d| d.join("dictionaries"));
+    cfg.spelling.dictionary_words = read_dictionary(app);
+}
+
+pub fn add_dictionary_word(app: &AppHandle, word: &str) -> CmdResult<()> {
+    let mut words = read_dictionary(app);
+    if !words.iter().any(|w| w.eq_ignore_ascii_case(word)) {
+        words.push(word.trim().to_string());
+    }
+    write_dictionary(app, &words)
+}
+
+fn write_dictionary(app: &AppHandle, words: &[String]) -> CmdResult<()> {
+    let path = dictionary_path(app).ok_or("no settings folder")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(err)?;
+    }
+    std::fs::write(path, words.join("\n")).map_err(err)
+}
+
+#[tauri::command]
+pub fn get_dictionary_words(app: AppHandle) -> Vec<String> {
+    read_dictionary(&app)
+}
+
+#[tauri::command]
+pub fn set_dictionary_words(app: AppHandle, words: Vec<String>) -> CmdResult<()> {
+    let words: Vec<String> = words.into_iter().map(|w| w.trim().to_string()).filter(|w| !w.is_empty()).collect();
+    write_dictionary(&app, &words)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

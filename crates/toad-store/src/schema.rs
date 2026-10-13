@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS urls (
     final_destination TEXT,
     sitemap_url_count INTEGER,
     minhash BLOB,
+    spelling_errors INTEGER, grammar_errors INTEGER,
     closest_similarity REAL,
     near_duplicate_count INTEGER NOT NULL DEFAULT 0,
     sd_count INTEGER NOT NULL DEFAULT 0,
@@ -107,6 +108,19 @@ CREATE TABLE IF NOT EXISTS cookies (
     same_site TEXT
 );
 CREATE INDEX IF NOT EXISTS cookies_url ON cookies(url_id);
+
+-- Content > Spelling & Grammar: one row per error per URL.
+CREATE TABLE IF NOT EXISTS language_errors (
+    id INTEGER PRIMARY KEY,
+    url_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    suggestion TEXT,
+    rule TEXT,
+    message TEXT,
+    language TEXT
+);
+CREATE INDEX IF NOT EXISTS language_errors_url ON language_errors(url_id);
 
 -- Store HTML: deflate-compressed page source, one row per URL.
 CREATE TABLE IF NOT EXISTS html (
@@ -179,3 +193,21 @@ CREATE INDEX IF NOT EXISTS near_duplicates_a ON near_duplicates(a_id);
 CREATE INDEX IF NOT EXISTS sd_items_url ON sd_items(url_id);
 CREATE INDEX IF NOT EXISTS sd_issues_url ON sd_issues(url_id);
 "#;
+
+/// Columns added to `urls` after the first release, as (name, type). Older
+/// crawl files get them when opened, so they can be resumed and compared.
+pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[("spelling_errors", "INTEGER"), ("grammar_errors", "INTEGER")];
+
+pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let existing: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('urls')")?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+    for (name, ty) in ADDED_URL_COLUMNS {
+        if !existing.iter().any(|c| c == name) {
+            conn.execute_batch(&format!("ALTER TABLE urls ADD COLUMN {name} {ty}"))?;
+        }
+    }
+    Ok(())
+}

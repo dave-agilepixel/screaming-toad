@@ -63,6 +63,7 @@ struct StartCrawl {
 #[tauri::command]
 async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl) -> CmdResult<String> {
     let mut cfg = state.config.lock().map_err(err)?.clone();
+    settings::prepare_spelling(&app, &mut cfg);
     let mut list_inputs: Option<Vec<String>> = None;
     let seeds: Vec<Url> = match (req.url, req.list) {
         (Some(u), _) if !u.trim().is_empty() => {
@@ -120,7 +121,8 @@ async fn continue_crawl(app: AppHandle, state: State<'_, AppState>, path: String
     let path = PathBuf::from(path);
     let store = Store::open(&path).map_err(err)?;
     let start = store.meta("start_url").map_err(err)?.and_then(|u| Url::parse(&u).ok()).ok_or("This crawl has no start URL.")?;
-    let cfg = store.config().clone();
+    let mut cfg = store.config().clone();
+    settings::prepare_spelling(&app, &mut cfg);
     let (crawled, pending) = store.resume_state().map_err(err)?;
     let mode = store.meta("mode").map_err(err)?.unwrap_or_else(|| "spider".into());
     store.mark_started("", &mode).map_err(err)?;
@@ -345,6 +347,52 @@ fn generate_sitemap(state: State<'_, AppState>, dir: String, options: SitemapOpt
 }
 
 #[tauri::command]
+fn get_language_details(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.language_details(&url))
+}
+
+#[tauri::command]
+fn get_top_language_errors(state: State<'_, AppState>) -> CmdResult<Table> {
+    if state.store.lock().map_err(err)?.is_none() {
+        return Ok(Table::default());
+    }
+    with_store(&state, |s| s.top_language_errors())
+}
+
+/// Ignore All (a word), Add to Dictionary (a word, globally) or Ignore rule
+/// (a grammar rule): removes those errors from the open crawl without
+/// re-crawling, and remembers the choice for future crawls.
+#[tauri::command]
+fn dismiss_language_error(app: AppHandle, state: State<'_, AppState>, kind: String, text: String, action: String) -> CmdResult<u64> {
+    let n = {
+        let mut guard = state.store.lock().map_err(err)?;
+        let store = guard.as_mut().ok_or("No crawl is open.")?;
+        store.dismiss_language_error(&kind, &text).map_err(err)?
+    };
+    match action.as_str() {
+        "dictionary" => settings::add_dictionary_word(&app, &text)?,
+        "ignore_rule" => {
+            let mut cfg = state.config.lock().map_err(err)?;
+            if !cfg.spelling.disabled_grammar_rules.contains(&text) {
+                cfg.spelling.disabled_grammar_rules.push(text);
+            }
+        }
+        _ => {
+            let mut cfg = state.config.lock().map_err(err)?;
+            if !cfg.spelling.ignore_words.iter().any(|w| w.eq_ignore_ascii_case(&text)) {
+                cfg.spelling.ignore_words.push(text);
+            }
+        }
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+fn spelling_languages() -> Vec<(String, String)> {
+    toad_core::spelling::LANGUAGES.iter().map(|(c, n, _)| (c.to_string(), n.to_string())).collect()
+}
+
+#[tauri::command]
 fn get_http_headers(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
     with_store(&state, |s| s.http_headers(&url))
 }
@@ -530,6 +578,12 @@ fn main() {
             get_url_details,
             get_page_source,
             get_http_headers,
+            get_language_details,
+            get_top_language_errors,
+            dismiss_language_error,
+            spelling_languages,
+            settings::get_dictionary_words,
+            settings::set_dictionary_words,
             get_cookies,
             export_page_source,
             get_near_duplicates,

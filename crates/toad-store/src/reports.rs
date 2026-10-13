@@ -29,6 +29,14 @@ const LINK_FROM: &str = "FROM links l JOIN urls s ON s.id = l.source_id LEFT JOI
 
 /// Name, kind, description, SQL. Redirect Chains is built in Rust instead.
 const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
+    ("Spelling & Grammar Errors Summary", ReportKind::Report, "Each spelling and grammar error with the number of pages it appears on.",
+     "SELECT kind AS \"Type\", text AS \"Error\", MAX(suggestion) AS \"Suggestion\", MAX(rule) AS \"Rule\",
+             COUNT(DISTINCT url_id) AS \"URLs\", MAX(language) AS \"Language\"
+      FROM language_errors GROUP BY kind, lower(text) ORDER BY 5 DESC, 2"),
+    ("Spelling & Grammar Errors", ReportKind::BulkExport, "One row per URL and spelling or grammar error.",
+     "SELECT u.address AS \"Address\", e.kind AS \"Type\", e.text AS \"Error\", e.suggestion AS \"Suggestion\",
+             e.message AS \"Message\", e.rule AS \"Rule\", e.language AS \"Language\"
+      FROM language_errors e JOIN urls u ON u.id = e.url_id ORDER BY u.crawl_order, e.id"),
     ("Response Times", ReportKind::Report, "Internal URLs by server response time, in one-second buckets (the Response Times panel).",
      "WITH b AS (
         SELECT CASE WHEN response_time >= 10 THEN 10 ELSE CAST(response_time AS INTEGER) END AS bucket

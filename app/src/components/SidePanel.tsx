@@ -6,7 +6,7 @@ interface Props {
   onPick: (tab: string, filter: string) => void;
 }
 
-type View = "overview" | "issues" | "times";
+type View = "overview" | "issues" | "times" | "spelling";
 
 /** Right-hand panel: Overview (every tab and filter with counts) and Issues. */
 export function SidePanel({ refreshKey, onPick }: Props) {
@@ -14,6 +14,8 @@ export function SidePanel({ refreshKey, onPick }: Props) {
   const [overview, setOverview] = useState<OverviewRow[]>([]);
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [times, setTimes] = useState<Table | null>(null);
+  const [spelling, setSpelling] = useState<Table | null>(null);
+  const [bump, setBump] = useState(0);
   const [open, setOpen] = useState<Set<string>>(new Set(["Internal", "Response Codes"]));
 
   useEffect(() => {
@@ -23,12 +25,14 @@ export function SidePanel({ refreshKey, onPick }: Props) {
         ? api.overview().then((r) => live && setOverview(r))
         : view === "issues"
           ? api.issues().then((r) => live && setIssues(r))
-          : api.report("Response Times").then((t) => live && setTimes(t));
+          : view === "times"
+            ? api.report("Response Times").then((t) => live && setTimes(t))
+            : api.topLanguageErrors().then((t) => live && setSpelling(t));
     load.catch(console.error);
     return () => {
       live = false;
     };
-  }, [view, refreshKey]);
+  }, [view, refreshKey, bump]);
 
   const grouped = new Map<string, OverviewRow[]>();
   for (const row of overview) {
@@ -47,6 +51,9 @@ export function SidePanel({ refreshKey, onPick }: Props) {
         </button>
         <button className={view === "times" ? "active" : ""} onClick={() => setView("times")}>
           Response Times
+        </button>
+        <button className={view === "spelling" ? "active" : ""} onClick={() => setView("spelling")}>
+          Spelling & Grammar
         </button>
       </div>
 
@@ -109,6 +116,57 @@ export function SidePanel({ refreshKey, onPick }: Props) {
             </table>
           ) : (
             <p className="empty">Response times appear once URLs have been crawled.</p>
+          )}
+        </div>
+      )}
+
+      {view === "spelling" && (
+        <div className="side-body">
+          {spelling && spelling.rows.length > 0 ? (
+            <table className="issues">
+              <thead>
+                <tr>
+                  <th>Error</th>
+                  <th>Suggestion</th>
+                  <th className="num">URLs</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {spelling.rows.map((r) => {
+                  const [kind, text, suggestion, urls, rule] = r;
+                  const act = (action: "ignore" | "dictionary" | "ignore_rule") =>
+                    api.dismissLanguageError(kind, kind === "Grammar" ? rule : text, action).then(() => setBump((b) => b + 1)).catch(console.error);
+                  return (
+                    <tr key={`${kind}/${text}`} title={kind === "Grammar" ? `Grammar rule ${rule}` : "Spelling"}>
+                      <td>
+                        <span className={`pill ${kind === "Grammar" ? "warning" : "issue"}`}>{kind === "Grammar" ? "G" : "S"}</span> {text}
+                      </td>
+                      <td className="muted">{suggestion}</td>
+                      <td className="num">{urls}</td>
+                      <td className="rule-buttons">
+                        {kind === "Grammar" ? (
+                          <button onClick={() => act("ignore_rule")} title="Ignore this grammar rule">
+                            Ignore rule
+                          </button>
+                        ) : (
+                          <>
+                            <button onClick={() => act("ignore")} title="Ignore All: skip this word in this configuration">
+                              Ignore All
+                            </button>
+                            <button onClick={() => act("dictionary")} title="Add to your dictionary for every crawl">
+                              + Dictionary
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="empty">No spelling or grammar errors. Switch them on in Configuration &gt; Content &gt; Spelling &amp; Grammar.</p>
           )}
         </div>
       )}

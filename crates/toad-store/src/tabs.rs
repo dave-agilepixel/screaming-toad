@@ -135,6 +135,8 @@ const COLUMNS: &[(&str, &str)] = &[
     ("Warnings", "u.sd_warnings"),
     ("Parse Errors", "u.sd_parse_errors"),
     ("Cookies", "(SELECT COUNT(*) FROM cookies c WHERE c.url_id = u.id)"),
+    ("Spelling Errors", "u.spelling_errors"),
+    ("Grammar Errors", "u.grammar_errors"),
 ];
 
 /// Values kept per extractor as separate columns (Name 1, Name 2, ...).
@@ -174,6 +176,14 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         }
         if t.name == "Internal" && x.cookies {
             t.columns.push("Cookies");
+        }
+        if t.name == "Content" {
+            if cfg.spelling.spell_check {
+                t.columns.push("Spelling Errors");
+            }
+            if cfg.spelling.grammar_check {
+                t.columns.push("Grammar Errors");
+            }
         }
         for f in &mut t.filters {
             let off = (f.name.starts_with("Low Content") && !x.word_count)
@@ -428,6 +438,8 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 }, Some((Warning, High)), "200 pages whose title or H1 reads like an error page."),
                 f("Readability Difficult", format!("u.flesch >= 30 AND u.flesch < 50{ix}"), Some((Opportunity, Low)), "Flesch reading ease 30–49."),
                 f("Readability Very Difficult", format!("u.flesch < 30{ix}"), Some((Opportunity, Low)), "Flesch reading ease 0–29."),
+                f("Spelling Errors", if cfg.spelling.spell_check { "u.spelling_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible spelling mistakes (Content > Spelling & Grammar)."),
+                f("Grammar Errors", if cfg.spelling.grammar_check { "u.grammar_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible grammar mistakes (needs a LanguageTool server)."),
                 f("Lorem Ipsum Placeholder", "u.lorem_ipsum = 1".into(), Some((Warning, High)), "Page contains lorem ipsum placeholder text."),
             ],
         },

@@ -108,6 +108,13 @@ export const api = {
   urlDetails: (url: string) => invoke<[string, string][]>("get_url_details", { url }),
   pageSource: (url: string) => invoke<string | null>("get_page_source", { url }),
   httpHeaders: (url: string) => invoke<Table>("get_http_headers", { url }),
+  languageDetails: (url: string) => invoke<Table>("get_language_details", { url }),
+  topLanguageErrors: () => invoke<Table>("get_top_language_errors"),
+  dismissLanguageError: (kind: string, text: string, action: "ignore" | "dictionary" | "ignore_rule") =>
+    invoke<number>("dismiss_language_error", { kind, text, action }),
+  spellingLanguages: () => invoke<[string, string][]>("spelling_languages"),
+  getDictionaryWords: () => invoke<string[]>("get_dictionary_words"),
+  setDictionaryWords: (words: string[]) => invoke<void>("set_dictionary_words", { words }),
   cookies: (url: string) => invoke<Table>("get_cookies", { url }),
   exportPageSource: (dir: string) => invoke<number>("export_page_source", { dir }),
   exportCsv: (tab: string, filter: string, search: string | undefined, path: string) =>

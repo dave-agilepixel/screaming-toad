@@ -97,6 +97,8 @@ pub struct Link {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PageData {
+    /// Content > Spelling & Grammar results.
+    pub language_issues: Vec<crate::spelling::LanguageIssue>,
     pub titles: Vec<String>,
     pub title_outside_head: bool,
     pub meta_descriptions: Vec<String>,

@@ -363,6 +363,12 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     case "url-test":
       return <UrlTestBox cfg={cfg} show={f.show} label={f.label} />;
 
+    case "spelling-language":
+      return <SpellingLanguage cfg={cfg} set={set} fieldKey={f.key} label={f.label} help={f.help} />;
+
+    case "global-dictionary":
+      return <GlobalDictionary help={f.help} />;
+
     case "link-positions":
       return <LinkPositionsField cfg={cfg} set={set} />;
 
@@ -372,6 +378,46 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     case "custom-extraction":
       return <ExtractionEditor rules={cfg.custom_extraction} onChange={(v) => set("custom_extraction", v)} />;
   }
+}
+
+function SpellingLanguage({ cfg, set, fieldKey, label, help }: { cfg: CrawlConfig; set: (k: string, v: unknown) => void; fieldKey: string; label: string; help?: string }) {
+  const [langs, setLangs] = useState<[string, string][]>([]);
+  useEffect(() => {
+    api.spellingLanguages().then(setLangs).catch(console.error);
+  }, []);
+  return (
+    <div className="field">
+      <label className="row">
+        {label}
+        <select value={String(getPath(cfg, fieldKey))} onChange={(e) => set(fieldKey, e.target.value)}>
+          {langs.map(([code, name]) => (
+            <option key={code} value={code}>
+              {name} ({code})
+            </option>
+          ))}
+        </select>
+      </label>
+      <Help text={help} />
+    </div>
+  );
+}
+
+function GlobalDictionary({ help }: { help?: string }) {
+  const [text, setText] = useState<string | null>(null);
+  const [saved, setSaved] = useState(true);
+  useEffect(() => {
+    api.getDictionaryWords().then((w) => setText(w.join("\n"))).catch(console.error);
+  }, []);
+  if (text === null) return null;
+  const save = () => api.setDictionaryWords(text.split(/\r?\n/)).then(() => setSaved(true));
+  return (
+    <div className="field">
+      <textarea rows={5} value={text} onChange={(e) => (setText(e.target.value), setSaved(false))} onBlur={save} spellCheck={false} />
+      <p className="hint">
+        {saved ? "Saved." : "Unsaved: click outside the box to save."} {help}
+      </p>
+    </div>
+  );
 }
 
 /** robots.txt > Custom Robots: subdomain list, editor (Download / Clear) and URL tester. */

@@ -94,6 +94,24 @@ The scores below are as audited. Since then:
     - An ordered table (Add, Move, Delete, Delete All) and a Test box.
   - Not done: Visual Custom Extraction (needs the WP9 browser), and the Custom Search > Filter X Inlinks bulk export.
   - Default change: new and unspecified extractors are XPath, so existing profiles that relied on the old CSS default need `"kind": "css"`. The CLI's `css:` prefix is explicit.
+- **WP7, Content:** done, apart from the items listed below.
+  - **§1.7 Content Area:** Mode Exclude (the default), Include, or Both (the previous superset behaviour); Check Alt Text.
+  - **§1.6 Preferences:**
+    - Resource size limit, with Validation > Resource Over X MB. The Validation tab now covers internal 200 URLs, with its HTML checks marked `is_html`.
+    - Response Times in one-second buckets: a report and a right-hand panel.
+  - **§1.9 Spelling & Grammar:**
+    - Spelling uses Hunspell dictionaries via `spellbook`. They are downloaded from wooorm/dictionaries on first use: 31 languages, but no Finnish.
+    - Grammar uses a LanguageTool server the user configures. Nothing leaves the machine unless a remote server is set.
+    - Language Auto (each page's `lang`, with your chosen dialect for a bare `en`) or Manual.
+    - Grammar Rules (a disabled-rules list), Ignore (per profile) and Dictionary (global, `app_config_dir/dictionary.txt`, not in profiles).
+    - Content > Spelling Errors and Grammar Errors filters (I/M), plus count columns.
+    - A Spelling & Grammar Details lower tab, a top-100 panel with Ignore All, Add to Dictionary and Ignore rule, which update the open crawl without re-crawling, and Reports > Spelling & Grammar Errors Summary and the bulk export.
+    - CLI: `--spelling`, `--grammar-server` and `--language`.
+  - Crawl files from before this change gain the new `urls` columns when opened (`schema::migrate`).
+  - **Not done:**
+    - A full Re-run after changing the language or content area (it needs Store HTML to re-extract text).
+    - PDF spelling (WP8).
+    - The per-language Grammar Rules checklist; it is a rule-id list instead.
 
 ## How to read this
 

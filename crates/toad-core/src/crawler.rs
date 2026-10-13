@@ -99,6 +99,8 @@ pub struct Crawler {
     exclude: Vec<Regex>,
     robots: HashMap<String, Arc<Robots>>,
     rules: Arc<CustomRules>,
+    /// Content > Spelling & Grammar (dictionaries shared by every page).
+    language: Arc<crate::spelling::LanguageChecker>,
     /// Exclude as edited during the crawl (shared with CrawlControl).
     live_exclude: Arc<std::sync::RwLock<Option<Vec<Regex>>>>,
     /// Limit by URL Path, compiled.
@@ -133,6 +135,7 @@ impl Crawler {
             rules: Arc::new(CustomRules::compile(&cfg)?),
             hsts: Arc::default(),
             live_exclude: Arc::default(),
+            language: Arc::new(crate::spelling::LanguageChecker::new(&cfg)),
             path_limits: cfg
                 .path_limits
                 .iter()
@@ -269,9 +272,10 @@ impl Crawler {
                 let cfg = self.cfg.clone();
                 let rules = self.rules.clone();
                 let hsts = self.hsts.clone();
+                let language = self.language.clone();
                 let is_internal = self.scope.is_internal(&item.url);
                 tasks.spawn(async move {
-                    let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts).await;
+                    let record = process(&fetcher, &cfg, &rules, &item, is_internal, &hsts, &language).await;
                     (item, record)
                 });
             }
@@ -623,6 +627,7 @@ async fn process(
     item: &QueueItem,
     is_internal: bool,
     hsts: &std::sync::Mutex<HashSet<String>>,
+    language: &crate::spelling::LanguageChecker,
 ) -> PageRecord {
     // Respect HSTS Policy: an http:// URL on a host that sent HSTS is
     // reported as a 307 to https://, without a request.
@@ -711,7 +716,12 @@ async fn process(
         r.error = Some(format!("Not processed: larger than the Max Page Size ({} KB)", cfg.max_page_size_kb));
     } else if r.is_html && is_internal && item.kind == FetchKind::Page && r.status_code == 200 {
         let html = String::from_utf8_lossy(&res.body);
-        let page = extract(&html, &item.url, cfg, rules);
+        let mut page = extract(&html, &item.url, cfg, rules);
+        if language.enabled() {
+            // Titles, meta descriptions and the content area.
+            let text = page.titles.iter().chain(page.meta_descriptions.iter()).chain(std::iter::once(&page.content_text)).cloned().collect::<Vec<_>>().join(". ");
+            page.language_issues = language.check(&text, page.language.as_deref()).await;
+        }
         if cfg.store_html {
             r.html = Some(html.clone().into_owned());
         }
@@ -818,7 +828,7 @@ mod hsts_tests {
         let rules = CustomRules::default();
         let hsts = std::sync::Mutex::new(HashSet::from(["secure.example".to_string()]));
         let item = QueueItem { url: Url::parse("http://secure.example/page").unwrap(), depth: 1, kind: FetchKind::Page, redirect_hops: 0, cookies: None, robots_line: None };
-        let r = process(&fetcher, &cfg, &rules, &item, true, &hsts).await;
+        let r = process(&fetcher, &cfg, &rules, &item, true, &hsts, &crate::spelling::LanguageChecker::new(&cfg)).await;
         assert_eq!((r.status_code, r.status.as_str()), (307, "HSTS Policy"));
         assert_eq!(r.redirect_url.as_deref(), Some("https://secure.example/page"));
         assert_eq!(r.redirect_type.as_deref(), Some("HSTS Policy"));

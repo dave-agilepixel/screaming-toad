@@ -60,6 +60,7 @@ impl Store {
     pub fn open(path: &Path) -> anyhow::Result<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(schema::SCHEMA)?;
+        schema::migrate(&conn)?;
         let get = |k: &str| -> anyhow::Result<Option<String>> {
             Ok(conn.query_row("SELECT value FROM meta WHERE key = ?1", params![k], |r| r.get(0)).optional()?)
         };
@@ -174,6 +175,16 @@ impl Store {
                     }
                 }
             }
+            if let Some(page) = &rec.page {
+                if !page.language_issues.is_empty() {
+                    let mut stmt = tx.prepare_cached(
+                        "INSERT INTO language_errors (url_id, kind, text, suggestion, rule, message, language) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    )?;
+                    for i in &page.language_issues {
+                        stmt.execute(params![source_id, i.kind, i.text, i.suggestion, i.rule, i.message, i.language])?;
+                    }
+                }
+            }
             if self.cfg.extraction.cookies {
                 let mut cookie_stmt = tx.prepare_cached(
                     "INSERT INTO cookies (url_id, name, value, domain, path, expires, secure, http_only, same_site) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -268,6 +279,52 @@ impl Store {
             total: rows.len() as u64,
             rows,
         })
+    }
+
+    /// Spelling & Grammar Details lower tab.
+    pub fn language_details(&self, address: &str) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT e.kind, e.text, e.suggestion, e.message, e.rule, e.language
+             FROM language_errors e JOIN urls u ON u.id = e.url_id WHERE u.address = ?1 ORDER BY e.id",
+            &[Value::Text(address.to_string())],
+        )?;
+        Ok(Table {
+            columns: ["Type", "Error", "Suggestion", "Message", "Rule", "Language"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
+    }
+
+    /// The right-hand Spelling & Grammar panel: the top 100 errors by URLs.
+    pub fn top_language_errors(&self) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT kind, text, MAX(suggestion), COUNT(DISTINCT url_id) AS n, MAX(rule)
+             FROM language_errors GROUP BY kind, lower(text) ORDER BY n DESC, text LIMIT 100",
+            &[],
+        )?;
+        Ok(Table {
+            columns: ["Type", "Error", "Suggestion", "URLs", "Rule"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
+    }
+
+    /// Ignore All / Add to Dictionary: drop a word's spelling errors (or a
+    /// grammar rule's errors) from this crawl and recount, without re-crawling.
+    pub fn dismiss_language_error(&mut self, kind: &str, text_or_rule: &str) -> anyhow::Result<u64> {
+        let tx = self.conn.transaction()?;
+        let n = if kind == "Grammar" {
+            tx.execute("DELETE FROM language_errors WHERE kind = 'Grammar' AND rule = ?1", params![text_or_rule])?
+        } else {
+            tx.execute("DELETE FROM language_errors WHERE kind = 'Spelling' AND lower(text) = lower(?1)", params![text_or_rule])?
+        };
+        tx.execute_batch(
+            "UPDATE urls SET
+                spelling_errors = CASE WHEN spelling_errors IS NULL THEN NULL ELSE (SELECT COUNT(*) FROM language_errors e WHERE e.url_id = urls.id AND e.kind = 'Spelling') END,
+                grammar_errors = CASE WHEN grammar_errors IS NULL THEN NULL ELSE (SELECT COUNT(*) FROM language_errors e WHERE e.url_id = urls.id AND e.kind = 'Grammar') END;",
+        )?;
+        tx.commit()?;
+        Ok(n as u64)
     }
 
     /// Whether any page source was stored in this crawl.
@@ -540,6 +597,16 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("sd_errors", int(sd.map_or(0, |s| s.issues.iter().filter(|i| i.severity == Severity::Error).count() as i64))),
         ("sd_warnings", int(sd.map_or(0, |s| s.issues.iter().filter(|i| i.severity == Severity::Warning).count() as i64))),
         ("sd_parse_errors", int(sd.map_or(0, |s| s.parse_errors.len() as i64))),
+        ("spelling_errors", if cfg.spelling.spell_check && page.is_some() {
+            int(page.map_or(0, |p| p.language_issues.iter().filter(|i| i.kind == "Spelling").count() as i64))
+        } else {
+            Value::Null
+        }),
+        ("grammar_errors", if cfg.spelling.grammar_check && page.is_some() {
+            int(page.map_or(0, |p| p.language_issues.iter().filter(|i| i.kind == "Grammar").count() as i64))
+        } else {
+            Value::Null
+        }),
         ("minhash", match page {
             Some(p) if !p.minhash.is_empty() => Value::Blob(minhash::to_bytes(&p.minhash)),
             _ => Value::Null,
@@ -606,6 +673,22 @@ mod tests {
         assert!(c.secure && c.http_only);
         assert_eq!(c.same_site.as_deref(), Some("Lax"));
         assert_eq!(parse_set_cookie("flag").name, "flag");
+    }
+
+    #[test]
+    fn old_crawl_files_gain_new_columns() {
+        let path = std::env::temp_dir().join(format!("toad-migrate-{}.toad", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(schema::SCHEMA).unwrap();
+            for (name, _) in schema::ADDED_URL_COLUMNS {
+                conn.execute_batch(&format!("ALTER TABLE urls DROP COLUMN {name}")).unwrap();
+            }
+        }
+        let store = Store::open(&path).unwrap();
+        let cols: Vec<String> = store.conn.prepare("SELECT name FROM pragma_table_info('urls')").unwrap().query_map([], |r| r.get(0)).unwrap().map(|c| c.unwrap()).collect();
+        assert!(cols.iter().any(|c| c == "spelling_errors"));
     }
 
     #[test]

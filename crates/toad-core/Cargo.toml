@@ -10,6 +10,7 @@ anyhow.workspace = true
 flate2.workspace = true
 md5.workspace = true
 regex.workspace = true
+spellbook.workspace = true
 sxd-document.workspace = true
 sxd-xpath.workspace = true
 reqwest.workspace = true

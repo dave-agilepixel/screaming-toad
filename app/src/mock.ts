@@ -135,6 +135,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         rows: [["0 - 1", "1102", "88.16"], ["1 - 2", "110", "8.8"], ["2 - 3", "28", "2.24"], ["3 - 4", "7", "0.56"], ["10+", "3", "0.24"]],
         total: 5,
       } as T;
+    case "spelling_languages":
+      return [["en-US", "English (USA)"], ["en-GB", "English (UK)"], ["fr-FR", "French"]] as T;
+    case "get_dictionary_words":
+      return ["Toad", "SEO"] as T;
+    case "get_top_language_errors":
+      return { columns: ["Type", "Error", "Suggestion", "URLs", "Rule"], rows: [["Spelling", "Childrens", "Children", "3", ""], ["Grammar", "a apple", "an apple", "1", "EN_A_VS_AN"]], total: 2 } as T;
     case "recent_profiles":
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
@@ -264,6 +270,7 @@ const DEFAULT_CONFIG = {
   content_area: { mode: "exclude" as const, check_alt_text: false, include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
+  spelling: { spell_check: false, grammar_check: false, language_mode: "auto" as const, language: "en-US", grammar_server: "", disabled_grammar_rules: [] as string[], ignore_words: [] as string[] },
   custom_search: [], custom_extraction: [],
   link_positions_enabled: true,
   link_positions: [{ name: "Head", contains: "/head/" }, { name: "Navigation", contains: "nav" }, { name: "Header", contains: "header" }, { name: "Aside", contains: "aside" }, { name: "Footer", contains: "footer" }, { name: "Content", contains: "/" }],
