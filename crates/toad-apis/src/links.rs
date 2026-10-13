@@ -64,16 +64,7 @@ async fn ahrefs(runner: &ApiRunner, store: &dyn StoreLock) -> anyhow::Result<()>
     let get = |path: &'static str, target: String| {
         let key = key.clone();
         let date = date.clone();
-        async move {
-            send_json(|| {
-                runner
-                    .client
-                    .get(format!("{}/site-explorer/{path}", runner.endpoints.ahrefs))
-                    .bearer_auth(&key)
-                    .query(&[("target", target.as_str()), ("mode", mode), ("date", date.as_str())])
-            })
-            .await
-        }
+        async move { ahrefs_get(runner, &key, path, &target, mode, &date).await }
     };
     crate::for_each_url(runner, store, AHREFS, urls, Throttle::new(4, 60), |url| {
         let target = target_of(&url, cfg.target);
@@ -128,25 +119,7 @@ async fn majestic(runner: &ApiRunner, store: &dyn StoreLock) -> anyhow::Result<(
     let mut done = 0u64;
     for chunk in urls.chunks(100) {
         let items: Vec<String> = chunk.iter().map(|u| target_of(u, cfg.target)).collect();
-        let result = send_json(|| {
-            let mut q: Vec<(String, String)> = vec![
-                ("app_api_key".into(), key.clone()),
-                ("cmd".into(), "GetIndexItemInfo".into()),
-                ("datasource".into(), if cfg.historic { "historic".into() } else { "fresh".into() }),
-                ("items".into(), items.len().to_string()),
-            ];
-            for (i, it) in items.iter().enumerate() {
-                q.push((format!("item{i}"), it.clone()));
-            }
-            runner.client.get(&runner.endpoints.majestic).query(&q)
-        })
-        .await
-        .and_then(|j| {
-            if j["Code"].as_str().is_some_and(|c| c != "OK") {
-                anyhow::bail!("{}", j["ErrorMessage"].as_str().unwrap_or("Majestic error"))
-            }
-            Ok(j)
-        });
+        let result = majestic_call(runner, &key, &items, cfg.historic).await;
         match result {
             Ok(j) => {
                 let rows = j.pointer("/DataTables/Results/Data").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -180,8 +153,8 @@ async fn moz(runner: &ApiRunner, store: &dyn StoreLock) -> anyhow::Result<()> {
     let total = urls.len() as u64;
     let mut done = 0u64;
     for chunk in urls.chunks(50) {
-        let body = json!({"targets": chunk.iter().map(|u| target_of(u, cfg.target)).collect::<Vec<_>>()});
-        match send_json(|| runner.client.post(format!("{}/url_metrics", runner.endpoints.moz)).basic_auth(id, Some(secret)).json(&body)).await {
+        let targets: Vec<String> = chunk.iter().map(|u| target_of(u, cfg.target)).collect();
+        match moz_call(runner, id, secret, &targets).await {
             Ok(j) => {
                 let rows = j["results"].as_array().cloned().unwrap_or_default();
                 let mut values = Vec::new();
@@ -209,6 +182,60 @@ async fn moz(runner: &ApiRunner, store: &dyn StoreLock) -> anyhow::Result<()> {
         runner.report(MOZ, done, total);
     }
     Ok(())
+}
+
+/// One Ahrefs v3 site-explorer request.
+async fn ahrefs_get(runner: &ApiRunner, key: &str, path: &str, target: &str, mode: &str, date: &str) -> anyhow::Result<Value> {
+    send_json(|| {
+        runner
+            .client
+            .get(format!("{}/site-explorer/{path}", runner.endpoints.ahrefs))
+            .bearer_auth(key)
+            .query(&[("target", target), ("mode", mode), ("date", date), ("output", "json")])
+    })
+    .await
+}
+
+/// One Majestic GetIndexItemInfo request.
+async fn majestic_call(runner: &ApiRunner, key: &str, items: &[String], historic: bool) -> anyhow::Result<Value> {
+    let j = send_json(|| {
+        let mut q: Vec<(String, String)> = vec![
+            ("app_api_key".into(), key.to_string()),
+            ("cmd".into(), "GetIndexItemInfo".into()),
+            ("datasource".into(), if historic { "historic".into() } else { "fresh".into() }),
+            ("items".into(), items.len().to_string()),
+        ];
+        for (i, it) in items.iter().enumerate() {
+            q.push((format!("item{i}"), it.clone()));
+        }
+        runner.client.get(&runner.endpoints.majestic).query(&q)
+    })
+    .await?;
+    if j["Code"].as_str().is_some_and(|c| c != "OK") {
+        anyhow::bail!("{} ({})", j["ErrorMessage"].as_str().unwrap_or("Majestic error"), j["Code"].as_str().unwrap_or(""))
+    }
+    Ok(j)
+}
+
+/// One Moz url_metrics request.
+async fn moz_call(runner: &ApiRunner, id: &str, secret: &str, targets: &[String]) -> anyhow::Result<Value> {
+    let body = json!({"targets": targets});
+    send_json(|| runner.client.post(format!("{}/url_metrics", runner.endpoints.moz)).basic_auth(id, Some(secret)).json(&body)).await
+}
+
+/// Endpoint checks without an account (`examples/probe_endpoints.rs`): one
+/// request to each provider with the runner's keys.
+pub async fn probe(runner: &ApiRunner, url: &str) -> Vec<(&'static str, anyhow::Result<String>)> {
+    let key = |k: &str| runner.secrets.get(k).unwrap_or("").to_string();
+    let date = crate::google::date_days_ago(0);
+    let host = target_of(url, LinkTarget::Subdomain);
+    let moz_key = key(keys::MOZ);
+    let (id, secret) = moz_key.split_once(':').unwrap_or(("", ""));
+    vec![
+        ("Ahrefs", ahrefs_get(runner, &key(keys::AHREFS), "domain-rating", &host, "domain", &date).await.map(|v| v.to_string())),
+        ("Majestic", majestic_call(runner, &key(keys::MAJESTIC), &[url.to_string()], false).await.map(|v| v.to_string())),
+        ("Moz", moz_call(runner, id, secret, &[url.to_string()]).await.map(|v| v.to_string())),
+    ]
 }
 
 #[cfg(test)]

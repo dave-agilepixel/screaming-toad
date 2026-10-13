@@ -339,6 +339,16 @@ pub(crate) async fn send_json(build: impl Fn() -> reqwest::RequestBuilder) -> an
         let resp = build().send().await?;
         let status = resp.status();
         if (status.as_u16() == 429 || status.is_server_error()) && attempt < 3 {
+            // A daily quota won't come back in seconds: report it now.
+            if status.as_u16() == 429 {
+                let text = resp.text().await?;
+                if text.contains("per day") || text.contains("PerDay") {
+                    anyhow::bail!("daily quota used up ({})", quota_hint(&text));
+                }
+                tokio::time::sleep(wait).await;
+                wait *= 2;
+                continue;
+            }
             let retry_after = resp.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
             tokio::time::sleep(retry_after.map(std::time::Duration::from_secs).unwrap_or(wait).min(std::time::Duration::from_secs(60))).await;
             wait *= 2;
@@ -349,6 +359,10 @@ pub(crate) async fn send_json(build: impl Fn() -> reqwest::RequestBuilder) -> an
             let msg = serde_json::from_str::<serde_json::Value>(&text)
                 .ok()
                 .and_then(|v| {
+                    // Ahrefs: ["Error", "message"].
+                    if let Some(a) = v.as_array().filter(|a| a.iter().all(|x| x.is_string())) {
+                        return Some(a.iter().filter_map(|x| x.as_str()).filter(|x| *x != "Error").collect::<Vec<_>>().join(": "));
+                    }
                     v.pointer("/error/message")
                         .or_else(|| v.pointer("/error"))
                         .or_else(|| v.pointer("/message"))
@@ -360,6 +374,17 @@ pub(crate) async fn send_json(build: impl Fn() -> reqwest::RequestBuilder) -> an
         return serde_json::from_str(&text).map_err(|e| anyhow::anyhow!("unexpected response ({e}): {}", text.chars().take(200).collect::<String>()));
     }
     anyhow::bail!("gave up after retries")
+}
+
+/// A short, actionable reading of a quota error.
+fn quota_hint(body: &str) -> String {
+    if body.contains("pagespeedonline") && !body.contains("key=") && body.contains("consumer 'project_number:") {
+        return "PageSpeed Insights without an API key shares a tiny quota; add a key in Configuration > API Access > PageSpeed Insights".into();
+    }
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.pointer("/error/message").and_then(|m| m.as_str()).map(|m| m.chars().take(200).collect()))
+        .unwrap_or_else(|| "try again tomorrow, or raise the quota".into())
 }
 
 /// Write values for one source, plus an error row per failed URL.

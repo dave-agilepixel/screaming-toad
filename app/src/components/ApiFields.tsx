@@ -186,7 +186,7 @@ const DEFAULT_MODEL: Record<AiPrompt["provider"], string> = {
 
 const CLOUD_EMBEDDING_MODEL: Partial<Record<AiPrompt["provider"], string>> = {
   open_ai: "text-embedding-3-small",
-  gemini: "text-embedding-004",
+  gemini: "gemini-embedding-001",
   ollama: "nomic-embed-text",
 };
 
