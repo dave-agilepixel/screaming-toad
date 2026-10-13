@@ -21,6 +21,7 @@ function fieldText(f: Field): string {
   if (f.kind === "note") return f.text;
   if (f.kind === "custom-search") return "Custom Search";
   if (f.kind === "custom-extraction") return "Custom Extraction";
+  if (f.kind === "custom-javascript") return "Custom JavaScript seoSpider";
   return `${f.label} ${"help" in f && f.help ? f.help : ""}`;
 }
 

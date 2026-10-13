@@ -354,3 +354,24 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
   max-width: 100%;
   border: 1px solid var(--border);
 }
+
+.rule-js {
+  flex-direction: column;
+  align-items: stretch;
+}
+.rule-js-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rule-js-head input[type="number"] {
+  width: 4em;
+}
+.rule-js textarea.code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.hint.warn { color: var(--warning); }

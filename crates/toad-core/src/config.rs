@@ -241,6 +241,8 @@ pub struct CrawlConfig {
     // Configuration > Custom > Search / Extraction
     pub custom_search: Vec<CustomSearch>,
     pub custom_extraction: Vec<CustomExtractor>,
+    /// Custom > Custom JavaScript (needs Rendering: JavaScript).
+    pub custom_javascript: Vec<CustomJs>,
 
     // Configuration > Custom > Link Positions
     /// Off: link paths and positions are not recorded (saves memory).
@@ -360,6 +362,7 @@ impl Default for CrawlConfig {
             spelling: SpellingConfig::default(),
             custom_search: vec![],
             custom_extraction: vec![],
+            custom_javascript: vec![],
             link_positions_enabled: true,
             link_positions: LinkPosition::defaults(),
             preferences: Preferences::default(),
@@ -490,6 +493,42 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Custom > Custom JavaScript: Extraction snippets return data with
+/// `seoSpider.data(...)`; Action snippets (scrolling, clicking) run first
+/// and return nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CustomJsKind {
+    #[default]
+    Extraction,
+    Action,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomJs {
+    pub name: String,
+    pub kind: CustomJsKind,
+    /// The body of an async function. `seoSpider` is in scope.
+    pub code: String,
+    pub timeout_secs: f64,
+    /// Comma-separated content types the snippet runs on.
+    pub content_types: String,
+}
+
+impl Default for CustomJs {
+    fn default() -> Self {
+        Self { name: String::new(), kind: CustomJsKind::Extraction, code: String::new(), timeout_secs: 10.0, content_types: "text/html".into() }
+    }
+}
+
+impl CustomJs {
+    pub fn applies_to(&self, content_type: &str) -> bool {
+        let ct = content_type.to_ascii_lowercase();
+        self.content_types.split(',').map(|t| t.trim().to_ascii_lowercase()).filter(|t| !t.is_empty()).any(|t| ct.contains(&t))
     }
 }
 

@@ -126,7 +126,7 @@ The scores below are as audited. Since then:
     - Parsing runs under `catch_unwind`.
   - **Fixed along the way:** List mode now audits every uploaded URL fully, whatever its host. Before, only URLs on the first URL's host were parsed.
   - **Not done:** PDF link anchor text (`lopdf` gives the link rectangle, not the text under it), and storing PDF files themselves (Bulk Export > All PDF Documents).
-- **WP9, JavaScript rendering:** in progress.
+- **WP9, JavaScript rendering:** done, apart from the items listed below.
   - **Batch A (done): renderer and dual-HTML crawl.**
     - Spider > Rendering: Text Only / JavaScript, screenshots, JS error reporting, flatten shadow DOM and iframes, AJAX timeout, window-size presets, W/H, scaling, Mobile, Touch, Rotate, Resize to Content and resize time. Also a Browser Executable path, auto-detected when blank.
     - `render.rs` drives an installed Chrome, Edge or Chromium over CDP (`chromiumoxide`), with one browser per crawl, at most `threads` tabs, and a private profile.
@@ -148,7 +148,18 @@ The scores below are as audited. Since then:
     - The Accessibility tab has All Violations, filters per guideline (Best Practice, WCAG 2.0 A/AA/AAA, 2.1 A/AA, 2.2 AA) and per impact, and per-guideline count columns.
     - New: an Accessibility Details lower tab, Reports > Accessibility Violations Summary, and Bulk Export > All Accessibility Violations.
     - **Not done:** SF's per-rule filters (around 90). The summary report covers them per rule.
-  - **Next:** E, Custom JavaScript.
+  - **Batch E (done): Custom > Custom JavaScript.**
+    - Snippets have a name, an Extraction/Action type, code, a timeout and content types. Actions run before extractions.
+    - The `seoSpider` shim provides `data`, `error`, `saveText`, `saveUrls` (crawled, with Link Origin "Custom JavaScript") and `loadScript`.
+    - The Custom JavaScript tab has up to three value columns per snippet, an error column per snippet, a filter per snippet, and an Errors filter.
+  - **Not done in WP9:**
+    - Archive Website (WARC).
+    - Routing the browser's subresource requests through Toad's fetcher (`Fetch.enable`), so Exclude and custom headers apply to them.
+    - SF's snippet library and tester.
+    - Per-rule accessibility filters.
+    - Visual Custom Extraction.
+    - Green Hosting Carbon Calculation.
+    - Old AJAX `_escaped_fragment_` crawling.
 
 ## How to read this
 

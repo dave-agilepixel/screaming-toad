@@ -24,6 +24,14 @@ export interface CustomExtractor {
   extract: "element" | "inner_html" | "text" | "function_value";
 }
 
+export interface CustomJavaScript {
+  name: string;
+  kind: "extraction" | "action";
+  code: string;
+  timeout_secs: number;
+  content_types: string;
+}
+
 export interface ContentArea {
   mode: "exclude" | "include" | "both";
   check_alt_text: boolean;
@@ -218,6 +226,7 @@ export interface CrawlConfig {
   spelling: SpellingConfig;
   custom_search: CustomSearch[];
   custom_extraction: CustomExtractor[];
+  custom_javascript: CustomJavaScript[];
   link_positions_enabled: boolean;
   link_positions: { name: string; contains: string }[];
   preferences: Preferences;
@@ -251,6 +260,7 @@ export type Field =
   | { kind: "url-test"; label: string; show: "rewrite" | "cdn" | "include" | "exclude" }
   | { kind: "custom-search" }
   | { kind: "custom-extraction" }
+  | { kind: "custom-javascript" }
   | { kind: "note"; text: string };
 
 export interface Group {
@@ -879,6 +889,7 @@ export const NODES: Node[] = [
   { id: "custom", label: "Custom", groups: [] },
   { id: "custom-search", label: "Search", parent: "custom", groups: [{ fields: [{ kind: "custom-search" }] }] },
   { id: "custom-extraction", label: "Extraction", parent: "custom", groups: [{ fields: [{ kind: "custom-extraction" }] }] },
+  { id: "custom-javascript", label: "Custom JavaScript", parent: "custom", groups: [{ fields: [{ kind: "custom-javascript" }] }] },
   {
     id: "link-positions",
     label: "Link Positions",
@@ -912,7 +923,7 @@ export function allFields(): { key: string; label: string; node: Node; group?: s
   for (const node of NODES) {
     for (const g of node.groups) {
       for (const f of g.fields) {
-        const label = "label" in f ? f.label : f.kind === "custom-search" ? "Custom Search" : f.kind === "custom-extraction" ? "Custom Extraction" : "";
+        const label = "label" in f ? f.label : f.kind === "custom-search" ? "Custom Search" : f.kind === "custom-extraction" ? "Custom Extraction" : f.kind === "custom-javascript" ? "Custom JavaScript" : "";
         if (f.kind === "pair") {
           if (f.crawl) out.push({ key: f.crawl, label: `${f.label}: Crawl`, node, group: g.title });
           if (f.store) out.push({ key: f.store, label: `${f.label}: Store`, node, group: g.title });
@@ -922,6 +933,8 @@ export function allFields(): { key: string; label: string; node: Node; group?: s
           out.push({ key: "custom_search", label, node });
         } else if (f.kind === "custom-extraction") {
           out.push({ key: "custom_extraction", label, node });
+        } else if (f.kind === "custom-javascript") {
+          out.push({ key: "custom_javascript", label, node });
         }
       }
     }

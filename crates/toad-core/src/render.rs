@@ -8,7 +8,7 @@
 //! resources are reported by checking each requested URL against robots.txt
 //! afterwards (JavaScript > Pages With Blocked Resources).
 
-use crate::config::{CrawlConfig, RenderingConfig};
+use crate::config::{CrawlConfig, CustomJs, CustomJsKind, RenderingConfig};
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::emulation::{SetDeviceMetricsOverrideParams, SetTouchEmulationEnabledParams};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
@@ -83,6 +83,77 @@ const AXE_RUN: &str = r#"(async () => {
   }));
 })()"#;
 
+/// One Custom JavaScript snippet's output on a page, in configuration order.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CustomJsResult {
+    pub values: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// The `seoSpider` API given to Custom JavaScript snippets.
+const SEO_SPIDER_SHIM: &str = r#"(async () => {
+  const __out = { data: null, error: null, urls: [], texts: [] };
+  const seoSpider = {
+    data: (d) => { __out.data = d; return __out; },
+    error: (e) => { __out.error = String(e); return __out; },
+    saveText: (text, file, append) => { __out.texts.push({ text: String(text), file: String(file), append: !!append }); },
+    saveUrls: (urls) => { [].concat(urls).forEach(u => __out.urls.push(String(u))); },
+    loadScript: (src) => new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('could not load ' + src));
+      document.head.appendChild(s);
+    }),
+  };
+  try {
+    const r = await (async () => {
+/*SNIPPET*/
+    })();
+    if (r !== undefined && r !== __out && __out.data === null && __out.error === null) __out.data = r;
+  } catch (e) {
+    __out.error = String((e && e.message) || e);
+  }
+  try { __out.data = JSON.parse(JSON.stringify(__out.data)); } catch (e) { __out.data = String(__out.data); }
+  return __out;
+})()"#;
+
+#[derive(Deserialize, Default)]
+struct ShimOut {
+    data: serde_json::Value,
+    error: Option<String>,
+    urls: Vec<String>,
+    texts: Vec<SavedText>,
+}
+
+#[derive(Deserialize)]
+struct SavedText {
+    text: String,
+    file: String,
+    append: bool,
+}
+
+/// seoSpider.data(...) as column values: an array gives one value per item.
+fn js_values(v: serde_json::Value) -> Vec<String> {
+    let one = |v: serde_json::Value| match v {
+        serde_json::Value::String(s) => s,
+        other => other.to_string(),
+    };
+    match v {
+        serde_json::Value::Null => vec![],
+        serde_json::Value::Array(items) => items.into_iter().filter(|i| !i.is_null()).map(one).collect(),
+        other => vec![one(other)],
+    }
+}
+
+/// seoSpider.saveText: append or write a local file. Serialised so
+/// concurrent pages appending to one file don't interleave.
+fn save_text(t: &SavedText) -> std::io::Result<()> {
+    use std::io::Write;
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut f = std::fs::OpenOptions::new().create(true).write(true).append(t.append).truncate(!t.append).open(&t.file)?;
+    writeln!(f, "{}", t.text)
+}
+
 /// What rendering a page produced.
 #[derive(Debug, Clone, Default)]
 pub struct Rendered {
@@ -95,6 +166,10 @@ pub struct Rendered {
     pub transferred_bytes: u64,
     /// axe-core violations, when Accessibility is on.
     pub accessibility: Option<Vec<A11yViolation>>,
+    /// Custom JavaScript results, one per configured snippet.
+    pub custom_js: Vec<CustomJsResult>,
+    /// URLs passed to seoSpider.saveUrls, to be crawled.
+    pub saved_urls: Vec<String>,
 }
 
 /// Browsers to try when no path is configured.
@@ -139,6 +214,7 @@ pub struct Renderer {
     cfg: RenderingConfig,
     user_agent: String,
     profile_dir: PathBuf,
+    custom_js: Vec<CustomJs>,
 }
 
 /// Flattens shadow roots (Flatten Shadow DOM) and same-origin iframes
@@ -209,19 +285,56 @@ impl Renderer {
             cfg: r.clone(),
             user_agent: cfg.user_agent.clone(),
             profile_dir,
+            custom_js: cfg.custom_javascript.iter().filter(|s| !s.code.trim().is_empty()).cloned().collect(),
         })
     }
 
     /// Render one URL: load, wait the AJAX timeout, flatten, snapshot.
-    pub async fn render(&self, url: &Url) -> anyhow::Result<Rendered> {
+    pub async fn render(&self, url: &Url, content_type: &str) -> anyhow::Result<Rendered> {
         let _slot = self.slots.acquire().await?;
         let page = self.browser.new_page("about:blank").await?;
-        let result = self.render_on(&page, url).await;
+        let result = self.render_on(&page, url, content_type).await;
         let _ = page.close().await;
         result
     }
 
-    async fn render_on(&self, page: &chromiumoxide::Page, url: &Url) -> anyhow::Result<Rendered> {
+    /// Custom JavaScript: Actions first, then Extractions, each with its own timeout.
+    async fn run_custom_js(&self, page: &chromiumoxide::Page, content_type: &str) -> (Vec<CustomJsResult>, Vec<String>) {
+        let mut results = vec![CustomJsResult::default(); self.custom_js.len()];
+        let mut urls = Vec::new();
+        let order = self.custom_js.iter().enumerate().filter(|(_, s)| s.kind == CustomJsKind::Action).chain(self.custom_js.iter().enumerate().filter(|(_, s)| s.kind == CustomJsKind::Extraction));
+        for (i, snippet) in order {
+            if !snippet.applies_to(content_type) {
+                continue;
+            }
+            let script = SEO_SPIDER_SHIM.replace("/*SNIPPET*/", &snippet.code);
+            let timeout = Duration::from_secs_f64(snippet.timeout_secs.max(0.1));
+            let out: anyhow::Result<ShimOut> = match tokio::time::timeout(timeout, page.evaluate_expression(script)).await {
+                Err(_) => Err(anyhow::anyhow!("timed out after {}s", snippet.timeout_secs)),
+                Ok(r) => r.map_err(anyhow::Error::from).and_then(|v| v.into_value().map_err(anyhow::Error::from)),
+            };
+            match out {
+                Ok(out) => {
+                    for t in &out.texts {
+                        if let Err(e) = save_text(t) {
+                            results[i].error = Some(format!("saveText {}: {e}", t.file));
+                        }
+                    }
+                    urls.extend(out.urls);
+                    if snippet.kind == CustomJsKind::Extraction {
+                        results[i].values = js_values(out.data);
+                    }
+                    if out.error.is_some() {
+                        results[i].error = out.error;
+                    }
+                }
+                Err(e) => results[i].error = Some(e.to_string()),
+            }
+        }
+        (results, urls)
+    }
+
+    async fn render_on(&self, page: &chromiumoxide::Page, url: &Url, content_type: &str) -> anyhow::Result<Rendered> {
         let r = &self.cfg;
         let (w, h) = window(r);
         page.set_user_agent(self.user_agent.as_str()).await?;
@@ -266,6 +379,7 @@ impl Renderer {
         if r.ajax_timeout_secs > 0.0 {
             tokio::time::sleep(Duration::from_secs_f64(r.ajax_timeout_secs)).await;
         }
+        let (custom_js, saved_urls) = self.run_custom_js(page, content_type).await;
         // Accessibility runs on the live DOM, before flattening changes it.
         let accessibility = if r.accessibility {
             page.evaluate_expression(AXE_JS).await?;
@@ -300,7 +414,7 @@ impl Renderer {
             l.abort();
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
-        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility })
+        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, custom_js, saved_urls })
     }
 
     pub async fn close(mut self) {
@@ -355,6 +469,17 @@ mod tests {
         assert_eq!(carbon_rating(0.03), "A+");
         assert_eq!(carbon_rating(0.2), "C");
         assert_eq!(carbon_rating(g), "F");
+    }
+
+    #[test]
+    fn custom_js_values() {
+        assert_eq!(js_values(serde_json::json!(["a", 2, null])), vec!["a", "2"]);
+        assert_eq!(js_values(serde_json::json!("x")), vec!["x"]);
+        assert_eq!(js_values(serde_json::json!({"k": 1})), vec![r#"{"k":1}"#]);
+        assert!(js_values(serde_json::Value::Null).is_empty());
+        let s = CustomJs { content_types: "text/html, application/xhtml".into(), ..Default::default() };
+        assert!(s.applies_to("text/html; charset=utf-8"));
+        assert!(!s.applies_to("application/pdf"));
     }
 
     #[test]

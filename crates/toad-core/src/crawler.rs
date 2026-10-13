@@ -795,7 +795,7 @@ async fn process(
         let html = String::from_utf8_lossy(&res.body);
         let mut page = extract(&html, &item.url, cfg, rules);
         if let Some(renderer) = renderer {
-            let (rendered_page, info) = render_page(renderer, cfg, rules, &item.url, page).await;
+            let (rendered_page, info) = render_page(renderer, cfg, rules, &item.url, &r.content_type, page).await;
             page = rendered_page;
             r.rendered = Some(info);
         }
@@ -937,6 +937,7 @@ async fn render_page(
     cfg: &CrawlConfig,
     rules: &CustomRules,
     url: &Url,
+    content_type: &str,
     raw: crate::model::PageData,
 ) -> (crate::model::PageData, crate::model::RenderInfo) {
     let original = crate::model::OriginalHtml {
@@ -949,7 +950,7 @@ async fn render_page(
         link_count: raw.links.len() as u32,
     };
     let mut info = crate::model::RenderInfo { original, ..Default::default() };
-    match renderer.render(url).await {
+    match renderer.render(url, content_type).await {
         Ok(out) => {
             let mut page = extract(&out.html, url, cfg, rules);
             let key = |l: &Link| (l.kind, l.to.clone());
@@ -967,6 +968,29 @@ async fn render_page(
             info.requests = out.requests;
             info.transferred_bytes = out.transferred_bytes;
             info.accessibility = out.accessibility;
+            info.custom_js = out.custom_js;
+            // seoSpider.saveUrls: crawled like links found on the page.
+            for href in out.saved_urls {
+                if let Ok(to) = url.join(href.trim()) {
+                    if matches!(to.scheme(), "http" | "https") {
+                        page.links.push(Link {
+                            kind: LinkKind::Hyperlink,
+                            to: to.to_string(),
+                            href,
+                            anchor: String::new(),
+                            alt: None,
+                            follow: true,
+                            rel: String::new(),
+                            target: String::new(),
+                            path_type: "Absolute".into(),
+                            link_path: String::new(),
+                            position: "Custom JavaScript".into(),
+                            hreflang: None,
+                            origin: "Custom JavaScript".into(),
+                        });
+                    }
+                }
+            }
             if cfg.rendering.store_rendered_html {
                 info.html = Some(out.html);
             }

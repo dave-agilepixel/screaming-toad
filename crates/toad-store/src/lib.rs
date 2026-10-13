@@ -209,6 +209,15 @@ impl Store {
                 for b in &info.blocked_resources {
                     blocked_stmt.execute(params![source_id, b])?;
                 }
+                let mut js_stmt = tx.prepare_cached("INSERT INTO custom_values (url_id, kind, idx, ord, value) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+                for (idx, res) in info.custom_js.iter().enumerate() {
+                    for (ord, value) in res.values.iter().enumerate() {
+                        js_stmt.execute(params![source_id, "js", idx as i64, ord as i64, value])?;
+                    }
+                    if let Some(e) = &res.error {
+                        js_stmt.execute(params![source_id, "js_error", idx as i64, 0, e])?;
+                    }
+                }
                 let mut a11y_stmt = tx.prepare_cached(
                     "INSERT INTO accessibility (url_id, rule, impact, guideline, help, help_url, target, html) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;

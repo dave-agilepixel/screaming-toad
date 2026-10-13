@@ -8,7 +8,7 @@
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use toad_core::config::{RenderMode, RenderingConfig};
+use toad_core::config::{CustomJs, CustomJsKind, RenderMode, RenderingConfig};
 use toad_core::{CrawlConfig, CrawlControl, CrawlEvent, Crawler};
 use toad_store::Store;
 use url::Url;
@@ -67,7 +67,15 @@ async fn javascript_rendering() {
     let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     tokio::spawn(serve(listener));
     let start = Url::parse(&format!("{origin}/")).unwrap();
-    let cfg = CrawlConfig { threads: 2, rendering, ..CrawlConfig::default() };
+    let snippet = |name: &str, kind: CustomJsKind, code: &str| CustomJs { name: name.into(), kind, code: code.into(), ..Default::default() };
+    let custom_javascript = vec![
+        snippet("Headings", CustomJsKind::Extraction, "return seoSpider.data([...document.querySelectorAll('h1, h2')].map(h => h.textContent));"),
+        // Actions run before extractions, whatever their order.
+        snippet("Add H2", CustomJsKind::Action, "const h = document.createElement('h2'); h.textContent = 'From an action'; document.body.appendChild(h);"),
+        snippet("Save", CustomJsKind::Extraction, "seoSpider.saveUrls(['/saved-by-js']); return seoSpider.data('ok');"),
+        snippet("Broken", CustomJsKind::Extraction, "throw new Error('nope');"),
+    ];
+    let cfg = CrawlConfig { threads: 2, rendering, custom_javascript, ..CrawlConfig::default() };
     let dir = std::env::temp_dir().join(format!("toad-render-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("crawl.toad");
@@ -120,7 +128,8 @@ async fn javascript_rendering() {
     assert_eq!(count("Page Title Updated by JavaScript"), 1);
     assert_eq!(count("H1 Only in Rendered HTML"), 1);
     assert_eq!(count("Contains JavaScript Links"), 1);
-    assert_eq!(count("Contains JavaScript Content"), 1);
+    // The "Add H2" action snippet adds text to all four pages.
+    assert_eq!(count("Contains JavaScript Content"), 4);
     assert_eq!(count("Pages with JavaScript Errors"), 1);
     assert_eq!(count("Pages with Blocked Resources"), 1);
     assert_eq!(count("Page Title Only in Rendered HTML"), 0);
@@ -131,9 +140,23 @@ async fn javascript_rendering() {
     let a11y = store.accessibility_details(&home).unwrap();
     assert!(a11y.rows.iter().any(|r| r[2] == "image-alt" && r[1] == "critical" && r[0] == "WCAG 2.0 A"), "{:?}", a11y.rows);
     assert!(a11y.rows.iter().any(|r| r[2] == "html-has-lang"), "{:?}", a11y.rows);
-    // Every test page lacks lang, so all three crawled pages fail level A.
-    assert_eq!(store.count("Accessibility", "WCAG 2.0 A Violations").unwrap(), 3);
+    // Every test page lacks lang, so all four crawled pages fail level A.
+    assert_eq!(store.count("Accessibility", "WCAG 2.0 A Violations").unwrap(), 4);
     assert_eq!(store.count("Accessibility", "Critical Impact").unwrap(), 1);
+    // Custom JavaScript.
+    let js = store.rows(&toad_store::RowQuery { tab: "Custom JavaScript".into(), filter: "All".into(), ..Default::default() }).unwrap();
+    let col = |name: &str| js.columns.iter().position(|c| c == name).unwrap_or_else(|| panic!("{name} in {:?}", js.columns));
+    let home_row = js.rows.iter().find(|r| r[col("Address")] == home).unwrap();
+    assert_eq!(home_row[col("Headings 1")], "Made by JS");
+    assert_eq!(home_row[col("Headings 2")], "From an action");
+    assert_eq!(home_row[col("Save 1")], "ok");
+    assert_eq!(home_row[col("Broken Error")], "nope");
+    assert_eq!(store.count("Custom JavaScript", "Headings").unwrap(), 4);
+    assert_eq!(store.count("Custom JavaScript", "Errors").unwrap(), 4);
+    let saved = format!("{origin}/saved-by-js");
+    assert_eq!(field(&saved, "status_code"), "200", "saveUrls URLs are crawled");
+    assert_eq!(store.inlinks(&saved).unwrap().rows[0][13], "Custom JavaScript");
+
     let summary = store.report("Accessibility Violations Summary").unwrap();
     assert!(summary.rows.iter().any(|r| r[1] == "image-alt"));
 }

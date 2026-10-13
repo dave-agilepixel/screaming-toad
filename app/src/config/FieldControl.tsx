@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
 import { HEADER_NAMES, USER_AGENT_PRESETS, WINDOW_PRESETS, validHeaderName } from "./presets";
 import type { RobotsTest } from "../api";
-import { getPath, type CrawlConfig, type CustomExtractor, type CustomSearch, type Field } from "./schema";
+import { getPath, type CrawlConfig, type CustomExtractor, type CustomJavaScript, type CustomSearch, type Field } from "./schema";
 
 interface Props {
   field: Field;
@@ -415,6 +415,9 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
 
     case "custom-extraction":
       return <ExtractionEditor rules={cfg.custom_extraction} onChange={(v) => set("custom_extraction", v)} />;
+
+    case "custom-javascript":
+      return <JavaScriptEditor rules={cfg.custom_javascript} jsMode={cfg.rendering.mode === "javascript"} onChange={(v) => set("custom_javascript", v)} />;
   }
 }
 
@@ -1025,6 +1028,56 @@ function ExtractionEditor({ rules, onChange }: { rules: CustomExtractor[]; onCha
         XPath 1.0 (functions such as count() and string-length() with Function Value; combine expressions with |). Regex returns the first capture group, or the whole
         match. Up to 1,000 values per page in total.
       </p>
+    </div>
+  );
+}
+
+const SAMPLE_JS = `// Return data with seoSpider.data(...). Other helpers:
+// seoSpider.error(msg), seoSpider.saveUrls([...]),
+// seoSpider.saveText(text, filePath, append), await seoSpider.loadScript(src)
+return seoSpider.data(document.querySelectorAll('a').length);`;
+
+const newJavaScript = (n: number): CustomJavaScript => ({ name: `Snippet ${n}`, kind: "extraction", code: SAMPLE_JS, timeout_secs: 10, content_types: "text/html" });
+
+/** Custom > Custom JavaScript: snippets run in the browser on each rendered page. */
+function JavaScriptEditor({ rules, jsMode, onChange }: { rules: CustomJavaScript[]; jsMode: boolean; onChange: (v: CustomJavaScript[]) => void }) {
+  const update = (i: number, patch: Partial<CustomJavaScript>) => onChange(rules.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  return (
+    <div className="rules">
+      <p className="hint">
+        JavaScript run in the browser on each rendered page. Extraction snippets become columns in the Custom JavaScript tab; Action snippets (scroll, click, wait) run
+        first and return nothing.
+      </p>
+      {!jsMode && <p className="hint warn">Needs Configuration &gt; Spider &gt; Rendering set to JavaScript.</p>}
+      {rules.map((x, i) => (
+        <div key={i} className="rule rule-js">
+          <div className="rule-js-head">
+            <input placeholder="Name" value={x.name} onChange={(e) => update(i, { name: e.target.value })} />
+            <select value={x.kind} onChange={(e) => update(i, { kind: e.target.value as CustomJavaScript["kind"] })}>
+              <option value="extraction">Extraction</option>
+              <option value="action">Action</option>
+            </select>
+            <label className="inline">
+              Timeout
+              <input type="number" min={0.1} step={1} value={x.timeout_secs} onChange={(e) => update(i, { timeout_secs: Number(e.target.value) })} />s
+            </label>
+            <input placeholder="Content types" value={x.content_types} onChange={(e) => update(i, { content_types: e.target.value })} title="Comma-separated content types" />
+            <RowButtons rules={rules} i={i} onChange={onChange} copy={(r) => ({ ...r, name: `${r.name} copy` })} />
+          </div>
+          <textarea className="code" rows={6} value={x.code} spellCheck={false} onChange={(e) => update(i, { code: e.target.value })} />
+        </div>
+      ))}
+      <div className="button-row">
+        <button onClick={() => onChange([...rules, newJavaScript(rules.length + 1)])} disabled={rules.length >= MAX_RULES}>
+          Add
+        </button>
+        <button onClick={() => onChange([])} disabled={rules.length === 0}>
+          Delete All
+        </button>
+        <span className="muted">
+          {rules.length} / {MAX_RULES}
+        </span>
+      </div>
     </div>
   );
 }

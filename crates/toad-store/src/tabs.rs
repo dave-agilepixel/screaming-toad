@@ -767,6 +767,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             html.to_string()
         }),
         custom_extraction_tab(cfg, html),
+        custom_javascript_tab(cfg, html),
     ]
 }
 
@@ -788,6 +789,48 @@ fn custom_search_tab(cfg: &CrawlConfig, base: &str) -> TabDef {
     }
     TabDef {
         name: "Custom Search",
+        base: base.into(),
+        columns: vec!["Address", "Content Type", "Status Code", "Status"],
+        extra_columns,
+        filters,
+    }
+}
+
+/// Custom JavaScript tab: Extraction snippets' values (up to three columns
+/// each) and errors, with a filter per snippet. Snippet indexes match the
+/// renderer's, which skips snippets with no code.
+fn custom_javascript_tab(cfg: &CrawlConfig, base: &str) -> TabDef {
+    use toad_core::config::CustomJsKind;
+    let mut extra_columns = Vec::new();
+    let mut filters = vec![FilterDef { name: "All".into(), sql: "1 = 1".into(), issue: None, description: "Every HTML page.".into() }];
+    for (idx, s) in cfg.custom_javascript.iter().filter(|s| !s.code.trim().is_empty()).enumerate() {
+        if s.kind == CustomJsKind::Extraction {
+            for ord in 0..EXTRACTION_COLUMNS {
+                extra_columns.push((
+                    format!("{} {}", s.name, ord + 1),
+                    format!("(SELECT c.value FROM custom_values c WHERE c.url_id = u.id AND c.kind = 'js' AND c.idx = {idx} AND c.ord = {ord})"),
+                ));
+            }
+            filters.push(FilterDef {
+                name: s.name.clone(),
+                sql: format!("EXISTS (SELECT 1 FROM custom_values c WHERE c.url_id = u.id AND c.kind = 'js' AND c.idx = {idx})"),
+                issue: None,
+                description: format!("Pages where '{}' returned data.", s.name),
+            });
+        }
+        extra_columns.push((
+            format!("{} Error", s.name),
+            format!("(SELECT c.value FROM custom_values c WHERE c.url_id = u.id AND c.kind = 'js_error' AND c.idx = {idx})"),
+        ));
+    }
+    filters.push(FilterDef {
+        name: "Errors".into(),
+        sql: "EXISTS (SELECT 1 FROM custom_values c WHERE c.url_id = u.id AND c.kind = 'js_error')".into(),
+        issue: None,
+        description: "Pages where a snippet threw, timed out or called seoSpider.error().".into(),
+    });
+    TabDef {
+        name: "Custom JavaScript",
         base: base.into(),
         columns: vec!["Address", "Content Type", "Status Code", "Status"],
         extra_columns,
