@@ -2,7 +2,19 @@ import { useEffect, useState } from "react";
 import { api, type Table } from "../api";
 import { SourceView } from "./SourceView";
 
-type View = "details" | "inlinks" | "outlinks" | "duplicates" | "structured" | "spelling" | "headers" | "cookies" | "source";
+type View =
+  | "details"
+  | "inlinks"
+  | "outlinks"
+  | "duplicates"
+  | "structured"
+  | "spelling"
+  | "headers"
+  | "cookies"
+  | "source"
+  | "rendered"
+  | "console"
+  | "blocked";
 
 const LABELS: Record<View, string> = {
   details: "URL Details",
@@ -14,6 +26,9 @@ const LABELS: Record<View, string> = {
   headers: "HTTP Headers",
   cookies: "Cookies",
   source: "View Source",
+  rendered: "Rendered Page",
+  console: "Chrome Console Log",
+  blocked: "Blocked Resources",
 };
 
 /** Lower window: URL Details, Inlinks and Outlinks for the selected URL. */
@@ -22,6 +37,9 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
   const [details, setDetails] = useState<[string, string][]>([]);
   const [links, setLinks] = useState<Table | null>(null);
   const [source, setSource] = useState<string | null | undefined>(undefined);
+  const [renderedSource, setRenderedSource] = useState<string | null>(null);
+  const [sourceSide, setSourceSide] = useState<"original" | "rendered">("original");
+  const [shot, setShot] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!url) return;
@@ -30,7 +48,12 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
       api.urlDetails(url).then((d) => live && setDetails(d)).catch(console.error);
     } else if (view === "source") {
       setSource(undefined);
+      setRenderedSource(null);
       api.pageSource(url).then((s) => live && setSource(s)).catch(console.error);
+      api.renderedSource(url).then((s) => live && setRenderedSource(s)).catch(console.error);
+    } else if (view === "rendered") {
+      setShot(undefined);
+      api.screenshot(url).then((s) => live && setShot(s)).catch(console.error);
     } else {
       const load =
         view === "inlinks"
@@ -45,7 +68,11 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
                 ? api.httpHeaders(url)
                 : view === "cookies"
                   ? api.cookies(url)
-                  : api.structuredDetails(url);
+                  : view === "console"
+                    ? api.consoleLog(url)
+                    : view === "blocked"
+                      ? api.blockedResources(url)
+                      : api.structuredDetails(url);
       load.then((t) => live && setLinks(t)).catch(console.error);
     }
     return () => {
@@ -81,8 +108,31 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
             </tbody>
           </table>
         )}
-        {url && view === "source" && source !== undefined && <SourceView source={source} />}
-        {url && view !== "details" && view !== "source" && links && (
+        {url && view === "source" && source !== undefined && (
+          <>
+            {renderedSource !== null && (
+              <div className="source-switch">
+                <button className={sourceSide === "original" ? "active" : ""} onClick={() => setSourceSide("original")}>
+                  Original HTML
+                </button>
+                <button className={sourceSide === "rendered" ? "active" : ""} onClick={() => setSourceSide("rendered")}>
+                  Rendered HTML
+                </button>
+              </div>
+            )}
+            <SourceView source={sourceSide === "rendered" && renderedSource !== null ? renderedSource : source} />
+          </>
+        )}
+        {url && view === "rendered" && shot !== undefined && (
+          shot === null ? (
+            <p className="empty">No screenshot for this URL. Crawl with Configuration &gt; Spider &gt; Rendering set to JavaScript, with screenshots on.</p>
+          ) : (
+            <div className="screenshot">
+              <img src={shot} alt={`Rendered page: ${url}`} />
+            </div>
+          )
+        )}
+        {url && view !== "details" && view !== "source" && view !== "rendered" && links && (
           <table className="links">
             <thead>
               <tr>

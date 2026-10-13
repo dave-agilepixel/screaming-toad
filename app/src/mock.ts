@@ -147,6 +147,14 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return false as T;
     case "get_page_source":
       return MOCK_HTML_CURRENT as T;
+    case "get_rendered_source":
+      return MOCK_HTML_CURRENT.replace("</body>", "<h1>Added by JavaScript</h1></body>") as T;
+    case "get_screenshot":
+      return null as T;
+    case "get_console_log":
+      return { columns: ["Level", "Source", "Message"], rows: [["error", "exception", "TypeError: x is undefined"], ["warning", "console", "Deprecated API"]], total: 2 } as T;
+    case "get_blocked_resources":
+      return { columns: ["Blocked Resource"], rows: [["https://example.com/private/app.js"]], total: 1 } as T;
     case "compare_source": {
       const a = MOCK_HTML_PREVIOUS.split(/\r?\n/);
       const b = MOCK_HTML_CURRENT.split(/\r?\n/);

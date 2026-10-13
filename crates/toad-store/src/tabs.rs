@@ -206,6 +206,9 @@ pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         if t.name == "Internal" && cfg.extract_pdf_properties {
             t.columns.extend(["PDF Title", "PDF Subject", "PDF Author", "PDF Creation Date", "PDF Modification Date", "PDF Page Count"]);
         }
+        if t.name == "Internal" {
+            t.columns.extend(["CO2 (mg)", "Carbon Rating"]);
+        }
         if t.name == "Internal" && x.cookies {
             t.columns.push("Cookies");
         }
@@ -522,6 +525,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Spelling Errors", if cfg.spelling.spell_check { "u.spelling_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible spelling mistakes (Content > Spelling & Grammar)."),
                 f("Grammar Errors", if cfg.spelling.grammar_check { "u.grammar_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible grammar mistakes (needs a LanguageTool server)."),
                 f("Lorem Ipsum Placeholder", "u.lorem_ipsum = 1".into(), Some((Warning, High)), "Page contains lorem ipsum placeholder text."),
+                f("High Carbon Rating", format!("u.carbon_rating = 'F'{ix}"), Some((Opportunity, Low)), "Carbon Rating F: over 0.359 g CO2 per page view (Sustainable Web Design model). With JavaScript rendering this counts every resource the page loads."),
             ],
         },
         TabDef {

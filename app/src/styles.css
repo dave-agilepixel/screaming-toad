@@ -337,3 +337,20 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 
 .times .bar-cell { width: 40%; }
 .times .bar { display: block; height: 10px; background: var(--accent); border-radius: 2px; min-width: 1px; }
+
+.source-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+}
+.source-switch button.active {
+  font-weight: 600;
+}
+.screenshot {
+  padding: 8px;
+  overflow: auto;
+}
+.screenshot img {
+  max-width: 100%;
+  border: 1px solid var(--border);
+}

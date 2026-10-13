@@ -137,7 +137,13 @@ The scores below are as audited. Since then:
     - **Deviation:** subresources are fetched by the browser itself, not routed through Toad's fetcher. Blocked resources are worked out after the page renders.
   - **Batch B (done): JavaScript tab.** It has all 16 filters, placed after Hreflang, with original-vs-rendered columns (word count change, JS word count %, title, description, H1, meta robots, canonical, unique JS outlinks, JS errors and warnings, blocked resources).
     - **Deviation:** fragments are stripped during normalisation, so "Old AJAX Crawling Scheme URLs" only matches `_escaped_fragment_` (and `#!` where it survives).
-  - **Next:** C, the Rendered Page and Chrome Console lower tabs, View Source > Rendered HTML, and the High Carbon Rating UI. D, Accessibility (axe-core). E, Custom JavaScript.
+  - **Batch C (done): lower window and carbon.**
+    - New lower tabs: Rendered Page (screenshot), Chrome Console Log and Blocked Resources.
+    - View Source switches between Original HTML and Rendered HTML.
+    - The Internal tab gets CO2 (mg) and Carbon Rating columns.
+    - Content > High Carbon Rating flags rating F. Its tab placement is [unverified] against SF.
+    - Green Hosting Carbon Calculation is still open.
+  - **Next:** D, Accessibility (axe-core). E, Custom JavaScript.
 
 ## How to read this
 

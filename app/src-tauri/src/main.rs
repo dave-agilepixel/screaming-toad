@@ -408,6 +408,31 @@ fn get_page_source(state: State<'_, AppState>, url: String) -> CmdResult<Option<
     with_store(&state, |s| s.page_source(&url))
 }
 
+/// View Source > Rendered HTML (Store Rendered HTML).
+#[tauri::command]
+fn get_rendered_source(state: State<'_, AppState>, url: String) -> CmdResult<Option<String>> {
+    with_store(&state, |s| s.rendered_source(&url))
+}
+
+/// Rendered Page: the screenshot as a PNG data URL.
+#[tauri::command]
+fn get_screenshot(state: State<'_, AppState>, url: String) -> CmdResult<Option<String>> {
+    use base64::Engine;
+    with_store(&state, |s| {
+        Ok(s.screenshot(&url)?.map(|png| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png))))
+    })
+}
+
+#[tauri::command]
+fn get_console_log(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.console_log(&url))
+}
+
+#[tauri::command]
+fn get_blocked_resources(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.blocked_resources(&url))
+}
+
 /// Bulk Export > Web > All PDF Content.
 #[tauri::command]
 fn export_pdf_text(state: State<'_, AppState>, dir: String) -> CmdResult<u64> {
@@ -583,6 +608,10 @@ fn main() {
             get_outlinks,
             get_url_details,
             get_page_source,
+            get_rendered_source,
+            get_screenshot,
+            get_console_log,
+            get_blocked_resources,
             get_http_headers,
             get_language_details,
             get_top_language_errors,
