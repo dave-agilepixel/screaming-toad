@@ -10,7 +10,7 @@ Build **Screaming Toad**, a desktop SEO crawler modelled on the Screaming Frog S
 
 The `research/` folder holds the raw notes those two were built from.
 
-These three are compiled from Screaming Frog's documentation, so they are **not in the public repo**: `.gitignore` excludes them and they live only on the development PC (and in commits before 13 Oct 2026). Ask the maintainer for a copy.
+These three are compiled from Screaming Frog's documentation, so they are **not in the public repo**: `.gitignore` excludes them and they live only on the development PC, and were removed from the git history on 13 Oct 2026. Ask the maintainer for a copy.
 
 ## Where it stands
 The code is written but **has never been compiled**. The previous PC blocks every newly built program (it's managed by Defender for Endpoint), so neither `cargo build` nor its build scripts could run.
