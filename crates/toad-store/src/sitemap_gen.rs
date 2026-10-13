@@ -195,6 +195,113 @@ impl Store {
     }
 }
 
+/// Sitemaps > Images Sitemap options.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImageSitemapOptions {
+    /// Leave out images linked from more than this many pages (logos,
+    /// icons). None: keep all.
+    pub max_inlinks: Option<u32>,
+    /// Images on other hosts (CDNs) are included when their URL matches
+    /// this regex; internal images are always included.
+    pub cdn_regex: String,
+    /// Include images that didn't return 200 (or weren't crawled).
+    pub include_non_200: bool,
+    pub max_urls_per_file: usize,
+}
+
+impl Default for ImageSitemapOptions {
+    fn default() -> Self {
+        Self { max_inlinks: Some(10), cdn_regex: String::new(), include_non_200: false, max_urls_per_file: 49_999 }
+    }
+}
+
+impl Store {
+    /// Sitemaps > Images Sitemap: the pages a page sitemap would list, each
+    /// with its images (`image:image`), skipping pages without images.
+    pub fn generate_images_sitemap(&self, dir: &Path, page_opts: &SitemapOptions, opts: &ImageSitemapOptions) -> anyhow::Result<Vec<PathBuf>> {
+        let mut conditions = vec!["p.is_internal = 1".to_string(), "p.status_code = 200".to_string(), "p.is_html = 1".to_string()];
+        if !page_opts.include_noindex {
+            conditions.push("coalesce(p.directives, '') NOT LIKE '%,noindex,%' AND coalesce(p.directives, '') NOT LIKE '%,none,%'".into());
+        }
+        if !page_opts.include_canonicalised {
+            conditions.push("(coalesce(p.canonical_1, p.http_canonical) IS NULL OR coalesce(p.canonical_1, p.http_canonical) = p.address)".into());
+        }
+        let cdn = if opts.cdn_regex.trim().is_empty() { None } else { Some(regex::Regex::new(opts.cdn_regex.trim())?) };
+        let sql = format!(
+            "SELECT p.address, l.target, l.internal, coalesce(i.status_code, 0),
+                    (SELECT COUNT(DISTINCT l2.source_id) FROM links l2 WHERE l2.target = l.target AND l2.kind = 'Image')
+             FROM urls p JOIN links l ON l.source_id = p.id AND l.kind = 'Image'
+             LEFT JOIN urls i ON i.address = l.target
+             WHERE {} ORDER BY p.depth, p.crawl_order, l.id",
+            conditions.join(" AND ")
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, bool>(2)?, r.get::<_, i64>(3)?, r.get::<_, i64>(4)?))
+        })?;
+        let mut pages: Vec<(String, Vec<String>)> = Vec::new();
+        for row in rows {
+            let (page, image, internal, status, inlinks) = row?;
+            if !internal && !cdn.as_ref().is_some_and(|re| re.is_match(&image)) {
+                continue;
+            }
+            if !opts.include_non_200 && status != 200 {
+                continue;
+            }
+            if opts.max_inlinks.is_some_and(|m| inlinks > m as i64) {
+                continue;
+            }
+            if pages.last().is_none_or(|(p, _)| *p != page) {
+                pages.push((page, Vec::new()));
+            }
+            let images = &mut pages.last_mut().expect("pushed").1;
+            // The protocol allows 1,000 images per page.
+            if images.len() < 1000 && !images.contains(&image) {
+                images.push(image);
+            }
+        }
+        std::fs::create_dir_all(dir)?;
+        let per_file = opts.max_urls_per_file.clamp(1, 50_000);
+        let chunks: Vec<&[(String, Vec<String>)]> = pages.chunks(per_file).collect();
+        let body = |chunk: &[(String, Vec<String>)]| {
+            let mut out = String::from(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\" xmlns:image=\"http://www.google.com/schemas/sitemap-image/1.1\">\n",
+            );
+            for (page, images) in chunk {
+                let _ = writeln!(out, "  <url>\n    <loc>{}</loc>", escape(page));
+                for img in images {
+                    let _ = writeln!(out, "    <image:image>\n      <image:loc>{}</image:loc>\n    </image:image>", escape(img));
+                }
+                out.push_str("  </url>\n");
+            }
+            out.push_str("</urlset>\n");
+            out
+        };
+        let mut written = Vec::new();
+        if chunks.len() <= 1 {
+            let path = dir.join("image_sitemap.xml");
+            std::fs::write(&path, body(chunks.first().copied().unwrap_or(&[])))?;
+            written.push(path);
+            return Ok(written);
+        }
+        let base = self.meta("start_url")?.and_then(|u| Url::parse(&u).ok()).map(|u| u.origin().ascii_serialization()).unwrap_or_default();
+        let mut index = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+        for (i, chunk) in chunks.iter().enumerate() {
+            let name = format!("image_sitemap{}.xml", i + 1);
+            let path = dir.join(&name);
+            std::fs::write(&path, body(chunk))?;
+            written.push(path);
+            let _ = writeln!(index, "  <sitemap>\n    <loc>{}</loc>\n  </sitemap>", escape(&format!("{base}/{name}")));
+        }
+        index.push_str("</sitemapindex>\n");
+        let path = dir.join("image_sitemap_index.xml");
+        std::fs::write(&path, index)?;
+        written.push(path);
+        Ok(written)
+    }
+}
+
 fn slugify(name: &str) -> String {
     let s: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");

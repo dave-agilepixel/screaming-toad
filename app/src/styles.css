@@ -411,3 +411,22 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .pill.muted-pill {
   background: var(--muted);
 }
+
+.multi-export-lists {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 8px 0;
+}
+.multi-export-lists h4 {
+  margin: 4px 0;
+}
+.multi-export-lists details summary {
+  cursor: pointer;
+  padding: 2px 0;
+}
+.multi-export-lists label.check {
+  padding-left: 16px;
+}

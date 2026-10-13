@@ -171,8 +171,27 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
 const REDIRECT_CHAINS: &str = "Redirect Chains";
 const RICH_RESULTS: &str = "Google Rich Results Features Summary";
 const SEGMENTS: &str = "Segments Overview";
+const CRAWL_OVERVIEW: &str = "Crawl Overview";
 
 impl Store {
+    /// Reports > Crawl Overview: Tab | Filter | URLs | % of Tab.
+    pub fn crawl_overview(&self) -> anyhow::Result<Table> {
+        let rows = self.overview()?;
+        let mut totals = std::collections::HashMap::new();
+        for r in rows.iter().filter(|r| r.filter == "All") {
+            totals.insert(r.tab.clone(), r.urls);
+        }
+        let out: Vec<Vec<String>> = rows
+            .iter()
+            .map(|r| {
+                let total = totals.get(&r.tab).copied().unwrap_or(0);
+                let pct = if total > 0 { format!("{:.1}%", r.urls as f64 * 100.0 / total as f64) } else { String::new() };
+                vec![r.tab.clone(), r.filter.clone(), r.urls.to_string(), pct]
+            })
+            .collect();
+        Ok(Table { columns: ["Tab", "Filter", "URLs", "% of Tab"].iter().map(|s| s.to_string()).collect(), total: out.len() as u64, rows: out })
+    }
+
     pub fn reports(&self) -> Vec<ReportDef> {
         let mut out = vec![ReportDef {
             name: REDIRECT_CHAINS,
@@ -183,6 +202,11 @@ impl Store {
             kind: ReportKind::Report,
             description: "Each Google rich result type found, with the pages that have it and how many have errors or warnings.",
         }];
+        out.insert(0, ReportDef {
+            name: CRAWL_OVERVIEW,
+            kind: ReportKind::Report,
+            description: "Every tab and filter with its URL count and share of the tab: the right-hand Overview as a report.",
+        });
         out.push(ReportDef {
             name: SEGMENTS,
             kind: ReportKind::Report,
@@ -195,6 +219,9 @@ impl Store {
     pub fn report(&self, name: &str) -> anyhow::Result<Table> {
         if name.eq_ignore_ascii_case(RICH_RESULTS) {
             return self.rich_results_summary();
+        }
+        if name.eq_ignore_ascii_case(CRAWL_OVERVIEW) {
+            return self.crawl_overview();
         }
         if name.eq_ignore_ascii_case(SEGMENTS) {
             return self.segments_overview();

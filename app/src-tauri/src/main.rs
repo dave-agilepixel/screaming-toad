@@ -387,7 +387,7 @@ fn get_report(state: State<'_, AppState>, name: String) -> CmdResult<Table> {
 fn export_report(state: State<'_, AppState>, name: String, path: String) -> CmdResult<u64> {
     with_store(&state, |s| {
         let table = s.report(&name)?;
-        toad_store::write_csv(&table, std::path::Path::new(&path))?;
+        toad_store::export::write_table(&table, std::path::Path::new(&path), &name)?;
         Ok(table.rows.len() as u64)
     })
 }
@@ -528,6 +528,22 @@ struct ExportRequest {
     filter: String,
     search: Option<String>,
     path: String,
+}
+
+/// Export > Multi Export into a folder.
+#[tauri::command]
+fn multi_export(state: State<'_, AppState>, spec: toad_store::export::MultiExport, dir: String) -> CmdResult<Vec<String>> {
+    with_store(&state, |s| Ok(s.multi_export(&spec, std::path::Path::new(&dir))?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect()))
+}
+
+#[tauri::command]
+fn get_export_presets() -> Vec<toad_store::export::ExportPreset> {
+    toad_store::export::load_presets()
+}
+
+#[tauri::command]
+fn save_export_presets(presets: Vec<toad_store::export::ExportPreset>) -> CmdResult<()> {
+    toad_store::export::save_presets(&presets).map_err(err)
 }
 
 #[tauri::command]
@@ -718,6 +734,9 @@ fn main() {
             settings::read_url_file,
             pause_crawl,
             run_crawl_analysis,
+            multi_export,
+            get_export_presets,
+            save_export_presets,
             get_segments_overview,
             set_segment_filter,
             get_segment_filter,

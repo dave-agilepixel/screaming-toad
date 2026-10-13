@@ -249,6 +249,24 @@ export interface ApiProgress {
   total: number;
 }
 
+export interface MultiExport {
+  items: string[];
+  format: "csv" | "xlsx";
+  consolidate: boolean;
+  skip_empty: boolean;
+}
+
+export interface ExportPreset {
+  name: string;
+  export: MultiExport;
+}
+
+export const exportApi = {
+  multiExport: (spec: MultiExport, dir: string) => invoke<string[]>("multi_export", { spec, dir }),
+  presets: () => invoke<ExportPreset[]>("get_export_presets"),
+  savePresets: (presets: ExportPreset[]) => invoke<void>("save_export_presets", { presets }),
+};
+
 export const apiAccess = {
   secretStatus: () => invoke<Record<string, boolean>>("api_secret_status"),
   setSecret: (key: string, value: string) => invoke<void>("set_api_secret", { key, value }),

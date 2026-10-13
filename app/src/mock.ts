@@ -190,6 +190,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "multi_export":
+      return ["C:/exports/internal_all.csv"] as T;
+    case "get_export_presets":
+      return [{ name: "Weekly audit", export: { items: ["Internal:All", "report:Redirect Chains"], format: "xlsx", consolidate: true, skip_empty: true } }] as T;
+    case "save_export_presets":
+      return undefined as T;
     case "api_secret_status":
       return { psi_key: true, google_client_id: true, google_client_secret: true, google_refresh_token: false, openai_key: false } as T;
     case "set_api_secret":

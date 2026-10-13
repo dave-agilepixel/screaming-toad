@@ -26,6 +26,7 @@ import { CompareConfigDialog } from "./components/CompareConfigDialog";
 import { CrawlsDialog } from "./components/CrawlsDialog";
 import { ListModeDialog } from "./components/ListModeDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { MultiExportDialog } from "./components/MultiExportDialog";
 import { AuthPromptDialog } from "./components/AuthenticationPanel";
 import type { AuthRequired } from "./api";
 import { apiAccess } from "./api";
@@ -76,6 +77,7 @@ export default function App() {
   const [segments, setSegments] = useState<{ name: string; color: string }[]>([]);
   const [segment, setSegment] = useState<string>("");
   const [showSitemap, setShowSitemap] = useState(false);
+  const [showMultiExport, setShowMultiExport] = useState(false);
   const [reports, setReports] = useState<ReportDef[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const lastRefresh = useRef(0);
@@ -299,7 +301,10 @@ export default function App() {
   const exportCsv = async () => {
     const path = await save({
       defaultPath: `${tab}-${filter}${gridState ? `-${gridState}` : ""}.csv`.replace(/[^\w.-]+/g, "_").toLowerCase(),
-      filters: [{ name: "CSV", extensions: ["csv"] }],
+      filters: [
+        { name: "CSV", extensions: ["csv"] },
+        { name: "Excel workbook", extensions: ["xlsx"] },
+      ],
     });
     if (!path) return;
     try {
@@ -342,7 +347,7 @@ export default function App() {
     }
     const path = await save({
       defaultPath: `${name}.csv`.replace(/[^\w.-]+/g, "_").toLowerCase(),
-      filters: [{ name: "CSV", extensions: ["csv"] }],
+      filters: [{ name: "CSV", extensions: ["csv"] }, { name: "Excel workbook", extensions: ["xlsx"] }],
     });
     if (!path) return;
     try {
@@ -711,6 +716,11 @@ export default function App() {
         <button onClick={exportCsv} disabled={comparing ? !summary : status === "idle"}>
           Export
         </button>
+        {!comparing && (
+          <button onClick={() => setShowMultiExport(true)} disabled={status !== "done"} title="Several tabs, reports and bulk exports at once (CSV or Excel)">
+            Multi Export…
+          </button>
+        )}
         {comparing && summary && !isChangeDetection ? (
           <span className="filter-desc">Showing: {COMPARE_STATE_TEXT[compareState]}</span>
         ) : (
@@ -779,6 +789,7 @@ export default function App() {
         />
       )}
       {showSitemap && <SitemapDialog onClose={() => setShowSitemap(false)} onDone={setMessage} />}
+      {showMultiExport && <MultiExportDialog onClose={() => setShowMultiExport(false)} onDone={setMessage} />}
       {showCrawls && (
         <CrawlsDialog onClose={() => setShowCrawls(false)} onOpen={openCrawlAt} onResume={resumeCrawl} onCompare={compareFromCrawls} />
       )}

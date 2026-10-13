@@ -303,6 +303,13 @@ fn print_api_errors(errors: &[String]) {
     }
 }
 
+impl CrawlArgs {
+    /// Whether --out was given (rather than defaulted).
+    fn out_given(&self) -> bool {
+        self.out != std::path::Path::new("crawl.toad") || std::env::args().any(|a| a == "--out" || a == "-o" || a.starts_with("--out="))
+    }
+}
+
 #[derive(Args)]
 struct CrawlArgs {
     /// Start URL (Spider mode).
@@ -345,6 +352,43 @@ struct CrawlArgs {
     /// Exports after the crawl, e.g. "Internal:All,Response Codes:Internal Client Error (4XX)".
     #[arg(long)]
     export_tabs: Option<String>,
+    /// Bulk exports after the crawl, e.g. "All Inlinks,All Outlinks" (see `toad report <crawl> --list`).
+    #[arg(long)]
+    bulk_export: Option<String>,
+    /// Reports after the crawl, e.g. "Crawl Overview,Redirect Chains".
+    #[arg(long)]
+    save_report: Option<String>,
+    /// A saved Multi Export preset (from the app's Export dialog), by name.
+    #[arg(long)]
+    export_preset: Option<String>,
+    /// csv or xlsx.
+    #[arg(long)]
+    export_format: Option<String>,
+    /// XLSX: put every export in one workbook.
+    #[arg(long)]
+    consolidate: bool,
+    /// Don't write exports and reports that have no rows.
+    #[arg(long)]
+    skip_empty: bool,
+    /// Overwrite files already in the output folder.
+    #[arg(long)]
+    overwrite: bool,
+    /// Write into a new dated subfolder of the output folder each run
+    /// (with the crawl file, unless --out is given).
+    #[arg(long)]
+    timestamped_output: bool,
+    /// Crawl name shown in File > Crawls (and the timestamped folder name).
+    #[arg(long)]
+    task_name: Option<String>,
+    /// Project shown in File > Crawls.
+    #[arg(long)]
+    project_name: Option<String>,
+    /// Write an XML sitemap into the output folder after the crawl.
+    #[arg(long)]
+    create_sitemap: bool,
+    /// Write an images sitemap into the output folder after the crawl.
+    #[arg(long)]
+    create_images_sitemap: bool,
     /// Folder for exports.
     #[arg(long, default_value = "exports")]
     output_folder: PathBuf,
@@ -671,6 +715,31 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     args.api.apply(&mut cfg);
 
     let start = seeds[0].clone();
+    // Output folder (timestamped per run if asked), exports to write, and
+    // where the crawl file goes.
+    let mut args = args;
+    let multi = multi_export_spec(&args)?;
+    if args.timestamped_output {
+        let label = args.task_name.clone().unwrap_or_else(|| start.host_str().unwrap_or("crawl").to_string());
+        args.output_folder = args.output_folder.join(toad_store::export::slug(&label)).join(timestamp());
+        if !args.out_given() {
+            args.out = args.output_folder.join("crawl.toad");
+        }
+    }
+    if !args.overwrite {
+        let mut clashes: Vec<String> = multi.file_names().into_iter().filter(|f| args.output_folder.join(f).exists()).collect();
+        for (on, f) in [(args.create_sitemap, "sitemap.xml"), (args.create_images_sitemap, "image_sitemap.xml")] {
+            if on && args.output_folder.join(f).exists() {
+                clashes.push(f.into());
+            }
+        }
+        if !clashes.is_empty() {
+            bail!("{} already exists in {}: pass --overwrite, or --timestamped-output for a new folder per run", clashes.join(", "), args.output_folder.display());
+        }
+    }
+    if let Some(parent) = args.out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
     let runner = cfg.apis.any_enabled().then(|| toad_apis::ApiRunner::new(cfg.clone(), toad_apis::Secrets::from_env()).with_site(start.clone()));
     // Search Console and GA4 before the crawl, so their URLs can be crawled too.
     let mut seeds = seeds;
@@ -687,7 +756,10 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
         _ => None,
     };
     let mut store = Store::create(&args.out, &start, &cfg)?;
-    store.mark_started(start.host_str().unwrap_or("crawl"), if list_inputs.is_some() { "list" } else { "spider" })?;
+    store.mark_started(args.task_name.as_deref().unwrap_or(start.host_str().unwrap_or("crawl")), if list_inputs.is_some() { "list" } else { "spider" })?;
+    if let Some(p) = &args.project_name {
+        store.set_meta("project", p)?;
+    }
     if let Some(inputs) = &list_inputs {
         store.set_list_inputs(inputs)?;
     }
@@ -709,16 +781,57 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
 
     print_issues(&store, 15)?;
 
-    if let Some(spec) = &args.export_tabs {
-        std::fs::create_dir_all(&args.output_folder)?;
-        for item in spec.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-            let (tab, filter) = item.split_once(':').unwrap_or((item, "All"));
-            let file = args.output_folder.join(format!("{}.csv", slug(&format!("{tab} {filter}"))));
-            let n = store.export_csv(&RowQuery { tab: tab.into(), filter: filter.into(), ..Default::default() }, &file)?;
-            println!("Exported {tab} › {filter}: {n} rows → {}", file.display());
+    if !multi.items.is_empty() {
+        for f in store.multi_export(&multi, &args.output_folder)? {
+            println!("Exported {}", f.display());
+        }
+    }
+    if args.create_sitemap {
+        for f in store.generate_sitemap(&args.output_folder, &SitemapOptions::default())? {
+            println!("Sitemap {}", f.display());
+        }
+    }
+    if args.create_images_sitemap {
+        for f in store.generate_images_sitemap(&args.output_folder, &SitemapOptions::default(), &toad_store::ImageSitemapOptions::default())? {
+            println!("Images sitemap {}", f.display());
         }
     }
     Ok(())
+}
+
+/// --export-tabs, --bulk-export, --save-report and --export-preset as one Multi Export.
+fn multi_export_spec(args: &CrawlArgs) -> anyhow::Result<toad_store::export::MultiExport> {
+    use toad_store::export::{load_presets, ExportFormat, ExportItem, MultiExport};
+    let mut m = match &args.export_preset {
+        Some(name) => load_presets()
+            .into_iter()
+            .find(|p| p.name.eq_ignore_ascii_case(name))
+            .map(|p| p.export)
+            .ok_or_else(|| anyhow::anyhow!("no export preset named '{name}' (saved in {})", toad_store::export::presets_path().display()))?,
+        None => MultiExport::default(),
+    };
+    let list = |s: &Option<String>| -> Vec<String> { s.iter().flat_map(|v| v.split(',')).map(str::trim).filter(|v| !v.is_empty()).map(str::to_string).collect() };
+    for item in list(&args.export_tabs) {
+        let (tab, filter) = item.split_once(':').unwrap_or((&item, "All"));
+        m.items.push(ExportItem::tab(tab.trim(), filter.trim()));
+    }
+    for name in list(&args.bulk_export).into_iter().chain(list(&args.save_report)) {
+        m.items.push(ExportItem::report(&name));
+    }
+    if let Some(f) = &args.export_format {
+        m.format = ExportFormat::parse(f)?;
+    }
+    m.consolidate |= args.consolidate;
+    m.skip_empty |= args.skip_empty;
+    Ok(m)
+}
+
+/// YYYY.MM.DD.HH.MM.SS (UTC), for timestamped output folders.
+fn timestamp() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let (h, m, s) = ((secs / 3600) % 24, (secs / 60) % 60, secs % 60);
+    let date = toad_apis::google::date_days_ago(0);
+    format!("{}.{h:02}.{m:02}.{s:02}", date.replace('-', "."))
 }
 
 fn parse_start_url(input: &str) -> anyhow::Result<Url> {
@@ -759,17 +872,6 @@ fn print_issues(store: &Store, limit: usize) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn slug(s: &str) -> String {
-    let mut out = String::new();
-    for c in s.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
-        } else if !out.ends_with('_') {
-            out.push('_');
-        }
-    }
-    out.trim_matches('_').to_string()
-}
 
 fn compare(args: CompareArgs) -> anyhow::Result<()> {
     let (mut current, mut previous) = (args.current, args.previous);

@@ -272,7 +272,7 @@ impl Store {
     /// Export one tab/filter to CSV, honouring the search.
     pub fn export_csv(&self, q: &RowQuery, path: &Path) -> anyhow::Result<u64> {
         let table = self.rows(&RowQuery { offset: 0, limit: None, ..q.clone() })?;
-        write_csv(&table, path)?;
+        crate::export::write_table(&table, path, &format!("{} {}", q.tab, q.filter))?;
         Ok(table.rows.len() as u64)
     }
 }
