@@ -67,6 +67,14 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
       FROM urls u, json_each(u.headers_json) j
       WHERE (SELECT json_extract(value, '$.extraction.http_headers') FROM meta WHERE key = 'config') = 1
       ORDER BY u.crawl_order"),
+    ("Accessibility Violations Summary", ReportKind::Report, "Each axe-core rule that failed, with its guideline, impact and how many pages and elements fail it (needs Extraction > Accessibility).",
+     "SELECT a.guideline AS \"Guideline\", a.rule AS \"Rule\", a.impact AS \"Impact\", a.help AS \"Description\",
+             COUNT(DISTINCT a.url_id) AS \"URLs\", COUNT(*) AS \"Elements\", a.help_url AS \"Help\"
+      FROM accessibility a GROUP BY a.rule ORDER BY 5 DESC, 2"),
+    ("All Accessibility Violations", ReportKind::BulkExport, "One row per page and failing element (needs Extraction > Accessibility).",
+     "SELECT u.address AS \"Address\", a.guideline AS \"Guideline\", a.impact AS \"Impact\", a.rule AS \"Rule\",
+             a.help AS \"Description\", a.target AS \"Location\", a.html AS \"HTML\", a.help_url AS \"Help\"
+      FROM accessibility a JOIN urls u ON u.id = a.url_id ORDER BY u.crawl_order, a.rowid"),
     ("Cookie Summary", ReportKind::Report, "Each cookie name and domain, with how many URLs set it (needs Extraction > Cookies).",
      "SELECT c.name AS \"Cookie Name\", c.domain AS \"Domain\", COUNT(DISTINCT c.url_id) AS \"URLs\",
              MAX(c.secure) AS \"Secure\", MAX(c.http_only) AS \"HttpOnly\", MAX(c.same_site) AS \"SameSite\"

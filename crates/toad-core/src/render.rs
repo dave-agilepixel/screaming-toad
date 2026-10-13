@@ -32,6 +32,57 @@ pub struct ConsoleMessage {
     pub source: String,
 }
 
+/// One axe-core rule a page fails (Spider > Extraction > Accessibility).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct A11yViolation {
+    pub rule: String,
+    /// "critical", "serious", "moderate" or "minor".
+    pub impact: String,
+    pub tags: Vec<String>,
+    pub help: String,
+    pub help_url: String,
+    pub nodes: Vec<A11yNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct A11yNode {
+    /// CSS selector of the failing element.
+    pub target: String,
+    pub html: String,
+}
+
+impl A11yViolation {
+    /// The guideline Screaming Frog groups the rule under: the earliest WCAG
+    /// version and level in its tags, else Best Practice.
+    pub fn guideline(&self) -> &'static str {
+        const ORDER: [(&str, &str); 7] = [
+            ("wcag2a", "WCAG 2.0 A"),
+            ("wcag2aa", "WCAG 2.0 AA"),
+            ("wcag2aaa", "WCAG 2.0 AAA"),
+            ("wcag21a", "WCAG 2.1 A"),
+            ("wcag21aa", "WCAG 2.1 AA"),
+            ("wcag22aa", "WCAG 2.2 AA"),
+            ("best-practice", "Best Practice"),
+        ];
+        ORDER.iter().find(|(tag, _)| self.tags.iter().any(|t| t == tag)).map_or("Other", |(_, name)| name)
+    }
+}
+
+/// axe-core (MPL-2.0, Deque Systems), refreshed by `scripts/fetch_axe.sh`.
+const AXE_JS: &str = include_str!("../data/axe.min.js");
+
+const AXE_RUN: &str = r#"(async () => {
+  const r = await axe.run(document, { resultTypes: ['violations'] });
+  return r.violations.map(v => ({
+    rule: v.id,
+    impact: v.impact || '',
+    tags: v.tags,
+    help: v.help,
+    help_url: v.helpUrl,
+    nodes: v.nodes.slice(0, 100).map(n => ({ target: n.target.flat(Infinity).join(' '), html: (n.html || '').slice(0, 1000) })),
+  }));
+})()"#;
+
 /// What rendering a page produced.
 #[derive(Debug, Clone, Default)]
 pub struct Rendered {
@@ -42,6 +93,8 @@ pub struct Rendered {
     pub requests: Vec<String>,
     /// Bytes transferred for the page and its resources (Performance API).
     pub transferred_bytes: u64,
+    /// axe-core violations, when Accessibility is on.
+    pub accessibility: Option<Vec<A11yViolation>>,
 }
 
 /// Browsers to try when no path is configured.
@@ -213,6 +266,14 @@ impl Renderer {
         if r.ajax_timeout_secs > 0.0 {
             tokio::time::sleep(Duration::from_secs_f64(r.ajax_timeout_secs)).await;
         }
+        // Accessibility runs on the live DOM, before flattening changes it.
+        let accessibility = if r.accessibility {
+            page.evaluate_expression(AXE_JS).await?;
+            let v: Vec<A11yViolation> = page.evaluate_expression(AXE_RUN).await?.into_value()?;
+            Some(v)
+        } else {
+            None
+        };
         #[derive(Deserialize, Default)]
         struct Snapshot {
             bytes: f64,
@@ -239,7 +300,7 @@ impl Renderer {
             l.abort();
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
-        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64 })
+        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility })
     }
 
     pub async fn close(mut self) {

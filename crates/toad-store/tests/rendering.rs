@@ -14,7 +14,7 @@ use toad_store::Store;
 use url::Url;
 
 const HOME: &str = r#"<html><head><title>Original</title><script src="/blocked.js"></script></head>
-<body><a href="/plain">Plain</a><p>One two three.</p>
+<body><a href="/plain">Plain</a><p>One two three.</p><img src="/toad.png">
 <script>
   document.title = 'Rendered';
   const h = document.createElement('h1'); h.textContent = 'Made by JS'; document.body.appendChild(h);
@@ -50,6 +50,7 @@ async fn javascript_rendering() {
         mode: RenderMode::JavaScript,
         js_error_reporting: true,
         store_rendered_html: true,
+        accessibility: true,
         ajax_timeout_secs: 0.5,
         resize_to_content: false,
         ..RenderingConfig::default()
@@ -125,4 +126,14 @@ async fn javascript_rendering() {
     assert_eq!(count("Page Title Only in Rendered HTML"), 0);
     assert_eq!(count("Canonical Mismatch"), 0);
     assert_eq!(count("Noindex Only in Original HTML"), 0);
+
+    // Accessibility (axe-core): no lang on <html>, an image without alt.
+    let a11y = store.accessibility_details(&home).unwrap();
+    assert!(a11y.rows.iter().any(|r| r[2] == "image-alt" && r[1] == "critical" && r[0] == "WCAG 2.0 A"), "{:?}", a11y.rows);
+    assert!(a11y.rows.iter().any(|r| r[2] == "html-has-lang"), "{:?}", a11y.rows);
+    // Every test page lacks lang, so all three crawled pages fail level A.
+    assert_eq!(store.count("Accessibility", "WCAG 2.0 A Violations").unwrap(), 3);
+    assert_eq!(store.count("Accessibility", "Critical Impact").unwrap(), 1);
+    let summary = store.report("Accessibility Violations Summary").unwrap();
+    assert!(summary.rows.iter().any(|r| r[1] == "image-alt"));
 }

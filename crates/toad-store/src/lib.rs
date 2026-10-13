@@ -209,6 +209,14 @@ impl Store {
                 for b in &info.blocked_resources {
                     blocked_stmt.execute(params![source_id, b])?;
                 }
+                let mut a11y_stmt = tx.prepare_cached(
+                    "INSERT INTO accessibility (url_id, rule, impact, guideline, help, help_url, target, html) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                )?;
+                for v in info.accessibility.iter().flatten() {
+                    for n in &v.nodes {
+                        a11y_stmt.execute(params![source_id, v.rule, v.impact, v.guideline(), v.help, v.help_url, n.target, n.html])?;
+                    }
+                }
                 if let Some(png) = &info.screenshot {
                     tx.prepare_cached("INSERT OR REPLACE INTO screenshots (url_id, png) VALUES (?1, ?2)")?.execute(params![source_id, png])?;
                 }
@@ -308,6 +316,20 @@ impl Store {
             &[Value::Text(address.to_string())],
         )?;
         Ok(Table { columns: ["Level", "Source", "Message"].iter().map(|s| s.to_string()).collect(), total: rows.len() as u64, rows })
+    }
+
+    /// Accessibility Details lower tab: each failing element.
+    pub fn accessibility_details(&self, address: &str) -> anyhow::Result<Table> {
+        let rows = self.query_strings(
+            "SELECT a.guideline, a.impact, a.rule, a.help, a.target, a.html, a.help_url
+             FROM accessibility a JOIN urls u ON u.id = a.url_id WHERE u.address = ?1 ORDER BY a.rowid",
+            &[Value::Text(address.to_string())],
+        )?;
+        Ok(Table {
+            columns: ["Guideline", "Impact", "Rule", "Description", "Location", "HTML", "Help"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
     }
 
     /// Resources the page requested that robots.txt blocks.
@@ -667,6 +689,7 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("text_ratio", real(page.map(|p| p.text_ratio).filter(|_| x.text_to_code_ratio))),
         ("lorem_ipsum", flag(page.is_some_and(|p| p.lorem_ipsum))),
         ("ajax_fragment_meta", flag(page.is_some_and(|p| p.ajax_fragment_meta))),
+        ("a11y_checked", flag(rendered.is_some_and(|r| r.accessibility.is_some()))),
         ("head_tags", page.map(|p| int(p.head_tags)).unwrap_or(Value::Null)),
         ("body_tags", page.map(|p| int(p.body_tags)).unwrap_or(Value::Null)),
         ("hsts", opt(rec.header("strict-transport-security"))),

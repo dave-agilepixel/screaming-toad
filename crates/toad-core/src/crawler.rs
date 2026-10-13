@@ -966,6 +966,7 @@ async fn render_page(
             info.screenshot = out.screenshot;
             info.requests = out.requests;
             info.transferred_bytes = out.transferred_bytes;
+            info.accessibility = out.accessibility;
             if cfg.rendering.store_rendered_html {
                 info.html = Some(out.html);
             }

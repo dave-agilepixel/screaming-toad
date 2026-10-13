@@ -163,6 +163,16 @@ const COLUMNS: &[(&str, &str)] = &[
     ("Blocked Resources", "u.blocked_resources"),
     ("Render Error", "u.render_error"),
     ("CO2 (mg)", "u.co2_mg"),
+    ("All Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id) END"),
+    ("Best Practice Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'Best Practice') END"),
+    ("WCAG 2.0 A Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.0 A') END"),
+    ("WCAG 2.0 AA Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.0 AA') END"),
+    ("WCAG 2.0 AAA Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.0 AAA') END"),
+    ("WCAG 2.1 A Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.1 A') END"),
+    ("WCAG 2.1 AA Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.1 AA') END"),
+    ("WCAG 2.2 AA Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.2 AA') END"),
+    ("Critical Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.impact = 'critical') END"),
+    ("Serious Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.impact = 'serious') END"),
     ("Carbon Rating", "u.carbon_rating"),
     ("Spelling Errors", "u.spelling_errors"),
     ("Grammar Errors", "u.grammar_errors"),
@@ -279,6 +289,49 @@ fn javascript_tab(html: &str, ix: &str) -> TabDef {
             f("Uses Old AJAX Crawling Scheme Meta Fragment Tag", "u.ajax_fragment_meta = 1".into(), Some((Warning, High)), "<meta name=\"fragment\" content=\"!\"> from Google's deprecated AJAX crawling scheme."),
             f("Pages with JavaScript Errors", format!("{r} AND u.js_errors > 0"), Some((Issue, High)), "Errors in the Chrome console while rendering (needs Enable JavaScript Error Reporting)."),
         ],
+    }
+}
+
+/// Accessibility tab (axe-core). Needs Rendering: JavaScript and
+/// Extraction > Accessibility.
+fn accessibility_tab(html: &str) -> TabDef {
+    use IssueType::*;
+    use Priority::*;
+    let has = |cond: &str| format!("EXISTS (SELECT 1 FROM accessibility a WHERE a.url_id = u.id{cond})");
+    let mut filters = vec![
+        FilterDef { name: "All".into(), sql: "1 = 1".into(), issue: None, description: "Every HTML page.".into() },
+        FilterDef { name: "All Violations".into(), sql: has(""), issue: None, description: "Pages failing any axe-core rule.".into() },
+    ];
+    let levels: [(&str, (IssueType, Priority), &str); 7] = [
+        ("Best Practice", (Warning, Low), "Deque best practices that aren't WCAG requirements."),
+        ("WCAG 2.0 A", (Issue, High), "WCAG 2.0 level A: the minimum."),
+        ("WCAG 2.0 AA", (Issue, High), "WCAG 2.0 level AA: the usual legal standard."),
+        ("WCAG 2.0 AAA", (Warning, Low), "WCAG 2.0 level AAA."),
+        ("WCAG 2.1 A", (Issue, High), "WCAG 2.1 level A additions."),
+        ("WCAG 2.1 AA", (Issue, High), "WCAG 2.1 level AA additions."),
+        ("WCAG 2.2 AA", (Issue, Medium), "WCAG 2.2 level AA additions."),
+    ];
+    for (g, issue, description) in levels {
+        filters.push(FilterDef { name: format!("{g} Violations"), sql: has(&format!(" AND a.guideline = '{g}'")), issue: Some(issue), description: description.into() });
+    }
+    for (impact, label) in [("critical", "Critical"), ("serious", "Serious"), ("moderate", "Moderate"), ("minor", "Minor")] {
+        filters.push(FilterDef {
+            name: format!("{label} Impact"),
+            sql: has(&format!(" AND a.impact = '{impact}'")),
+            issue: None,
+            description: format!("Pages with a violation axe rates {impact}."),
+        });
+    }
+    TabDef {
+        name: "Accessibility",
+        base: html.into(),
+        extra_columns: vec![],
+        columns: vec![
+            "Address", "Indexability", "Indexability Status", "All Violations", "Critical Violations", "Serious Violations",
+            "Best Practice Violations", "WCAG 2.0 A Violations", "WCAG 2.0 AA Violations", "WCAG 2.0 AAA Violations",
+            "WCAG 2.1 A Violations", "WCAG 2.1 AA Violations", "WCAG 2.2 AA Violations",
+        ],
+        filters,
     }
 }
 
@@ -631,6 +684,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             ],
         },
         javascript_tab(html, ix),
+        accessibility_tab(html),
         TabDef {
             name: "Links",
             base: html.into(),

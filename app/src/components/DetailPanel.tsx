@@ -14,7 +14,8 @@ type View =
   | "source"
   | "rendered"
   | "console"
-  | "blocked";
+  | "blocked"
+  | "accessibility";
 
 const LABELS: Record<View, string> = {
   details: "URL Details",
@@ -29,6 +30,7 @@ const LABELS: Record<View, string> = {
   rendered: "Rendered Page",
   console: "Chrome Console Log",
   blocked: "Blocked Resources",
+  accessibility: "Accessibility Details",
 };
 
 /** Lower window: URL Details, Inlinks and Outlinks for the selected URL. */
@@ -72,7 +74,9 @@ export function DetailPanel({ url, refreshKey }: { url: string | null; refreshKe
                     ? api.consoleLog(url)
                     : view === "blocked"
                       ? api.blockedResources(url)
-                      : api.structuredDetails(url);
+                      : view === "accessibility"
+                        ? api.accessibilityDetails(url)
+                        : api.structuredDetails(url);
       load.then((t) => live && setLinks(t)).catch(console.error);
     }
     return () => {

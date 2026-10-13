@@ -153,6 +153,12 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return null as T;
     case "get_console_log":
       return { columns: ["Level", "Source", "Message"], rows: [["error", "exception", "TypeError: x is undefined"], ["warning", "console", "Deprecated API"]], total: 2 } as T;
+    case "get_accessibility_details":
+      return {
+        columns: ["Guideline", "Impact", "Rule", "Description", "Location", "HTML", "Help"],
+        rows: [["WCAG 2.0 A", "critical", "image-alt", "Images must have alternative text", "img.hero", '<img class="hero" src="/toad.jpg">', "https://dequeuniversity.com/rules/axe/4.10/image-alt"]],
+        total: 1,
+      } as T;
     case "get_blocked_resources":
       return { columns: ["Blocked Resource"], rows: [["https://example.com/private/app.js"]], total: 1 } as T;
     case "compare_source": {
@@ -280,7 +286,7 @@ const DEFAULT_CONFIG = {
   rendering: {
     mode: "text_only" as const, screenshots: true, js_error_reporting: false, flatten_shadow_dom: true, flatten_iframes: true, ajax_timeout_secs: 5,
     window_preset: "Googlebot Mobile: Smartphone", width: 411, height: 731, scaling_factor: 1, mobile: true, touch: true,
-    resize_to_content: true, resize_time_secs: 1, rotate: false, store_rendered_html: false, browser_path: null as string | null,
+    resize_to_content: true, resize_time_secs: 1, rotate: false, store_rendered_html: false, accessibility: false, browser_path: null as string | null,
   },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   structured_data: { json_ld: true, microdata: true, rdfa: false, schema_org_validation: true, google_rich_results: true, case_sensitive: false }, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,

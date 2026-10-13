@@ -61,6 +61,7 @@ export interface RenderingConfig {
   resize_time_secs: number;
   rotate: boolean;
   store_rendered_html: boolean;
+  accessibility: boolean;
   browser_path: string | null;
 }
 
@@ -422,6 +423,18 @@ export const NODES: Node[] = [
             key: "rendering.store_rendered_html",
             label: "Store Rendered HTML",
             help: "Keep the HTML after JavaScript runs: View Source > Rendered HTML. Needs Rendering: JavaScript.",
+            disabledIf: (c) => c.rendering.mode !== "javascript",
+          },
+        ],
+      },
+      {
+        title: "Accessibility",
+        fields: [
+          {
+            kind: "bool",
+            key: "rendering.accessibility",
+            label: "Accessibility",
+            help: "Audit rendered pages with axe-core against WCAG 2.0–2.2 and best practices: the Accessibility tab, Accessibility Details lower tab and Reports > Accessibility Violations Summary. Needs Rendering: JavaScript.",
             disabledIf: (c) => c.rendering.mode !== "javascript",
           },
         ],

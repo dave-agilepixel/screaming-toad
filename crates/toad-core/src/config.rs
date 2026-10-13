@@ -526,6 +526,8 @@ pub struct RenderingConfig {
     pub rotate: bool,
     /// Spider > Extraction > Store Rendered HTML.
     pub store_rendered_html: bool,
+    /// Spider > Extraction > Accessibility: run axe-core on rendered pages.
+    pub accessibility: bool,
     /// Chrome / Edge / Chromium executable. Empty: auto-detect.
     pub browser_path: Option<String>,
 }
@@ -549,6 +551,7 @@ impl Default for RenderingConfig {
             resize_time_secs: 1.0,
             rotate: false,
             store_rendered_html: false,
+            accessibility: false,
             browser_path: None,
         }
     }

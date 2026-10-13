@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS urls (
     blocked_resources INTEGER,
     co2_mg REAL,
     carbon_rating TEXT,
-    ajax_fragment_meta INTEGER NOT NULL DEFAULT 0
+    ajax_fragment_meta INTEGER NOT NULL DEFAULT 0,
+    a11y_checked INTEGER NOT NULL DEFAULT 0
 );
 
 -- Structured data items and validation issues per URL.
@@ -164,6 +165,17 @@ CREATE TABLE IF NOT EXISTS screenshots (
 CREATE TABLE IF NOT EXISTS rendered_html (
     url_id INTEGER PRIMARY KEY,
     body BLOB NOT NULL
+);
+-- Accessibility: one row per failing element.
+CREATE TABLE IF NOT EXISTS accessibility (
+    url_id INTEGER NOT NULL,
+    rule TEXT NOT NULL,
+    impact TEXT NOT NULL,
+    guideline TEXT NOT NULL,
+    help TEXT NOT NULL,
+    help_url TEXT NOT NULL,
+    target TEXT NOT NULL,
+    html TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS blocked_resources (
     url_id INTEGER NOT NULL,
@@ -243,6 +255,7 @@ CREATE INDEX IF NOT EXISTS sd_items_url ON sd_items(url_id);
 CREATE INDEX IF NOT EXISTS sd_issues_url ON sd_issues(url_id);
 CREATE INDEX IF NOT EXISTS console_log_url ON console_log(url_id);
 CREATE INDEX IF NOT EXISTS blocked_resources_url ON blocked_resources(url_id);
+CREATE INDEX IF NOT EXISTS accessibility_url ON accessibility(url_id);
 "#;
 
 /// Columns added to `urls` after the first release, as (name, type). Older
@@ -275,6 +288,7 @@ pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[
     ("co2_mg", "REAL"),
     ("carbon_rating", "TEXT"),
     ("ajax_fragment_meta", "INTEGER NOT NULL DEFAULT 0"),
+    ("a11y_checked", "INTEGER NOT NULL DEFAULT 0"),
 ];
 
 /// Columns added to other tables: (table, column, type).

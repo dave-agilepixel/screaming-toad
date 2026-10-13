@@ -143,7 +143,12 @@ The scores below are as audited. Since then:
     - The Internal tab gets CO2 (mg) and Carbon Rating columns.
     - Content > High Carbon Rating flags rating F. Its tab placement is [unverified] against SF.
     - Green Hosting Carbon Calculation is still open.
-  - **Next:** D, Accessibility (axe-core). E, Custom JavaScript.
+  - **Batch D (done): Accessibility.**
+    - Spider > Extraction > Accessibility runs the bundled axe-core 4.10.3 (MPL-2.0; see `THIRD_PARTY_NOTICES.md`) on each rendered page, before flattening.
+    - The Accessibility tab has All Violations, filters per guideline (Best Practice, WCAG 2.0 A/AA/AAA, 2.1 A/AA, 2.2 AA) and per impact, and per-guideline count columns.
+    - New: an Accessibility Details lower tab, Reports > Accessibility Violations Summary, and Bulk Export > All Accessibility Violations.
+    - **Not done:** SF's per-rule filters (around 90). The summary report covers them per rule.
+  - **Next:** E, Custom JavaScript.
 
 ## How to read this
 

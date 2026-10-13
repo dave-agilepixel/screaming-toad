@@ -429,6 +429,11 @@ fn get_console_log(state: State<'_, AppState>, url: String) -> CmdResult<Table> 
 }
 
 #[tauri::command]
+fn get_accessibility_details(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
+    with_store(&state, |s| s.accessibility_details(&url))
+}
+
+#[tauri::command]
 fn get_blocked_resources(state: State<'_, AppState>, url: String) -> CmdResult<Table> {
     with_store(&state, |s| s.blocked_resources(&url))
 }
@@ -612,6 +617,7 @@ fn main() {
             get_screenshot,
             get_console_log,
             get_blocked_resources,
+            get_accessibility_details,
             get_http_headers,
             get_language_details,
             get_top_language_errors,

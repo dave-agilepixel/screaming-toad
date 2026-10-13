@@ -111,6 +111,7 @@ export const api = {
   screenshot: (url: string) => invoke<string | null>("get_screenshot", { url }),
   consoleLog: (url: string) => invoke<Table>("get_console_log", { url }),
   blockedResources: (url: string) => invoke<Table>("get_blocked_resources", { url }),
+  accessibilityDetails: (url: string) => invoke<Table>("get_accessibility_details", { url }),
   httpHeaders: (url: string) => invoke<Table>("get_http_headers", { url }),
   languageDetails: (url: string) => invoke<Table>("get_language_details", { url }),
   topLanguageErrors: () => invoke<Table>("get_top_language_errors"),
