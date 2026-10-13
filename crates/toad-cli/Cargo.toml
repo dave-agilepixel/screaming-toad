@@ -17,4 +17,5 @@ tokio.workspace = true
 toad-core.workspace = true
 toad-store.workspace = true
 toad-apis.workspace = true
+toad-sched.workspace = true
 url.workspace = true

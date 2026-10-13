@@ -190,6 +190,21 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "get_tasks":
+      return [
+        {
+          id: "t1", name: "Weekly audit", project: "Client", enabled: true, url: "https://www.example.com/", list_file: "", config_profile: "", frequency: "weekly",
+          start: "2026-10-19 06:30", weekday: null, output_folder: "C:/crawls", exports: { items: ["Internal:All"], format: "xlsx", consolidate: true, skip_empty: true },
+          create_sitemap: true, create_images_sitemap: false, use_apis: false, email: true, email_to: [], auto_compare: true, overwrite: false,
+        },
+      ] as T;
+    case "get_task_history":
+      return [{ task_id: "t1", task_name: "Weekly audit", started: 1791900000, finished: 1791900300, ok: true, message: "1250 URLs", crawl: "C:/crawls/weekly_audit/2026.10.12.06.30.00/crawl.toad" }] as T;
+    case "save_task":
+      return (args as { task: unknown }).task as T;
+    case "delete_task":
+    case "run_task_now":
+      return undefined as T;
     case "get_notification_settings":
       return { smtp_host: "smtp.example.com", smtp_port: 587, security: "start_tls", username: "toad@example.com", from: "", default_recipients: ["seo@example.com"] } as T;
     case "set_notification_settings":

@@ -27,6 +27,7 @@ import { CrawlsDialog } from "./components/CrawlsDialog";
 import { ListModeDialog } from "./components/ListModeDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { MultiExportDialog } from "./components/MultiExportDialog";
+import { SchedulingDialog } from "./components/SchedulingDialog";
 import { AuthPromptDialog } from "./components/AuthenticationPanel";
 import type { AuthRequired } from "./api";
 import { apiAccess } from "./api";
@@ -78,6 +79,7 @@ export default function App() {
   const [segment, setSegment] = useState<string>("");
   const [showSitemap, setShowSitemap] = useState(false);
   const [showMultiExport, setShowMultiExport] = useState(false);
+  const [showScheduling, setShowScheduling] = useState(false);
   const [reports, setReports] = useState<ReportDef[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const lastRefresh = useRef(0);
@@ -541,6 +543,9 @@ export default function App() {
             <button onClick={() => setShowSitemap(true)} disabled={status !== "done"}>
               XML Sitemap
             </button>
+            <button onClick={() => setShowScheduling(true)} title="File > Scheduling: crawls run automatically, with exports and email">
+              Scheduling
+            </button>
             <button onClick={() => setShowSettings(true)} disabled={crawling} title="File > Settings: storage folder and crawl retention">
               Settings
             </button>
@@ -790,6 +795,7 @@ export default function App() {
       )}
       {showSitemap && <SitemapDialog onClose={() => setShowSitemap(false)} onDone={setMessage} />}
       {showMultiExport && <MultiExportDialog onClose={() => setShowMultiExport(false)} onDone={setMessage} />}
+      {showScheduling && <SchedulingDialog onClose={() => setShowScheduling(false)} />}
       {showCrawls && (
         <CrawlsDialog onClose={() => setShowCrawls(false)} onOpen={openCrawlAt} onResume={resumeCrawl} onCompare={compareFromCrawls} />
       )}

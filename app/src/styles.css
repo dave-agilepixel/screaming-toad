@@ -430,3 +430,15 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .multi-export-lists label.check {
   padding-left: 16px;
 }
+.sched-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sched-form fieldset {
+  margin: 0;
+}
+.sched-form label.check.wide {
+  display: block;
+  margin: 3px 0;
+}

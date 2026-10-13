@@ -6,6 +6,7 @@ mod apis;
 mod auth;
 mod compare;
 mod profiles;
+mod schedule;
 mod settings;
 
 use serde::{Deserialize, Serialize};
@@ -738,6 +739,11 @@ fn main() {
             pause_crawl,
             run_crawl_analysis,
             multi_export,
+            schedule::get_tasks,
+            schedule::get_task_history,
+            schedule::save_task,
+            schedule::delete_task,
+            schedule::run_task_now,
             get_export_presets,
             save_export_presets,
             get_segments_overview,

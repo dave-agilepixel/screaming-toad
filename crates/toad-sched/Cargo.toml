@@ -1,0 +1,12 @@
+[package]
+name = "toad-sched"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "File > Scheduling: scheduled crawl tasks, run by the OS scheduler"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toad-store.workspace = true

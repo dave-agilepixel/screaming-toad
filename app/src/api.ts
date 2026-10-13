@@ -276,6 +276,46 @@ export const notifyApi = {
   test: (to: string[]) => invoke<void>("send_test_email", { to }),
 };
 
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  project: string;
+  enabled: boolean;
+  url: string;
+  list_file: string;
+  config_profile: string;
+  frequency: "once" | "daily" | "weekly" | "monthly";
+  start: string;
+  weekday: number | null;
+  output_folder: string;
+  exports: MultiExport;
+  create_sitemap: boolean;
+  create_images_sitemap: boolean;
+  use_apis: boolean;
+  email: boolean;
+  email_to: string[];
+  auto_compare: boolean;
+  overwrite: boolean;
+}
+
+export interface RunRecord {
+  task_id: string;
+  task_name: string;
+  started: number;
+  finished: number;
+  ok: boolean;
+  message: string;
+  crawl: string;
+}
+
+export const scheduleApi = {
+  tasks: () => invoke<ScheduledTask[]>("get_tasks"),
+  history: (limit = 50) => invoke<RunRecord[]>("get_task_history", { limit }),
+  save: (task: ScheduledTask) => invoke<ScheduledTask>("save_task", { task }),
+  remove: (id: string) => invoke<void>("delete_task", { id }),
+  runNow: (id: string) => invoke<void>("run_task_now", { id }),
+};
+
 export const exportApi = {
   multiExport: (spec: MultiExport, dir: string) => invoke<string[]>("multi_export", { spec, dir }),
   presets: () => invoke<ExportPreset[]>("get_export_presets"),

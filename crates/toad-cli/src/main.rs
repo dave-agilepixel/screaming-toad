@@ -106,6 +106,10 @@ enum Command {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    /// Run a scheduled task (File > Scheduling) now; the OS scheduler calls this.
+    RunTask { id: String },
+    /// List scheduled tasks and recent runs.
+    Tasks,
     /// Sign in with Google (Search Console, GA4) and print the refresh token
     /// to set as TOAD_GOOGLE_REFRESH_TOKEN. Needs TOAD_GOOGLE_CLIENT_ID and
     /// TOAD_GOOGLE_CLIENT_SECRET (a "Desktop app" OAuth client).
@@ -238,6 +242,10 @@ impl NetworkArgs {
 /// TOAD_MOZ_KEY (ACCESS_ID:SECRET). Other settings come from --config.
 #[derive(Args, Clone)]
 struct ApiArgs {
+    /// Use the API Access settings switched on in the --config profile.
+    /// Without it, only the --use-* flags turn APIs on.
+    #[arg(long)]
+    use_profile_apis: bool,
     /// PageSpeed Insights for every crawled page.
     #[arg(long)]
     use_pagespeed: bool,
@@ -270,6 +278,15 @@ struct ApiArgs {
 impl ApiArgs {
     fn apply(&self, cfg: &mut CrawlConfig) {
         let a = &mut cfg.apis;
+        if !self.use_profile_apis {
+            a.psi.enabled = false;
+            a.gsc.enabled = false;
+            a.ga4.enabled = false;
+            a.embeddings.enabled = false;
+            a.ahrefs.enabled = false;
+            a.majestic.enabled = false;
+            a.moz.enabled = false;
+        }
         a.psi.enabled |= self.use_pagespeed;
         if let Some(p) = &self.use_google_search_console {
             a.gsc.enabled = true;
@@ -284,7 +301,7 @@ impl ApiArgs {
             a.gsc.crawl_new_urls = true;
             a.ga4.crawl_new_urls = true;
         }
-        if !self.use_ai {
+        if !self.use_ai && !self.use_profile_apis {
             // Prompts in a profile only run when asked for on the command line.
             for p in &mut a.ai.prompts {
                 p.enabled = false;
@@ -393,6 +410,11 @@ struct CrawlArgs {
     /// in the app). Addresses comma-separated; none: the default recipients.
     #[arg(long, num_args = 0..=1, default_missing_value = "", value_name = "ADDRESSES")]
     email_on_complete: Option<String>,
+    /// Auto Compare: compare with the latest earlier crawl in the output
+    /// folder (the task's folder with --timestamped-output) and report the
+    /// changes (and email them with --email-on-complete).
+    #[arg(long)]
+    compare_with_previous: bool,
     /// Folder for exports.
     #[arg(long, default_value = "exports")]
     output_folder: PathBuf,
@@ -445,7 +467,17 @@ struct CrawlArgs {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
-        Command::Crawl(args) => crawl(args).await,
+        Command::Crawl(args) => crawl(args).await.map(|_| ()),
+        Command::RunTask { id } => run_task(&id).await,
+        Command::Tasks => {
+            for t in toad_sched::load_tasks() {
+                println!("{:<14} {:<30} {:<8} {}", t.id, t.name, if t.enabled { "on" } else { "off" }, t.describe());
+            }
+            for r in toad_sched::history(10) {
+                println!("{}  {:<30} {}  {}", r.started, r.task_name, if r.ok { "ok   " } else { "ERROR" }, r.message);
+            }
+            Ok(())
+        }
         Command::Issues { crawl, json } => issues(&crawl, json),
         Command::Compare(args) => compare(args),
         Command::Crawls { dir } => list_crawls(&dir),
@@ -655,7 +687,39 @@ fn custom_rules(args: &CrawlArgs, cfg: &mut CrawlConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
+/// Run a scheduled task and record the run in the history.
+async fn run_task(id: &str) -> anyhow::Result<()> {
+    let task = toad_sched::load_tasks().into_iter().find(|t| t.id == id).ok_or_else(|| anyhow::anyhow!("no scheduled task {id}"))?;
+    let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let started = now();
+    let argv: Vec<String> = std::iter::once("toad".to_string()).chain(task.crawl_args()).collect();
+    let result = match Cli::try_parse_from(&argv) {
+        Ok(Cli { command: Command::Crawl(args) }) => crawl(args).await,
+        Ok(_) => Err(anyhow::anyhow!("task arguments are not a crawl")),
+        Err(e) => Err(anyhow::anyhow!("task arguments: {e}")),
+    };
+    let record = toad_sched::RunRecord {
+        task_id: task.id.clone(),
+        task_name: task.name.clone(),
+        started,
+        finished: now(),
+        ok: result.is_ok(),
+        message: match &result {
+            Ok(r) => format!("{} URLs", r.urls),
+            Err(e) => format!("{e:#}"),
+        },
+        crawl: result.as_ref().map(|r| r.crawl.display().to_string()).unwrap_or_default(),
+    };
+    toad_sched::append_history(&record)?;
+    result.map(|_| ())
+}
+
+struct CrawlOutcome {
+    crawl: PathBuf,
+    urls: u64,
+}
+
+async fn crawl(args: CrawlArgs) -> anyhow::Result<CrawlOutcome> {
     let mut cfg = match &args.config {
         Some(p) => CrawlConfig::load(p).with_context(|| format!("loading {}", p.display()))?,
         None => CrawlConfig::default(),
@@ -804,13 +868,37 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
             written.push(f);
         }
     }
+    // Auto Compare with the latest earlier crawl.
+    let mut changes = Vec::new();
+    if args.compare_with_previous {
+        let folder = if args.timestamped_output { args.output_folder.parent().map(Path::to_path_buf).unwrap_or_default() } else { args.output_folder.clone() };
+        match toad_sched::previous_crawl(&folder, &args.out) {
+            Some(prev) => {
+                let out = args.output_folder.join("comparison.toadcmp");
+                match toad_store::Comparison::build(&args.out, &prev, &out, &toad_store::CompareConfig::default()) {
+                    Ok(cmp) => {
+                        println!("Compared with {} → {}", prev.display(), out.display());
+                        for i in cmp.issues()?.into_iter().filter(|i| i.current != i.previous) {
+                            println!("  {}: {}: {} (was {}, {:+})", i.tab, i.filter, i.current, i.previous, i.change);
+                            changes.push((format!("{}: {}", i.tab, i.filter), i.current, i.previous));
+                        }
+                        written.push(out);
+                    }
+                    Err(e) => eprintln!("Auto Compare failed: {e:#}"),
+                }
+            }
+            None => println!("Auto Compare: no earlier crawl in {} yet.", folder.display()),
+        }
+    }
+    let urls = store.count("Internal", "All")? + store.count("External", "All")?;
     if let Some(to) = &args.email_on_complete {
         let mut summary = toad_apis::notify::CrawlSummary::from_store(&store)?;
+        summary.changes = changes;
         summary.files = written.iter().map(|p| p.display().to_string()).collect();
         let to: Vec<String> = to.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect();
         email(&summary, &to).await;
     }
-    Ok(())
+    Ok(CrawlOutcome { crawl: args.out.clone(), urls })
 }
 
 /// Send the crawl-complete email; a failure is reported, not fatal.
