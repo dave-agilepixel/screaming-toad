@@ -283,6 +283,7 @@ The scores below are as audited. Since then:
     - Frequencies: once, daily, weekly or monthly.
     - Each run executes `toad run-task <id>` headless into a dated folder. It does exports, sitemaps, API data (from the profile), Auto Compare with the task's previous crawl and the email, and appends to `~/.toad/schedule_history.jsonl`.
     - App: the Scheduling dialog has tasks (add, edit, delete, Run Now) and History.
+    - The `toad` CLI is bundled as a Tauri sidecar (`bundle.externalBin`). `app/scripts/sidecar.mjs` builds it before `tauri dev` and `tauri build`, and the installer puts `toad.exe` next to the app executable, where Scheduling runs it from.
   - **MCP Server (`toad-mcp`):**
     - Read-only tools: list_crawls, list_tabs, crawl_overview, crawl_issues, query_urls (tab, filter, search, segment, paging), url_details, inlinks, outlinks, list_reports, run_report, compare_crawls.
     - Transports: STDIO (`toad mcp --dir <crawls>`), or Streamable HTTP on 127.0.0.1 (default port 11435) via File > Settings > MCP Server or `toad mcp --http`.
@@ -291,7 +292,6 @@ The scores below are as audited. Since then:
     - Google Sheets / Drive output (`--crawl-google-sheet`) and the Looker Studio export.
     - Outlook/Gmail OAuth for email (SMTP with an app password instead).
     - "Next run" times from the OS scheduler.
-    - Bundling the `toad` CLI as a Tauri sidecar for installed builds (in development it sits next to the app executable).
     - The MCP server's SSE streams (not needed for request/response tools).
 
 ## How to read this

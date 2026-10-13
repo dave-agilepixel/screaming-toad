@@ -77,3 +77,7 @@ In this order (spec §9–10):
 > Read HANDOVER.md, then README.md, SCREAMING_FROG_SPEC.md and CONFIG_REFERENCE.md. Install anything missing from the prerequisites, get `cargo check --workspace --all-targets` passing, then make `cargo test` pass by fixing the code. Commit after each step. Then run the desktop app and crawl a small site. When everything is green, start on Compare mode.
 
 (Note: the screaming-toad.zip in Drive was made before this brief. Save this file into the unzipped folder as HANDOVER.md.)
+
+## Building installers
+
+`cd app && npm run tauri build` (or `-- --bundles nsis` for just the Windows installer). The build first runs `npm run sidecar`, which compiles the `toad` CLI in release mode and copies it to `app/src-tauri/binaries/toad-<target-triple>.exe`. Tauri bundles it next to the app executable as `toad.exe`; File > Scheduling registers tasks that run it. `tauri dev` does the same with a debug build (`npm run sidecar:dev`). Output: `target/release/bundle/`.

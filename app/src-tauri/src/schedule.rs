@@ -1,5 +1,7 @@
 //! File > Scheduling: tasks registered with the OS scheduler, which runs the
-//! `toad` CLI (installed next to the app) headless.
+//! `toad` CLI headless. The CLI is bundled as a Tauri sidecar
+//! (`bundle.externalBin`, built by app/scripts/sidecar.mjs), so it is
+//! installed next to the app executable.
 
 use crate::{err, CmdResult};
 use std::path::PathBuf;
@@ -13,7 +15,10 @@ fn toad_cli() -> CmdResult<PathBuf> {
     if path.exists() {
         Ok(path)
     } else {
-        Err(format!("Scheduling runs the toad command-line tool, expected at {}. Build it with `cargo build -p toad-cli`.", path.display()))
+        Err(format!(
+            "Scheduling runs the toad command-line tool, which ships with the app but wasn't found at {}. Reinstall Screaming Toad (or, in development, run `npm run sidecar:dev` in app/).",
+            path.display()
+        ))
     }
 }
 

@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 5173, strictPort: true },
+  // The Rust side (and the sidecar binary copied into it) is Tauri's to watch.
+  server: { port: 5173, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   build: { target: "es2021", outDir: "dist" },
 });
