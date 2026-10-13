@@ -56,6 +56,9 @@ export default function App() {
   const [selected, setSelected] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showConfig, setShowConfig] = useState(false);
+  const [configNode, setConfigNode] = useState<string | undefined>(undefined);
+  // Crawl Analysis hasn't run on the open crawl (Auto-analyse off, or resumed).
+  const [needsAnalysis, setNeedsAnalysis] = useState(false);
   const [showSitemap, setShowSitemap] = useState(false);
   const [reports, setReports] = useState<ReportDef[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -441,6 +444,10 @@ export default function App() {
   );
 
   const crawling = status === "crawling" || status === "paused";
+  useEffect(() => {
+    if (status === "done") api.analysisStatus().then(setNeedsAnalysis).catch(console.error);
+    else setNeedsAnalysis(false);
+  }, [status, refreshKey]);
   const done = progress?.crawled ?? 0;
   const pct = progress && done + progress.queued > 0 ? (done / (done + progress.queued)) * 100 : 0;
   const filterDesc = tabDef?.filters.find((f) => f.name === filter)?.description;
@@ -535,6 +542,26 @@ export default function App() {
                 ))}
               </optgroup>
             </select>
+            <select
+              className="reports"
+              value=""
+              disabled={crawling || status === "analysing"}
+              onChange={(e) => {
+                if (e.target.value === "start") {
+                  api.runCrawlAnalysis().catch((err) => setMessage(String(err)));
+                } else if (e.target.value === "configure") {
+                  setConfigNode("crawl-analysis");
+                  setShowConfig(true);
+                }
+              }}
+              title="Crawl Analysis: Link Score and near duplicates, worked out over the whole crawl"
+            >
+              <option value="">{needsAnalysis ? "Crawl Analysis ●" : "Crawl Analysis…"}</option>
+              <option value="start" disabled={status !== "done"}>
+                Start
+              </option>
+              <option value="configure">Configure…</option>
+            </select>
             <div className="progress" title={progress ? `${done} crawled, ${progress.queued} queued` : ""}>
               <div className="bar" style={{ width: `${status === "done" ? 100 : pct}%` }} />
               <span>
@@ -542,7 +569,7 @@ export default function App() {
                 {status === "crawling" && `Crawling: ${done.toLocaleString()} URLs`}
                 {status === "paused" && `Paused at ${done.toLocaleString()} URLs`}
                 {status === "analysing" && "Crawl analysis…"}
-                {status === "done" && `Complete: ${done.toLocaleString()} URLs`}
+                {status === "done" && `Complete: ${done.toLocaleString()} URLs${needsAnalysis ? " · Crawl Analysis Required" : ""}`}
               </span>
             </div>
           </>
@@ -687,8 +714,10 @@ export default function App() {
       {showConfig && (
         <ConfigDialog
           crawling={crawling}
+          initialNode={configNode}
           onClose={() => {
             setShowConfig(false);
+            setConfigNode(undefined);
             // Custom Search/Extraction tabs depend on the configuration.
             api.tabs().then(setTabs).catch(console.error);
           }}

@@ -14,7 +14,7 @@ use toad_store::Store;
 use url::Url;
 
 const HOME: &str = r#"<html><head><title>Original</title><script src="/blocked.js"></script></head>
-<body><a href="/plain">Plain</a><p>One two three.</p><img src="/toad.png">
+<body><a href="/plain">Plain</a><p>One two three.</p><img src="/toad.png"><img src="/big.svg" alt="Big toad" width="100" height="75"><div style="background-image: url(/bg.svg); width: 50px; height: 50px"></div>
 <script>
   document.title = 'Rendered';
   const h = document.createElement('h1'); h.textContent = 'Made by JS'; document.body.appendChild(h);
@@ -34,6 +34,8 @@ async fn serve(listener: TcpListener) {
                 "/" => ("text/html", HOME.to_string()),
                 "/robots.txt" => ("text/plain", "User-agent: *\nDisallow: /blocked.js\n".to_string()),
                 "/blocked.js" => ("application/javascript", "window.blockedRan = true;".to_string()),
+                "/big.svg" => ("image/svg+xml", r#"<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600"/></svg>"#.to_string()),
+                "/bg.svg" => ("image/svg+xml", r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50"/></svg>"#.to_string()),
                 p => ("text/html", format!("<html><head><title>{p}</title></head><body>Hi</body></html>")),
             };
             let head = format!("HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
@@ -156,6 +158,19 @@ async fn javascript_rendering() {
     let saved = format!("{origin}/saved-by-js");
     assert_eq!(field(&saved, "status_code"), "200", "saveUrls URLs are crawled");
     assert_eq!(store.inlinks(&saved).unwrap().rows[0][13], "Custom JavaScript");
+
+    // Images found by rendering: an 800x600 image shown at 100x75, and a CSS background.
+    let images = |filter: &str| store.rows(&toad_store::RowQuery { tab: "Images".into(), filter: filter.into(), ..Default::default() }).unwrap();
+    let sized = images("Incorrectly Sized Images");
+    assert_eq!(sized.rows.len(), 1, "{:?}", sized.rows);
+    let col = |t: &toad_store::Table, name: &str| t.columns.iter().position(|c| c == name).unwrap();
+    assert_eq!(sized.rows[0][col(&sized, "Address")], format!("{origin}/big.svg"));
+    assert_eq!(sized.rows[0][col(&sized, "Real Dimensions (W x H)")], "800 x 600");
+    assert_eq!(sized.rows[0][col(&sized, "Display Dimensions (W x H)")], "100 x 75");
+    let bg = images("Background Images");
+    assert_eq!(bg.rows.len(), 1);
+    assert_eq!(bg.rows[0][col(&bg, "Address")], format!("{origin}/bg.svg"));
+    assert!(images("Missing Alt Attribute").rows.iter().all(|r| !r[0].ends_with("/bg.svg")), "background images have no alt to miss");
 
     let summary = store.report("Accessibility Violations Summary").unwrap();
     assert!(summary.rows.iter().any(|r| r[1] == "image-alt"));

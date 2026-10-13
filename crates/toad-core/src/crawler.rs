@@ -980,6 +980,30 @@ async fn render_page(
             info.transferred_bytes = out.transferred_bytes;
             info.accessibility = out.accessibility;
             info.custom_js = out.custom_js;
+            info.images = out.images;
+            // CSS background images: crawled as images, marked by rel.
+            for bg in out.backgrounds {
+                if page.links.iter().any(|l| l.kind == LinkKind::Image && l.to == bg) {
+                    continue;
+                }
+                if let Ok(to) = Url::parse(&bg) {
+                    page.links.push(Link {
+                        kind: LinkKind::Image,
+                        to: to.to_string(),
+                        href: bg,
+                        anchor: String::new(),
+                        alt: None,
+                        follow: true,
+                        rel: "background-image".into(),
+                        target: String::new(),
+                        path_type: "Absolute".into(),
+                        link_path: String::new(),
+                        position: String::new(),
+                        hreflang: None,
+                        origin: "Rendered HTML".into(),
+                    });
+                }
+            }
             // seoSpider.saveUrls: crawled like links found on the page.
             for href in out.saved_urls {
                 if let Ok(to) = url.join(href.trim()) {

@@ -746,12 +746,15 @@ async fn drive(
     store.insert_batch(&batch)?;
     let progress = handle.await??;
     eprintln!();
-    println!("Crawled {} URLs in {:.1}s. Running crawl analysis…", progress.crawled, started.elapsed().as_secs_f64());
+    println!("Crawled {} URLs in {:.1}s.", progress.crawled, started.elapsed().as_secs_f64());
     store.mark_finished(progress.queued)?;
     if progress.queued > 0 {
         println!("Stopped with {} URLs still queued; continue with `toad resume`.", progress.queued);
     }
-    store.analyse()?;
+    if store.config().crawl_analysis.auto_analyse {
+        println!("Running crawl analysis…");
+    }
+    store.finish_crawl_analysis()?;
     Ok(progress)
 }
 

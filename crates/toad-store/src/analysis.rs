@@ -4,7 +4,9 @@ use rusqlite::{params, Connection};
 use std::collections::{HashMap, HashSet};
 use toad_core::{minhash, CrawlConfig};
 
-pub fn run(conn: &mut Connection, cfg: &CrawlConfig) -> anyhow::Result<()> {
+/// `full`: also the Crawl Analysis > Configure areas (Link Score, near
+/// duplicates); otherwise only the link counts and redirect chains.
+pub fn run(conn: &mut Connection, cfg: &CrawlConfig, full: bool) -> anyhow::Result<()> {
     let tx = conn.transaction()?;
 
     tx.execute_batch(
@@ -33,8 +35,11 @@ pub fn run(conn: &mut Connection, cfg: &CrawlConfig) -> anyhow::Result<()> {
     }
 
     redirect_chains(&tx)?;
-    link_score(&tx)?;
-    if cfg.near_duplicates {
+    let areas = &cfg.crawl_analysis;
+    if full && areas.link_score {
+        link_score(&tx)?;
+    }
+    if full && areas.content && cfg.near_duplicates {
         near_duplicates(&tx, cfg.near_duplicate_threshold, cfg.near_duplicates_indexable_only)?;
     }
     tx.commit()?;

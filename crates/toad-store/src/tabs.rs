@@ -143,6 +143,8 @@ const COLUMNS: &[(&str, &str)] = &[
     ("PDF Modification Date", "u.pdf_modified"),
     ("PDF Page Count", "u.pdf_pages"),
     ("Cookies", "(SELECT COUNT(*) FROM cookies c WHERE c.url_id = u.id)"),
+    ("Real Dimensions (W x H)", "(SELECT ri.natural_w || ' x ' || ri.natural_h FROM rendered_images ri WHERE ri.src = u.address AND ri.natural_w > 0 LIMIT 1)"),
+    ("Display Dimensions (W x H)", "(SELECT ri.display_w || ' x ' || ri.display_h FROM rendered_images ri WHERE ri.src = u.address AND ri.display_w > 0 ORDER BY ri.display_w * ri.display_h DESC LIMIT 1)"),
     ("HTML Word Count", "u.orig_word_count"),
     ("Rendered HTML Word Count", "CASE WHEN u.rendered = 1 THEN u.word_count END"),
     ("Word Count Change", "CASE WHEN u.rendered = 1 THEN u.word_count - u.orig_word_count END"),
@@ -389,6 +391,12 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     };
 
     let p = prefs;
+    // Real size well above the displayed size at the render's scale factor.
+    let scale = cfg.rendering.scaling_factor.max(0.1);
+    let incorrectly_sized = format!(
+        "EXISTS (SELECT 1 FROM rendered_images ri WHERE ri.src = u.address AND ri.display_w > 0 AND ri.display_h > 0 \
+         AND ri.natural_w * ri.natural_h > 1.5 * (ri.display_w * {scale}) * (ri.display_h * {scale}))"
+    );
     let mut response_filters = vec![all()];
     let codes: [(&str, &str, (IssueType, Priority), &str); 9] = [
         ("Blocked by Robots.txt", "u.blocked_robots_line IS NOT NULL", (Warning, High), "Blocked by robots.txt."),
@@ -585,12 +593,14 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             name: "Images",
             base: "u.is_internal = 1 AND u.content_type LIKE 'image/%'".into(),
             extra_columns: vec![],
-            columns: vec!["Address", "Content Type", "Status Code", "Status", "Size (bytes)", "Inlinks"],
+            columns: vec!["Address", "Content Type", "Status Code", "Status", "Size (bytes)", "Real Dimensions (W x H)", "Display Dimensions (W x H)", "Inlinks"],
             filters: vec![
                 all(),
                 f(&format!("Over {} KB", p.image_max_kb), format!("u.size > {}", p.image_max_kb as u64 * 1024), Some((Opportunity, Medium)), "Large images slow pages down."),
                 f("Missing Alt Text", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt = '')".into(), Some((Issue, Low)), "Images with an empty alt attribute."),
-                f("Missing Alt Attribute", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt IS NULL)".into(), Some((Issue, Low)), "Images with no alt attribute at all."),
+                f("Missing Alt Attribute", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt IS NULL AND coalesce(l.rel, '') <> 'background-image')".into(), Some((Issue, Low)), "Images with no alt attribute at all."),
+                f("Background Images", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.rel = 'background-image')".into(), None, "Images used as CSS backgrounds (found by JavaScript rendering). They have no alt text and aren't indexed as page images."),
+                f("Incorrectly Sized Images", incorrectly_sized.clone(), Some((Opportunity, Medium)), "Images much larger than the size they're displayed at (found by JavaScript rendering): resize them, or serve responsive sizes with srcset."),
                 f(&format!("Alt Text Over {} Characters", p.alt_text_max_chars), format!("EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND length(l.alt) > {})", p.alt_text_max_chars), Some((Opportunity, Low)), "Alt text longer than the preference."),
             ],
         },

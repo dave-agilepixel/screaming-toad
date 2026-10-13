@@ -27,10 +27,10 @@ function fieldText(f: Field): string {
 
 /** Configuration dialog: a tree in Screaming Frog's menu order, with search,
  *  a "changed from default" view, validation and profiles. */
-export function ConfigDialog({ onClose, crawling = false }: { onClose: () => void; crawling?: boolean }) {
+export function ConfigDialog({ onClose, crawling = false, initialNode }: { onClose: () => void; crawling?: boolean; initialNode?: string }) {
   const [cfg, setCfg] = useState<CrawlConfig | null>(null);
   const [defaults, setDefaults] = useState<CrawlConfig | null>(null);
-  const [nodeId, setNodeId] = useState("crawl");
+  const [nodeId, setNodeId] = useState(initialNode ?? "crawl");
   const [query, setQuery] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
   const [recent, setRecent] = useState<ProfileInfo[]>([]);

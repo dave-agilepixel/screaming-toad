@@ -210,7 +210,7 @@ fn pump(
                 if let Err(e) = store.mark_finished(queued_at_end) {
                     eprintln!("store error: {e}");
                 }
-                if let Err(e) = store.analyse() {
+                if let Err(e) = store.finish_crawl_analysis() {
                     eprintln!("analysis error: {e}");
                 }
             }
@@ -218,6 +218,31 @@ fn pump(
         settings::apply_retention(&app);
         app.emit("crawl-finished", ()).ok();
     });
+}
+
+/// Crawl Analysis > Start.
+#[tauri::command]
+async fn run_crawl_analysis(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    let store = state.store.clone();
+    app.emit("crawl-analysing", ()).ok();
+    let result = tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
+        let mut guard = store.lock().map_err(err)?;
+        guard.as_mut().ok_or("No crawl is open.")?.analyse().map_err(err)
+    })
+    .await
+    .map_err(err)?;
+    app.emit("crawl-finished", ()).ok();
+    result
+}
+
+/// Whether the open crawl still needs Crawl Analysis.
+#[tauri::command]
+fn analysis_status(state: State<'_, AppState>) -> CmdResult<bool> {
+    let guard = state.store.lock().map_err(err)?;
+    match guard.as_ref() {
+        Some(s) => Ok(!s.analysed().map_err(err)? && s.meta("status").map_err(err)?.as_deref() != Some("crawling")),
+        None => Ok(false),
+    }
 }
 
 #[tauri::command]
@@ -621,6 +646,8 @@ fn main() {
             settings::fetch_sitemap_urls,
             settings::read_url_file,
             pause_crawl,
+            run_crawl_analysis,
+            analysis_status,
             resume_crawl,
             stop_crawl,
             get_tabs,

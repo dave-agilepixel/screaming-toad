@@ -183,6 +183,17 @@ The scores below are as audited. Since then:
     - Trusted certificates in the renderer (Chrome uses the OS store).
     - Proxy credentials and site credentials together on one rendered page (site credentials win).
     - The proxy password is stored in plain text in the app settings file.
+- **WP11, Crawl Analysis, Segments and Compare:** in progress.
+  - **Batch A (done): Crawl Analysis.**
+    - Crawl Analysis > Configure: Auto-analyse at End of Crawl (on by default, deliberate deviation 2) and the Link Score and Content (near duplicates) areas.
+    - Link counts and redirect chains are always worked out when a crawl ends. With Auto-analyse off, the status bar shows "Crawl Analysis Required" and Crawl Analysis > Start runs it.
+    - Resuming a crawl marks the analysis stale.
+    - Sitemaps, pagination, hreflang and canonical filters are computed live in Toad, so they need no analysis step.
+    - **Images (needs JavaScript rendering):**
+      - Incorrectly Sized Images: real area more than 1.5× the displayed area at the render's scale factor. This threshold is [unverified] against SF.
+      - Background Images: CSS `background-image` URLs, crawled as Image links with `rel=background-image` and left out of the alt-text filters.
+      - New Real and Display Dimensions columns.
+    - Fixed along the way: Unique JS Outlinks counts hyperlinks only.
 
 ## How to read this
 

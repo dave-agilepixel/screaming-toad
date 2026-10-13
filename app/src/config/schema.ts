@@ -24,6 +24,12 @@ export interface CustomExtractor {
   extract: "element" | "inner_html" | "text" | "function_value";
 }
 
+export interface CrawlAnalysisConfig {
+  auto_analyse: boolean;
+  link_score: boolean;
+  content: boolean;
+}
+
 export interface CustomJavaScript {
   name: string;
   kind: "extraction" | "action";
@@ -227,6 +233,7 @@ export interface CrawlConfig {
   custom_search: CustomSearch[];
   custom_extraction: CustomExtractor[];
   custom_javascript: CustomJavaScript[];
+  crawl_analysis: CrawlAnalysisConfig;
   link_positions_enabled: boolean;
   link_positions: { name: string; contains: string }[];
   preferences: Preferences;
@@ -900,6 +907,38 @@ export const NODES: Node[] = [
         fields: [
           { kind: "bool", key: "link_positions_enabled", label: "Enable", help: "Off: the Link Path and Link Position columns are left empty, which saves memory on very large crawls." },
           { kind: "link-positions", key: "link_positions", label: "Link Positions" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "crawl-analysis",
+    label: "Crawl Analysis",
+    groups: [
+      {
+        fields: [
+          {
+            kind: "bool",
+            key: "crawl_analysis.auto_analyse",
+            label: "Auto-analyse at End of Crawl",
+            help: "Off: Link Score and near duplicates stay empty until Crawl Analysis > Start. Link counts and redirect chains are always worked out.",
+          },
+        ],
+      },
+      {
+        title: "Areas",
+        fields: [
+          { kind: "bool", key: "crawl_analysis.link_score", label: "Link Score", help: "Internal PageRank-style score (1–100) for every internal URL." },
+          {
+            kind: "bool",
+            key: "crawl_analysis.content",
+            label: "Content",
+            help: "Content > Near Duplicates. Also needs Content > Duplicates > Enable Near Duplicates.",
+          },
+          {
+            kind: "note",
+            text: "Sitemaps, pagination, hreflang, canonicals and the image checks are worked out live in Toad, so they don't need Crawl Analysis.",
+          },
         ],
       },
     ],

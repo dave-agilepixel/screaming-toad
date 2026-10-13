@@ -218,6 +218,12 @@ impl Store {
                         js_stmt.execute(params![source_id, "js_error", idx as i64, 0, e])?;
                     }
                 }
+                let mut img_stmt = tx.prepare_cached(
+                    "INSERT INTO rendered_images (url_id, src, natural_w, natural_h, display_w, display_h) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                )?;
+                for i in &info.images {
+                    img_stmt.execute(params![source_id, i.src, i.natural_w, i.natural_h, i.display_w, i.display_h])?;
+                }
                 let mut a11y_stmt = tx.prepare_cached(
                     "INSERT INTO accessibility (url_id, rule, impact, guideline, help, help_url, target, html) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 )?;
@@ -265,10 +271,34 @@ impl Store {
     }
 
     /// Post-crawl analysis: link counts, Link Score, redirect chains, near duplicates.
+    /// Crawl Analysis > Start: link counts and redirect chains, plus the
+    /// areas switched on in Crawl Analysis > Configure.
     pub fn analyse(&mut self) -> anyhow::Result<()> {
-        analysis::run(&mut self.conn, &self.cfg)?;
+        analysis::run(&mut self.conn, &self.cfg, true)?;
         self.set_meta("analysed", "true")?;
         Ok(())
+    }
+
+    /// End of a crawl without Auto-analyse: only what every tab needs
+    /// (link counts, redirect chains). Crawl Analysis can run later.
+    pub fn finish_without_analysis(&mut self) -> anyhow::Result<()> {
+        analysis::run(&mut self.conn, &self.cfg, false)?;
+        self.set_meta("analysed", "false")?;
+        Ok(())
+    }
+
+    /// The end-of-crawl step: full analysis when Auto-analyse is on.
+    pub fn finish_crawl_analysis(&mut self) -> anyhow::Result<()> {
+        if self.cfg.crawl_analysis.auto_analyse {
+            self.analyse()
+        } else {
+            self.finish_without_analysis()
+        }
+    }
+
+    /// Whether Crawl Analysis has run since the crawl last changed.
+    pub fn analysed(&self) -> anyhow::Result<bool> {
+        Ok(self.meta("analysed")?.as_deref() == Some("true"))
     }
 
     /// Write a compacted copy of the crawl to `path` (File > Save As).
@@ -745,7 +775,7 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("orig_word_count", original.map(|o| int(o.word_count)).unwrap_or(Value::Null)),
         ("orig_link_count", original.map(|o| int(o.link_count)).unwrap_or(Value::Null)),
         ("js_link_count", if rendered.is_some() {
-            int(page.map_or(0, |p| p.links.iter().filter(|l| l.origin == "Rendered HTML").count() as i64))
+            int(page.map_or(0, |p| p.links.iter().filter(|l| l.origin == "Rendered HTML" && l.kind == toad_core::model::LinkKind::Hyperlink).count() as i64))
         } else {
             Value::Null
         }),

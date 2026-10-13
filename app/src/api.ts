@@ -88,6 +88,8 @@ export interface SitemapOptions {
 }
 
 export const api = {
+  runCrawlAnalysis: () => invoke<void>("run_crawl_analysis"),
+  analysisStatus: () => invoke<boolean>("analysis_status"),
   startCrawl: (url: string) => invoke<string>("start_crawl", { req: { url } }),
   startList: (list: string[]) => invoke<string>("start_crawl", { req: { list } }),
   pause: () => invoke<void>("pause_crawl"),

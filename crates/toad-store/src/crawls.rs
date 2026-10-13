@@ -85,6 +85,8 @@ impl Store {
         }
         self.set_meta("mode", mode)?;
         self.set_meta("status", CrawlStatus::Crawling.as_str())?;
+        // New pages make earlier analysis stale.
+        self.set_meta("analysed", "false")?;
         Ok(())
     }
 

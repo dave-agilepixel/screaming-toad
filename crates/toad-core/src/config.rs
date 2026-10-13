@@ -230,6 +230,9 @@ pub struct CrawlConfig {
     /// Record links found in PDFs (with their page) for discovery and inlinks.
     pub extract_pdf_links: bool,
 
+    // Crawl Analysis > Configure
+    pub crawl_analysis: CrawlAnalysisConfig,
+
     // Configuration > Content > Duplicates
     pub near_duplicates: bool,
     pub near_duplicate_threshold: f64,
@@ -352,6 +355,7 @@ impl Default for CrawlConfig {
             structured_data: StructuredDataConfig::default(),
             store_html: false,
             rendering: RenderingConfig::default(),
+            crawl_analysis: CrawlAnalysisConfig::default(),
             store_pdf: false,
             extract_pdf_properties: false,
             extract_pdf_links: false,
@@ -493,6 +497,28 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Crawl Analysis > Configure. Link counts, redirect chains and Link Origin
+/// are always worked out when a crawl ends; these are the heavier areas.
+/// Sitemaps, pagination, hreflang and canonical filters are computed live
+/// in Toad, so they need no analysis step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CrawlAnalysisConfig {
+    /// Auto-analyse at End of Crawl. On by default in Toad (deliberate
+    /// deviation: SF leaves it off).
+    pub auto_analyse: bool,
+    /// Link Score (internal PageRank).
+    pub link_score: bool,
+    /// Content: near duplicates (also needs Content > Duplicates > Enable Near Duplicates).
+    pub content: bool,
+}
+
+impl Default for CrawlAnalysisConfig {
+    fn default() -> Self {
+        Self { auto_analyse: true, link_score: true, content: true }
     }
 }
 

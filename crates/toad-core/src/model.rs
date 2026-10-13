@@ -178,6 +178,8 @@ pub struct RenderInfo {
     pub transferred_bytes: u64,
     /// Custom JavaScript results, one per configured snippet.
     pub custom_js: Vec<crate::render::CustomJsResult>,
+    /// Images with their real and displayed sizes.
+    pub images: Vec<crate::render::RenderedImage>,
     /// axe-core violations (Accessibility); None when not checked.
     pub accessibility: Option<Vec<crate::render::A11yViolation>>,
     /// Rendering failed; the original HTML was used instead.

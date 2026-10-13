@@ -170,6 +170,21 @@ pub struct Rendered {
     pub custom_js: Vec<CustomJsResult>,
     /// URLs passed to seoSpider.saveUrls, to be crawled.
     pub saved_urls: Vec<String>,
+    /// `<img>` elements with their real and displayed sizes.
+    pub images: Vec<RenderedImage>,
+    /// CSS background-image URLs.
+    pub backgrounds: Vec<String>,
+}
+
+/// An image as the browser laid it out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RenderedImage {
+    pub src: String,
+    pub natural_w: u32,
+    pub natural_h: u32,
+    pub display_w: u32,
+    pub display_h: u32,
 }
 
 /// Browsers to try when no path is configured.
@@ -253,7 +268,23 @@ const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
   if (nav) bytes += nav.transferSize || nav.encodedBodySize || 0;
   const urls = [];
   performance.getEntriesByType('resource').forEach(r => { bytes += r.transferSize || r.encodedBodySize || 0; urls.push(r.name); });
-  return { bytes, urls };
+  // Images as laid out (Incorrectly Sized Images) and CSS background images.
+  const images = [...document.images].slice(0, 1000).filter(i => i.currentSrc || i.src).map(i => {
+    const r = i.getBoundingClientRect();
+    return { src: i.currentSrc || i.src, natural_w: i.naturalWidth, natural_h: i.naturalHeight, display_w: Math.round(r.width), display_h: Math.round(r.height) };
+  });
+  const backgrounds = new Set();
+  let n = 0;
+  for (const el of document.querySelectorAll('*')) {
+    if (++n > 20000) break;
+    const bg = getComputedStyle(el).backgroundImage;
+    if (!bg || bg === 'none') continue;
+    for (const m of bg.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) {
+      if (m[1].startsWith('data:')) continue;
+      try { backgrounds.add(new URL(m[1], document.baseURI).href); } catch (e) {}
+    }
+  }
+  return { bytes, urls, images, backgrounds: [...backgrounds] };
 })"#;
 
 impl Renderer {
@@ -436,6 +467,10 @@ impl Renderer {
         struct Snapshot {
             bytes: f64,
             urls: Vec<String>,
+            #[serde(default)]
+            images: Vec<RenderedImage>,
+            #[serde(default)]
+            backgrounds: Vec<String>,
         }
         let snap: Snapshot = page
             .evaluate(format!("{SNAPSHOT_JS}({}, {})", r.flatten_shadow_dom, r.flatten_iframes))
@@ -458,7 +493,7 @@ impl Renderer {
             l.abort();
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
-        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, custom_js, saved_urls })
+        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, custom_js, saved_urls, images: snap.images, backgrounds: snap.backgrounds })
     }
 
     pub async fn close(mut self) {

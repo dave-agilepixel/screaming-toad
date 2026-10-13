@@ -166,6 +166,15 @@ CREATE TABLE IF NOT EXISTS rendered_html (
     url_id INTEGER PRIMARY KEY,
     body BLOB NOT NULL
 );
+-- Rendering: images as laid out, for Images > Incorrectly Sized Images.
+CREATE TABLE IF NOT EXISTS rendered_images (
+    url_id INTEGER NOT NULL,
+    src TEXT NOT NULL,
+    natural_w INTEGER NOT NULL,
+    natural_h INTEGER NOT NULL,
+    display_w INTEGER NOT NULL,
+    display_h INTEGER NOT NULL
+);
 -- Accessibility: one row per failing element.
 CREATE TABLE IF NOT EXISTS accessibility (
     url_id INTEGER NOT NULL,
@@ -256,6 +265,7 @@ CREATE INDEX IF NOT EXISTS sd_issues_url ON sd_issues(url_id);
 CREATE INDEX IF NOT EXISTS console_log_url ON console_log(url_id);
 CREATE INDEX IF NOT EXISTS blocked_resources_url ON blocked_resources(url_id);
 CREATE INDEX IF NOT EXISTS accessibility_url ON accessibility(url_id);
+CREATE INDEX IF NOT EXISTS rendered_images_src ON rendered_images(src);
 "#;
 
 /// Columns added to `urls` after the first release, as (name, type). Older

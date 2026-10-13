@@ -61,7 +61,7 @@ What has been verified so far:
   - Link Score uses a log scale.
   - Robots matching uses the configured user-agent token, falling back to `*`.
   - The default user-agent is branded "Screaming Toad SEO Spider" (robots token "Screaming Toad").
-  - Crawl analysis always runs at the end of a crawl (Screaming Frog's "Auto-analyse at End of Crawl" is off by default).
+  - Crawl Analysis > Configure > Auto-analyse at End of Crawl is on by default (Screaming Frog has it off). Link counts and redirect chains are always worked out at the end of a crawl.
 
 ## What to build next (once it's green)
 In this order (spec §9–10):
