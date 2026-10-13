@@ -604,3 +604,32 @@ td { border-bottom-color: rgb(255 255 255 / 0.07); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 /* A badge inside an active (amber) tab inverts. */
 button.active .badge { background: var(--accent-ink); color: var(--accent); }
+
+/* Visualisations */
+.viz-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; }
+.viz-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.viz-head h2 { font-family: var(--display); font-weight: 800; font-size: 26px; color: var(--accent); margin: 0 8px 0 0; line-height: 1; }
+.viz-head label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.viz-body { flex: 1; position: relative; min-height: 0; }
+.viz-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+.viz-link { fill: none; stroke: rgb(255 255 255 / 0.16); stroke-width: 1.2px; }
+.viz-node { cursor: pointer; }
+.viz-node text { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.viz-node:hover circle { stroke: #fff; stroke-width: 2px; }
+.viz-hint { fill: var(--muted); font-size: 11px; }
+.viz-hint-html { position: absolute; left: 12px; top: 8px; color: var(--muted); font-size: 11px; pointer-events: none; }
+.viz-msg { padding: 24px; }
+.viz-note { position: absolute; left: 12px; bottom: 8px; margin: 0; color: var(--muted); font-size: 12px; }
+.viz-tip {
+  position: absolute; right: 14px; bottom: 14px; max-width: 520px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 14px; pointer-events: none;
+  word-break: break-all;
+}
+.viz-legend {
+  position: absolute; right: 14px; top: 14px; max-width: 320px; padding: 10px 14px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+}
+.viz-legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.viz-cloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; padding: 40px; max-width: 1100px; margin: 0 auto; }
+.viz-cloud span { font-weight: 600; line-height: 1.1; }
+.viz-head input.grow { flex: 1; min-width: 320px; }

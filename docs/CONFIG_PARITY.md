@@ -784,7 +784,13 @@ The packages are ordered by user value and dependency. Sizes: **S** ≈ under 1 
 
 ### Deferred: Visualisations and settings polish
 
-- §2.6 (32 controls). Crawl/directory tree and force-directed graphs: d3-force in the React UI, fed by a store query. 3D and the Content Cluster Diagram come after WP12 embeddings.
+- §2.6 Visualisations: **built** (deferred B). The Visualisations menu opens a full-window view:
+  - Crawl Tree Graph and Directory Tree Graph: horizontal d3 trees, collapsible (large trees start folded below depth 2), zoomable and fitted on open. Crawl tree parents follow the shortest crawl path; the directory tree shows uncrawled folders as virtual nodes.
+  - Force-Directed Crawl Diagram and Force-Directed Directory Tree Diagram (d3-force on canvas, up to 10,000 nodes).
+  - Content Cluster Diagram: spherical k-means over the page embeddings, nearest-neighbour edges, clusters labelled by common title words.
+  - Inlink Anchor Text and Body Text Word Clouds for any URL.
+  - Options: colour by Indexability / Crawl Depth / Response Code / Segment / Cluster; size by Unique Inlinks / Link Score / fixed; max nodes; labels. Hover shows a URL's details, and double-click selects it in the grid.
+  - **Not done:** the 3D force-directed diagrams, and SF's finer cog options (e.g. per-node expand depth, custom colour scales).
 - §2.5: **done.** XML Sitemap dialog sections Pages (with Response Codes 3xx/4xx/5xx), Last Modified, Priority (editable per depth), Change Frequency (by Last-Modified or editable per depth), Images (image:image per page: noindex images, non-200 images, at most N inlinks, CDN regex), Hreflang (xhtml:link alternates) and By Segment; CLI `toad sitemap --include-status --images --hreflang --priority-by-depth --changefreq-by-depth`; the separate images sitemap from WP13.
 - §2.1:
   - Theme: Light/Dark. The app now has one dark theme styled after jellyfish.com (see HANDOVER.md, Look and feel); a light variant would only need new token values in the theme block of `styles.css`.

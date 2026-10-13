@@ -192,6 +192,33 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         mcp_server: false,
         mcp_port: 11435,
       } as T;
+    case "viz_crawl_tree":
+    case "viz_directory_tree":
+    case "viz_content_clusters": {
+      // A synthetic site: home, 6 sections, 8 pages each, a few redirects and 404s.
+      const nodes: unknown[] = [];
+      const node = (id: number, parent: number | null, path: string, depth: number, extra: Record<string, unknown> = {}) =>
+        nodes.push({
+          id, parent, url: `https://www.example.com${path}`, label: path === "/" ? "www.example.com" : path.split("/").filter(Boolean).pop() + (path.endsWith("/") ? "/" : ""),
+          depth, status: 200, indexable: true, link_score: Math.max(5, 100 - depth * 30 - (id % 17)), unique_inlinks: Math.max(1, 60 - depth * 20 - (id % 9)),
+          segment: path.startsWith("/blog") ? "Blog" : path.startsWith("/shop") ? "Shop" : null, virtual_node: false, cluster: null, ...extra,
+        });
+      node(1, null, "/", 0);
+      const sections = ["blog", "shop", "about", "guides", "news", "help"];
+      let id = 2;
+      sections.forEach((sec, si) => {
+        const sid = id++;
+        node(sid, 1, `/${sec}/`, 1, { cluster: si % 4 });
+        for (let p = 1; p <= 8; p++) {
+          const status = p === 7 && si % 2 === 0 ? 404 : p === 8 && si === 1 ? 301 : 200;
+          node(id++, sid, `/${sec}/page-${p}`, 2, { status, indexable: status === 200 && p !== 6, cluster: (si + p) % 4 });
+        }
+      });
+      const edges = cmd === "viz_content_clusters" ? nodes.slice(1).map((_, i) => [i + 2, ((i * 7) % (nodes.length - 1)) + 2, 0.8]) : [];
+      return { nodes, edges, truncated: false, cluster_labels: ["toads, ponds, spawn", "shop, price, delivery", "guides, how, care", "news, events"] } as T;
+    }
+    case "viz_words":
+      return [["toads", 42], ["pond", 30], ["spawn", 22], ["garden", 18], ["frogs", 15], ["newts", 12], ["water", 11], ["spring", 9], ["habitat", 8], ["wildlife", 7], ["breeding", 6], ["night", 5], ["slugs", 4], ["beetles", 3]] as T;
     case "local_models":
       return [
         { id: "bge-small-en-v1.5", label: "BGE Small (English, recommended)", size_mb: 134, downloaded: true },

@@ -12,6 +12,7 @@ mod reports;
 mod schema;
 mod sitemap_gen;
 pub mod tabs;
+pub mod viz;
 
 pub use crawls::{CrawlEntry, CrawlStatus};
 pub use compare::{ChangeElement, CompareConfig, CompareState, Comparison, LinkState, UrlMapping};

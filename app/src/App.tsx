@@ -28,6 +28,7 @@ import { ListModeDialog } from "./components/ListModeDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { MultiExportDialog } from "./components/MultiExportDialog";
 import { SchedulingDialog } from "./components/SchedulingDialog";
+import { Visualisations, type VizKind } from "./components/Visualisations";
 import { AuthPromptDialog } from "./components/AuthenticationPanel";
 import type { AuthRequired } from "./api";
 import { apiAccess } from "./api";
@@ -81,6 +82,7 @@ export default function App() {
   const [showSitemap, setShowSitemap] = useState(false);
   const [showMultiExport, setShowMultiExport] = useState(false);
   const [showScheduling, setShowScheduling] = useState(false);
+  const [viz, setViz] = useState<VizKind | null>(null);
   const [reports, setReports] = useState<ReportDef[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const lastRefresh = useRef(0);
@@ -544,6 +546,22 @@ export default function App() {
             <button onClick={() => setShowSitemap(true)} disabled={status !== "done"}>
               XML Sitemap
             </button>
+            <select
+              className="reports"
+              value=""
+              disabled={crawling}
+              onChange={(e) => e.target.value && setViz(e.target.value as VizKind)}
+              title="Visualisations of the crawl"
+            >
+              <option value="">Visualisations…</option>
+              <option value="crawl-tree">Crawl Tree Graph</option>
+              <option value="directory-tree">Directory Tree Graph</option>
+              <option value="crawl-force">Force-Directed Crawl Diagram</option>
+              <option value="directory-force">Force-Directed Directory Tree Diagram</option>
+              <option value="clusters">Content Cluster Diagram</option>
+              <option value="anchor-cloud">Inlink Anchor Text Word Cloud</option>
+              <option value="body-cloud">Body Text Word Cloud</option>
+            </select>
             <button onClick={() => setShowScheduling(true)} title="File > Scheduling: crawls run automatically, with exports and email">
               Scheduling
             </button>
@@ -797,6 +815,18 @@ export default function App() {
       {showSitemap && <SitemapDialog onClose={() => setShowSitemap(false)} onDone={setMessage} />}
       {showMultiExport && <MultiExportDialog onClose={() => setShowMultiExport(false)} onDone={setMessage} />}
       {showScheduling && <SchedulingDialog onClose={() => setShowScheduling(false)} />}
+      {viz && (
+        <Visualisations
+          initial={viz}
+          selected={selected}
+          segmentColours={Object.fromEntries(segments.map((s) => [s.name, s.color]))}
+          onPick={(url) => {
+            setSelected(url);
+            setViz(null);
+          }}
+          onClose={() => setViz(null)}
+        />
+      )}
       {showCrawls && (
         <CrawlsDialog onClose={() => setShowCrawls(false)} onOpen={openCrawlAt} onResume={resumeCrawl} onCompare={compareFromCrawls} />
       )}

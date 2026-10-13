@@ -533,6 +533,30 @@ struct ExportRequest {
     path: String,
 }
 
+/// Visualisations > Crawl Tree Graph and Force-Directed Crawl Diagram.
+#[tauri::command]
+fn viz_crawl_tree(state: State<'_, AppState>, limit: usize) -> CmdResult<toad_store::viz::VizGraph> {
+    with_store(&state, |s| s.crawl_tree(limit))
+}
+
+/// Visualisations > Directory Tree Graph and Force-Directed Directory Tree Diagram.
+#[tauri::command]
+fn viz_directory_tree(state: State<'_, AppState>, limit: usize) -> CmdResult<toad_store::viz::VizGraph> {
+    with_store(&state, |s| s.directory_tree(limit))
+}
+
+/// Visualisations > Inlink Anchor Text / Body Text Word Cloud.
+#[tauri::command]
+fn viz_words(state: State<'_, AppState>, url: String, body: bool, limit: usize) -> CmdResult<Vec<(String, u32)>> {
+    with_store(&state, |s| if body { s.body_words(&url, limit) } else { s.anchor_words(&url, limit) })
+}
+
+/// Visualisations > Content Cluster Diagram.
+#[tauri::command]
+fn viz_content_clusters(state: State<'_, AppState>, limit: usize, neighbours: usize) -> CmdResult<toad_store::viz::VizGraph> {
+    with_store(&state, |s| s.content_clusters(limit, neighbours))
+}
+
 /// Export > Multi Export into a folder.
 #[tauri::command]
 fn multi_export(state: State<'_, AppState>, spec: toad_store::export::MultiExport, dir: String) -> CmdResult<Vec<String>> {
@@ -754,6 +778,10 @@ fn main() {
             pause_crawl,
             run_crawl_analysis,
             multi_export,
+            viz_crawl_tree,
+            viz_directory_tree,
+            viz_words,
+            viz_content_clusters,
             schedule::get_tasks,
             schedule::get_task_history,
             schedule::save_task,

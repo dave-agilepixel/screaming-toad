@@ -334,6 +334,35 @@ export const scheduleApi = {
   runNow: (id: string) => invoke<void>("run_task_now", { id }),
 };
 
+export interface VizNode {
+  id: number;
+  parent: number | null;
+  url: string;
+  label: string;
+  depth: number;
+  status: number;
+  indexable: boolean;
+  link_score: number | null;
+  unique_inlinks: number;
+  segment: string | null;
+  virtual_node: boolean;
+  cluster: number | null;
+}
+
+export interface VizGraph {
+  nodes: VizNode[];
+  edges: [number, number, number][];
+  truncated: boolean;
+  cluster_labels: string[];
+}
+
+export const vizApi = {
+  crawlTree: (limit: number) => invoke<VizGraph>("viz_crawl_tree", { limit }),
+  directoryTree: (limit: number) => invoke<VizGraph>("viz_directory_tree", { limit }),
+  words: (url: string, body: boolean, limit = 120) => invoke<[string, number][]>("viz_words", { url, body, limit }),
+  contentClusters: (limit: number, neighbours = 4) => invoke<VizGraph>("viz_content_clusters", { limit, neighbours }),
+};
+
 export const exportApi = {
   multiExport: (spec: MultiExport, dir: string) => invoke<string[]>("multi_export", { spec, dir }),
   presets: () => invoke<ExportPreset[]>("get_export_presets"),

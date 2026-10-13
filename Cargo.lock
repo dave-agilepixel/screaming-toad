@@ -5910,6 +5910,7 @@ dependencies = [
  "regex",
  "rusqlite",
  "rust_xlsxwriter",
+ "scraper",
  "serde",
  "serde_json",
  "similar",
