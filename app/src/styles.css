@@ -375,3 +375,22 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
   box-sizing: border-box;
 }
 .hint.warn { color: var(--warning); }
+
+.segment-chip {
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  display: inline-block;
+}
+.segment-card {
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+.segment-card .button-row + .button-row {
+  margin-top: 4px;
+}

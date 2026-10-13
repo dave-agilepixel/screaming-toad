@@ -233,6 +233,9 @@ pub struct CrawlConfig {
     // Crawl Analysis > Configure
     pub crawl_analysis: CrawlAnalysisConfig,
 
+    // Configuration > Segments, in order of precedence.
+    pub segments: Vec<Segment>,
+
     // Configuration > Content > Duplicates
     pub near_duplicates: bool,
     pub near_duplicate_threshold: f64,
@@ -356,6 +359,7 @@ impl Default for CrawlConfig {
             store_html: false,
             rendering: RenderingConfig::default(),
             crawl_analysis: CrawlAnalysisConfig::default(),
+            segments: vec![],
             store_pdf: false,
             extract_pdf_properties: false,
             extract_pdf_links: false,
@@ -420,6 +424,27 @@ impl CrawlConfig {
     /// meaningless, as readable messages. Empty means the configuration is valid.
     pub fn validate(&self) -> Vec<String> {
         let mut problems = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for s in &self.segments {
+            if s.name.trim().is_empty() {
+                problems.push("Segments: every segment needs a name".into());
+            } else if !seen.insert(s.name.trim().to_lowercase()) {
+                problems.push(format!("Segments: the name '{}' is used twice", s.name));
+            }
+            for r in &s.rules {
+                match r.op {
+                    SegmentOp::Regex | SegmentOp::NotRegex => {
+                        if let Err(e) = regex::Regex::new(&r.value) {
+                            problems.push(format!("Segments: '{}' in '{}' is not a valid regex ({e})", r.value, s.name));
+                        }
+                    }
+                    SegmentOp::GreaterThan | SegmentOp::LessThan if r.value.trim().parse::<f64>().is_err() => {
+                        problems.push(format!("Segments: '{}' in '{}' needs a number", r.value, s.name));
+                    }
+                    _ => {}
+                }
+            }
+        }
         for r in &self.url_rewrite_rules {
             if let Err(e) = regex::Regex::new(&r.regex) {
                 problems.push(format!("URL Rewriting: '{}' is not a valid regex ({e})", r.regex));
@@ -498,6 +523,57 @@ impl CrawlConfig {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
     }
+}
+
+/// Configuration > Segments: a URL belongs to the first segment whose rules
+/// it matches.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Segment {
+    pub name: String,
+    /// CSS colour for the label.
+    pub color: String,
+    /// All rules must match (AND); otherwise any rule (OR).
+    pub match_all: bool,
+    pub rules: Vec<SegmentRule>,
+}
+
+impl Default for Segment {
+    fn default() -> Self {
+        Self { name: String::new(), color: "#2f9e44".into(), match_all: true, rules: vec![] }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SegmentRule {
+    /// A column name (e.g. "Address", "Word Count") or "Issue".
+    pub field: String,
+    pub op: SegmentOp,
+    /// For Issue rules: "Tab: Filter", e.g. "Page Titles: Missing".
+    pub value: String,
+}
+
+impl Default for SegmentRule {
+    fn default() -> Self {
+        Self { field: "Address".into(), op: SegmentOp::Contains, value: String::new() }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SegmentOp {
+    #[default]
+    Contains,
+    DoesNotContain,
+    Equals,
+    DoesNotEqual,
+    StartsWith,
+    EndsWith,
+    Regex,
+    NotRegex,
+    GreaterThan,
+    LessThan,
 }
 
 /// Crawl Analysis > Configure. Link counts, redirect chains and Link Origin

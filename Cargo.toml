@@ -15,7 +15,7 @@ clap = { version = "4", features = ["derive"] }
 md5 = "0.7"
 regex = "1"
 reqwest = { version = "0.12", features = ["gzip", "brotli", "deflate", "cookies", "socks"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "functions"] }
 scraper = "0.20"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

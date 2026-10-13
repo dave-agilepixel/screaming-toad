@@ -47,8 +47,16 @@ pub struct OverviewRow {
 }
 
 impl Store {
+    /// Tabs, narrowed to the global segment filter when one is set.
     pub fn tabs(&self) -> Vec<TabDef> {
-        tabs::tabs(&self.cfg)
+        let mut tabs = tabs::tabs(&self.cfg);
+        if let Some(seg) = &self.segment_filter {
+            let p = crate::segments::predicate(&self.cfg, seg);
+            for t in &mut tabs {
+                t.base = format!("({}) AND ({p})", t.base);
+            }
+        }
+        tabs
     }
 
     pub(crate) fn resolve(&self, tab: &str, filter: &str) -> anyhow::Result<(TabDef, String)> {
@@ -93,12 +101,17 @@ impl Store {
             let escaped = s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
             args.push(Value::Text(format!("%{escaped}%")));
         }
+        // Configured columns placed among the fixed ones (Segment) take their
+        // SQL from extra_columns; the rest of extra_columns go at the end.
         let mut columns: Vec<(String, String)> = tab
             .columns
             .iter()
-            .map(|c| (c.to_string(), column_sql(c).unwrap_or("NULL").to_string()))
+            .map(|c| {
+                let sql = tab.extra_columns.iter().find(|(n, _)| n == c).map(|(_, s)| s.clone());
+                (c.to_string(), sql.unwrap_or_else(|| column_sql(c).unwrap_or("NULL").to_string()))
+            })
             .collect();
-        columns.extend(tab.extra_columns.iter().cloned());
+        columns.extend(tab.extra_columns.iter().filter(|(n, _)| !tab.columns.contains(&n.as_str())).cloned());
         let select: Vec<&str> = columns.iter().map(|(_, sql)| sql.as_str()).collect();
         let order = match &q.sort {
             Some((col, desc)) => match columns.iter().find(|(name, _)| name == col) {

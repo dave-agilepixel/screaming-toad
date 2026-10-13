@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
 import { AuthenticationPanel } from "../components/AuthenticationPanel";
+import { SegmentsEditor } from "../components/SegmentsEditor";
 import { HEADER_NAMES, USER_AGENT_PRESETS, WINDOW_PRESETS, validHeaderName } from "./presets";
 import type { RobotsTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomJavaScript, type CustomSearch, type Field } from "./schema";
@@ -419,6 +420,9 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
 
     case "authentication":
       return <AuthenticationPanel />;
+
+    case "segments":
+      return <SegmentsEditor segments={cfg.segments} onChange={(v) => set("segments", v)} />;
 
     case "custom-javascript":
       return <JavaScriptEditor rules={cfg.custom_javascript} jsMode={cfg.rendering.mode === "javascript"} onChange={(v) => set("custom_javascript", v)} />;

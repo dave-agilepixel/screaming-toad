@@ -170,6 +170,7 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
 
 const REDIRECT_CHAINS: &str = "Redirect Chains";
 const RICH_RESULTS: &str = "Google Rich Results Features Summary";
+const SEGMENTS: &str = "Segments Overview";
 
 impl Store {
     pub fn reports(&self) -> Vec<ReportDef> {
@@ -182,6 +183,11 @@ impl Store {
             kind: ReportKind::Report,
             description: "Each Google rich result type found, with the pages that have it and how many have errors or warnings.",
         }];
+        out.push(ReportDef {
+            name: SEGMENTS,
+            kind: ReportKind::Report,
+            description: "Each segment with its URLs, indexability and how many URLs have issues, warnings and opportunities (needs Configuration > Segments).",
+        });
         out.extend(SQL_REPORTS.iter().map(|(name, kind, description, _)| ReportDef { name: *name, kind: *kind, description: *description }));
         out
     }
@@ -189,6 +195,9 @@ impl Store {
     pub fn report(&self, name: &str) -> anyhow::Result<Table> {
         if name.eq_ignore_ascii_case(RICH_RESULTS) {
             return self.rich_results_summary();
+        }
+        if name.eq_ignore_ascii_case(SEGMENTS) {
+            return self.segments_overview();
         }
         if name.eq_ignore_ascii_case(REDIRECT_CHAINS) {
             return self.redirect_chains();

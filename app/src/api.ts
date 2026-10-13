@@ -85,10 +85,15 @@ export interface SitemapOptions {
   priority: boolean;
   change_freq: "none" | "from_last_modified" | "by_depth";
   max_urls_per_file: number;
+  by_segment: boolean;
 }
 
 export const api = {
   runCrawlAnalysis: () => invoke<void>("run_crawl_analysis"),
+  segmentsOverview: () => invoke<Table>("get_segments_overview"),
+  setSegmentFilter: (segment: string | null) => invoke<void>("set_segment_filter", { segment }),
+  getSegmentFilter: () => invoke<string | null>("get_segment_filter"),
+  segmentFields: () => invoke<string[]>("segment_fields"),
   analysisStatus: () => invoke<boolean>("analysis_status"),
   startCrawl: (url: string) => invoke<string>("start_crawl", { req: { url } }),
   startList: (list: string[]) => invoke<string>("start_crawl", { req: { list } }),

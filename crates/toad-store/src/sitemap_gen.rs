@@ -42,6 +42,9 @@ pub struct SitemapOptions {
     pub priority: bool,
     pub change_freq: ChangeFreq,
     pub max_urls_per_file: usize,
+    /// One sitemap per segment (Configuration > Segments), plus an index.
+    #[serde(default)]
+    pub by_segment: bool,
 }
 
 impl Default for SitemapOptions {
@@ -55,6 +58,7 @@ impl Default for SitemapOptions {
             priority: true,
             change_freq: ChangeFreq::FromLastModified,
             max_urls_per_file: 49_999,
+            by_segment: false,
         }
     }
 }
@@ -89,16 +93,24 @@ impl Store {
         if !opts.include_paginated {
             conditions.push("rel_prev IS NULL".into());
         }
+        let segment = match crate::segments::case_sql(self.config()) {
+            Some(case) if opts.by_segment => case,
+            _ => "NULL".into(),
+        };
         let sql = format!(
-            "SELECT address, depth, last_modified FROM urls WHERE {} ORDER BY depth, crawl_order",
+            "SELECT address, depth, last_modified, {segment} FROM urls u WHERE {} ORDER BY depth, crawl_order",
             conditions.join(" AND ")
         );
         let mut stmt = self.conn.prepare(&sql)?;
-        let entries: Vec<Entry> = stmt
+        let rows: Vec<(Entry, Option<String>)> = stmt
             .query_map([], |r| {
-                Ok(Entry { loc: r.get(0)?, depth: r.get::<_, Option<i64>>(1)?.unwrap_or(0) as u32, last_modified: r.get(2)? })
+                Ok((Entry { loc: r.get(0)?, depth: r.get::<_, Option<i64>>(1)?.unwrap_or(0) as u32, last_modified: r.get(2)? }, r.get(3)?))
             })?
             .collect::<Result<_, _>>()?;
+        if opts.by_segment && rows.iter().any(|(_, s)| s.is_some()) {
+            return self.sitemaps_by_segment(dir, opts, rows);
+        }
+        let entries: Vec<Entry> = rows.into_iter().map(|(e, _)| e).collect();
 
         std::fs::create_dir_all(dir)?;
         let now = std::time::SystemTime::now()
@@ -137,6 +149,56 @@ impl Store {
         written.push(path);
         Ok(written)
     }
+
+    /// One sitemap (or several, past the per-file limit) per segment, in
+    /// configuration order, with URLs in no segment in sitemap-other.xml,
+    /// and an index listing them all.
+    fn sitemaps_by_segment(&self, dir: &Path, opts: &SitemapOptions, rows: Vec<(Entry, Option<String>)>) -> anyhow::Result<Vec<PathBuf>> {
+        std::fs::create_dir_all(dir)?;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let base = self
+            .meta("start_url")?
+            .and_then(|u| Url::parse(&u).ok())
+            .map(|u| u.origin().ascii_serialization())
+            .unwrap_or_default();
+        let per_file = opts.max_urls_per_file.clamp(1, 50_000);
+        let mut groups: Vec<(String, Vec<Entry>)> = self.config().segments.iter().map(|s| (s.name.clone(), Vec::new())).collect();
+        groups.push((String::new(), Vec::new()));
+        for (entry, seg) in rows {
+            let key = seg.unwrap_or_default();
+            if let Some(g) = groups.iter_mut().find(|(n, _)| *n == key) {
+                g.1.push(entry);
+            }
+        }
+        let mut written = Vec::new();
+        let mut index = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
+        let mut used = std::collections::HashSet::new();
+        for (name, entries) in groups.iter().filter(|(_, e)| !e.is_empty()) {
+            let mut slug = if name.is_empty() { "other".to_string() } else { slugify(name) };
+            while !used.insert(slug.clone()) {
+                slug.push('-');
+            }
+            let chunks: Vec<&[Entry]> = entries.chunks(per_file).collect();
+            for (i, chunk) in chunks.iter().enumerate() {
+                let file = if chunks.len() == 1 { format!("sitemap-{slug}.xml") } else { format!("sitemap-{slug}-{}.xml", i + 1) };
+                let path = dir.join(&file);
+                std::fs::write(&path, urlset(chunk, opts, now))?;
+                written.push(path);
+                let _ = writeln!(index, "  <sitemap>\n    <loc>{}</loc>\n  </sitemap>", escape(&format!("{base}/{file}")));
+            }
+        }
+        index.push_str("</sitemapindex>\n");
+        let path = dir.join("sitemap_index.xml");
+        std::fs::write(&path, index)?;
+        written.push(path);
+        Ok(written)
+    }
+}
+
+fn slugify(name: &str) -> String {
+    let s: String = name.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let s = s.split('-').filter(|p| !p.is_empty()).collect::<Vec<_>>().join("-");
+    if s.is_empty() { "segment".into() } else { s }
 }
 
 fn urlset(entries: &[Entry], opts: &SitemapOptions, now: i64) -> String {

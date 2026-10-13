@@ -194,6 +194,23 @@ The scores below are as audited. Since then:
       - Background Images: CSS `background-image` URLs, crawled as Image links with `rel=background-image` and left out of the alt-text filters.
       - New Real and Display Dimensions columns.
     - Fixed along the way: Unique JS Outlinks counts hyperlinks only.
+  - **Batch B (done): Segments.**
+    - Configuration > Segments: ordered segments with a name, colour, AND/OR, and rules.
+      - A rule tests any grid column (contains, equals, starts/ends with, regex, greater/less than, and their negations).
+      - Or it tests Issue: whether the URL is (or is not) in any tab filter.
+      - Rules compile to one SQL `CASE`, so the first match wins. Regex uses a registered `regexp()` SQLite function.
+    - Segments apply to a finished crawl without re-crawling, and are saved into its configuration.
+    - **Where segments show up:**
+      - A coloured Segment column after Address in every tab.
+      - A segment selector above the grid that narrows the grid, Overview, Issues and counts.
+      - The right-hand Segments tab: URLs, indexable, non-indexable, and URLs with issues, warnings and opportunities.
+      - Reports > Segments Overview.
+      - XML Sitemap > One sitemap per segment (with `sitemap-other.xml` and an index).
+    - Validation covers empty or duplicate names, bad regexes and non-numeric comparisons.
+    - **Not done:**
+      - The segments bar in the Issues tab.
+      - Segment-specific Looker Studio exports (not applicable).
+      - Crawl visualisations (deferred).
 
 ## How to read this
 

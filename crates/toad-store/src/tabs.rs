@@ -183,7 +183,25 @@ const COLUMNS: &[(&str, &str)] = &[
 /// Values kept per extractor as separate columns (Name 1, Name 2, ...).
 const EXTRACTION_COLUMNS: usize = 3;
 
+/// Every tab, with the Segment column after Address when segments are set.
 pub fn tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
+    let mut tabs = tabs_without_segments(cfg);
+    if let Some(case) = crate::segments::case_sql(cfg) {
+        for t in &mut tabs {
+            let at = t.columns.iter().position(|c| *c == "Address").map_or(0, |i| i + 1);
+            t.columns.insert(at, "Segment");
+            t.extra_columns.push(("Segment".into(), case.clone()));
+        }
+    }
+    tabs
+}
+
+/// The names of every grid column.
+pub fn column_names() -> Vec<&'static str> {
+    COLUMNS.iter().map(|(n, _)| *n).collect()
+}
+
+pub fn tabs_without_segments(cfg: &CrawlConfig) -> Vec<TabDef> {
     let mut tabs = build_tabs(cfg);
     // Spider > Extraction: a tab or filter whose element isn't extracted
     // shows nothing (rather than flagging every page as "missing" it).

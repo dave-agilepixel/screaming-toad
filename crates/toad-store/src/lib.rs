@@ -5,6 +5,7 @@ mod analysis;
 pub mod compare;
 pub mod crawls;
 mod query;
+pub mod segments;
 mod reports;
 mod schema;
 mod sitemap_gen;
@@ -34,6 +35,9 @@ pub struct Store {
     scope: Option<Scope>,
     next_order: i64,
     insert_sql: Option<String>,
+    /// The right-hand segment filter: every tab, count and issue is
+    /// narrowed to this segment.
+    segment_filter: Option<String>,
 }
 
 impl Store {
@@ -44,12 +48,14 @@ impl Store {
         }
         let conn = Connection::open(path)?;
         conn.execute_batch(schema::SCHEMA)?;
+        segments::register_regexp(&conn)?;
         let store = Self {
             conn,
             cfg: cfg.clone(),
             scope: Some(Scope::new(start_url, cfg)),
             next_order: 0,
             insert_sql: None,
+            segment_filter: None,
         };
         store.set_meta("start_url", start_url.as_str())?;
         store.set_meta("config", &serde_json::to_string(cfg)?)?;
@@ -61,6 +67,7 @@ impl Store {
         let conn = Connection::open(path)?;
         conn.execute_batch(schema::SCHEMA)?;
         schema::migrate(&conn)?;
+        segments::register_regexp(&conn)?;
         let get = |k: &str| -> anyhow::Result<Option<String>> {
             Ok(conn.query_row("SELECT value FROM meta WHERE key = ?1", params![k], |r| r.get(0)).optional()?)
         };
@@ -70,11 +77,30 @@ impl Store {
         };
         let scope = get("start_url")?.and_then(|u| Url::parse(&u).ok()).map(|u| Scope::new(&u, &cfg));
         let next_order: i64 = conn.query_row("SELECT coalesce(max(crawl_order), 0) + 1 FROM urls", [], |r| r.get(0))?;
-        Ok(Self { conn, cfg, scope, next_order, insert_sql: None })
+        Ok(Self { conn, cfg, scope, next_order, insert_sql: None, segment_filter: None })
     }
 
     pub fn config(&self) -> &CrawlConfig {
         &self.cfg
+    }
+
+    /// Configuration > Segments changed: segments apply to a finished crawl
+    /// without re-crawling, so they are saved into its configuration.
+    pub fn set_segments(&mut self, segments: Vec<toad_core::config::Segment>) -> anyhow::Result<()> {
+        self.cfg.segments = segments;
+        if self.segment_filter.as_ref().is_some_and(|s| s != segments::NO_SEGMENT && !self.cfg.segments.iter().any(|x| &x.name == s)) {
+            self.segment_filter = None;
+        }
+        self.set_meta("config", &serde_json::to_string(&self.cfg)?)
+    }
+
+    /// The right-hand segment filter (None: all URLs).
+    pub fn set_segment_filter(&mut self, segment: Option<String>) {
+        self.segment_filter = segment.filter(|s| !s.is_empty());
+    }
+
+    pub fn segment_filter(&self) -> Option<&str> {
+        self.segment_filter.as_deref()
     }
 
     pub fn set_meta(&self, key: &str, value: &str) -> anyhow::Result<()> {

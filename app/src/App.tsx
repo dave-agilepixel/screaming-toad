@@ -59,6 +59,9 @@ export default function App() {
   const [configNode, setConfigNode] = useState<string | undefined>(undefined);
   // Crawl Analysis hasn't run on the open crawl (Auto-analyse off, or resumed).
   const [needsAnalysis, setNeedsAnalysis] = useState(false);
+  // Configuration > Segments (names and colours) and the global segment filter.
+  const [segments, setSegments] = useState<{ name: string; color: string }[]>([]);
+  const [segment, setSegment] = useState<string>("");
   const [showSitemap, setShowSitemap] = useState(false);
   const [reports, setReports] = useState<ReportDef[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -444,6 +447,14 @@ export default function App() {
   );
 
   const crawling = status === "crawling" || status === "paused";
+  const loadSegments = useCallback(() => {
+    api
+      .getConfig()
+      .then((c) => setSegments(c.segments.map((s) => ({ name: s.name, color: s.color }))))
+      .catch(console.error);
+    api.getSegmentFilter().then((f) => setSegment(f ?? "")).catch(console.error);
+  }, []);
+  useEffect(loadSegments, [loadSegments, refreshKey]);
   useEffect(() => {
     if (status === "done") api.analysisStatus().then(setNeedsAnalysis).catch(console.error);
     else setNeedsAnalysis(false);
@@ -639,6 +650,25 @@ export default function App() {
             </option>
           ))}
         </select>
+        {!comparing && segments.length > 0 && (
+          <select
+            className="state"
+            value={segment}
+            title="Segment: narrows the grid, Overview and Issues"
+            onChange={(e) => {
+              setSegment(e.target.value);
+              api.setSegmentFilter(e.target.value || null).then(refresh).catch(console.error);
+            }}
+          >
+            <option value="">All Segments</option>
+            {segments.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+            <option value="No Segment">No Segment</option>
+          </select>
+        )}
         {comparing && summary && !isChangeDetection && (
           <select className="state" value={compareState} onChange={(e) => setCompareState(e.target.value as CompareState)}>
             {COMPARE_STATES.map((s) => (
@@ -690,6 +720,7 @@ export default function App() {
               onSelect={setSelected}
               refreshKey={refreshKey}
               compareState={gridState}
+              segmentColors={Object.fromEntries(segments.map((s) => [s.name, s.color]))}
             />
           )}
           {comparing ? (
@@ -718,6 +749,7 @@ export default function App() {
           onClose={() => {
             setShowConfig(false);
             setConfigNode(undefined);
+            loadSegments();
             // Custom Search/Extraction tabs depend on the configuration.
             api.tabs().then(setTabs).catch(console.error);
           }}

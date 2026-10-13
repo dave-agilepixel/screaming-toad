@@ -190,6 +190,22 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "get_segments_overview":
+      return {
+        columns: ["Segment", "URLs", "Indexable", "Non-Indexable", "Issues", "Warnings", "Opportunities"],
+        rows: [
+          ["Blog", "420", "400", "20", "35", "60", "120"],
+          ["Shop", "610", "590", "20", "12", "80", "300"],
+          ["No Segment", "220", "200", "20", "8", "10", "40"],
+        ],
+        total: 3,
+      } as T;
+    case "set_segment_filter":
+      return undefined as T;
+    case "get_segment_filter":
+      return null as T;
+    case "segment_fields":
+      return ["Issue", "Address", "Content Type", "Status Code", "Indexability", "Title 1", "Word Count", "Crawl Depth", "Inlinks"] as T;
     case "run_crawl_analysis":
       return undefined as T;
     case "analysis_status":
@@ -326,6 +342,10 @@ const DEFAULT_CONFIG = {
   spelling: { spell_check: false, grammar_check: false, language_mode: "auto" as const, language: "en-US", grammar_server: "", disabled_grammar_rules: [] as string[], ignore_words: [] as string[] },
   custom_search: [], custom_extraction: [], custom_javascript: [],
   crawl_analysis: { auto_analyse: true, link_score: true, content: true },
+  segments: [
+    { name: "Blog", color: "#2f9e44", match_all: true, rules: [{ field: "Address", op: "contains" as const, value: "/blog/" }] },
+    { name: "Shop", color: "#1971c2", match_all: true, rules: [{ field: "Address", op: "contains" as const, value: "/shop/" }] },
+  ],
   link_positions_enabled: true,
   link_positions: [{ name: "Head", contains: "/head/" }, { name: "Navigation", contains: "nav" }, { name: "Header", contains: "header" }, { name: "Aside", contains: "aside" }, { name: "Footer", contains: "footer" }, { name: "Content", contains: "/" }],
   preferences: {

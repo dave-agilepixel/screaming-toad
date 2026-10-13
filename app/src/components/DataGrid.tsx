@@ -16,6 +16,8 @@ interface Props {
   refreshKey: number;
   /** Compare mode: which URLs of the filter to show. */
   compareState?: CompareState | ChangeState;
+  /** Segment name → colour, for the Segment column's labels. */
+  segmentColors?: Record<string, string>;
 }
 
 /** Column widths by header, so URLs get room and numbers stay narrow. */
@@ -33,7 +35,7 @@ function widthFor(column: string): number {
  * Virtualised grid: only visible rows are rendered, and rows are fetched
  * from the store in blocks of 200 as the user scrolls.
  */
-export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect, refreshKey, compareState }: Props) {
+export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect, refreshKey, compareState, segmentColors }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(400);
   const [scrollTop, setScrollTop] = useState(0);
@@ -133,11 +135,19 @@ export function DataGrid({ tab, filter, search, sort, onSort, selected, onSelect
       >
         <span className="cell num muted">{i + 1}</span>
         {row
-          ? row.map((v, c) => (
-              <span key={c} className={`cell${/^-?\d+(\.\d+)?$/.test(v) ? " num" : ""}`} title={v}>
-                {v}
-              </span>
-            ))
+          ? row.map((v, c) =>
+              columns[c] === "Segment" && v ? (
+                <span key={c} className="cell" title={v}>
+                  <span className="segment-chip" style={{ background: segmentColors?.[v] ?? "var(--muted)" }}>
+                    {v}
+                  </span>
+                </span>
+              ) : (
+                <span key={c} className={`cell${/^-?\d+(\.\d+)?$/.test(v) ? " num" : ""}`} title={v}>
+                  {v}
+                </span>
+              ),
+            )
           : columns.map((_, c) => <span key={c} className="cell loading" />)}
       </div>,
     );

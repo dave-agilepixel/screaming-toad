@@ -6,7 +6,7 @@ interface Props {
   onPick: (tab: string, filter: string) => void;
 }
 
-type View = "overview" | "issues" | "times" | "spelling";
+type View = "overview" | "issues" | "times" | "spelling" | "segments";
 
 /** Right-hand panel: Overview (every tab and filter with counts) and Issues. */
 export function SidePanel({ refreshKey, onPick }: Props) {
@@ -15,6 +15,7 @@ export function SidePanel({ refreshKey, onPick }: Props) {
   const [issues, setIssues] = useState<IssueRow[]>([]);
   const [times, setTimes] = useState<Table | null>(null);
   const [spelling, setSpelling] = useState<Table | null>(null);
+  const [segments, setSegments] = useState<Table | null>(null);
   const [bump, setBump] = useState(0);
   const [open, setOpen] = useState<Set<string>>(new Set(["Internal", "Response Codes"]));
 
@@ -27,7 +28,9 @@ export function SidePanel({ refreshKey, onPick }: Props) {
           ? api.issues().then((r) => live && setIssues(r))
           : view === "times"
             ? api.report("Response Times").then((t) => live && setTimes(t))
-            : api.topLanguageErrors().then((t) => live && setSpelling(t));
+            : view === "segments"
+              ? api.segmentsOverview().then((t) => live && setSegments(t))
+              : api.topLanguageErrors().then((t) => live && setSpelling(t));
     load.catch(console.error);
     return () => {
       live = false;
@@ -55,7 +58,36 @@ export function SidePanel({ refreshKey, onPick }: Props) {
         <button className={view === "spelling" ? "active" : ""} onClick={() => setView("spelling")}>
           Spelling & Grammar
         </button>
+        <button className={view === "segments" ? "active" : ""} onClick={() => setView("segments")}>
+          Segments
+        </button>
       </div>
+
+      {view === "segments" &&
+        (segments && segments.rows.length > 0 ? (
+          <table className="times">
+            <thead>
+              <tr>
+                {segments.columns.map((c) => (
+                  <th key={c}>{c}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {segments.rows.map((r) => (
+                <tr key={r[0]}>
+                  {r.map((v, i) => (
+                    <td key={i} className={i > 0 ? "num" : ""}>
+                      {v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="empty">No segments. Add them in Configuration &gt; Segments; they apply to this crawl straight away.</p>
+        ))}
 
       {view === "overview" && (
         <div className="side-body">

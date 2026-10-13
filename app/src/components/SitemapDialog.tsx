@@ -13,6 +13,7 @@ const DEFAULTS: SitemapOptions = {
   priority: true,
   change_freq: "from_last_modified",
   max_urls_per_file: 49999,
+  by_segment: false,
 };
 
 /** Sitemaps > XML Sitemap: choose what to include, then a folder to write to. */
@@ -44,6 +45,7 @@ export function SitemapDialog({ onClose, onDone }: { onClose: () => void; onDone
     ["include_canonicalised", "Include canonicalised pages"],
     ["include_paginated", "Include paginated URLs (rel=prev)"],
     ["include_pdfs", "Include PDFs"],
+    ["by_segment", "One sitemap per segment (with an index)"],
   ];
 
   return (

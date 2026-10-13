@@ -599,8 +599,40 @@ fn set_config(state: State<'_, AppState>, config: CrawlConfig) -> CmdResult<()> 
         return Err(problems.join("
 "));
     }
+    // Segments apply to the open crawl straight away, without re-crawling.
+    if let Some(store) = state.store.lock().map_err(err)?.as_mut() {
+        if store.config().segments != config.segments {
+            store.set_segments(config.segments.clone()).map_err(err)?;
+        }
+    }
     *state.config.lock().map_err(err)? = config;
     Ok(())
+}
+
+/// Right-hand Segments tab.
+#[tauri::command]
+fn get_segments_overview(state: State<'_, AppState>) -> CmdResult<Table> {
+    with_store(&state, |s| s.segments_overview())
+}
+
+/// The global segment filter (None: all URLs).
+#[tauri::command]
+fn set_segment_filter(state: State<'_, AppState>, segment: Option<String>) -> CmdResult<()> {
+    if let Some(store) = state.store.lock().map_err(err)?.as_mut() {
+        store.set_segment_filter(segment);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn get_segment_filter(state: State<'_, AppState>) -> CmdResult<Option<String>> {
+    Ok(state.store.lock().map_err(err)?.as_ref().and_then(|s| s.segment_filter().map(str::to_string)))
+}
+
+/// Fields a segment rule can test.
+#[tauri::command]
+fn segment_fields() -> Vec<String> {
+    Store::segment_fields()
 }
 
 #[tauri::command]
@@ -647,6 +679,10 @@ fn main() {
             settings::read_url_file,
             pause_crawl,
             run_crawl_analysis,
+            get_segments_overview,
+            set_segment_filter,
+            get_segment_filter,
+            segment_fields,
             analysis_status,
             resume_crawl,
             stop_crawl,

@@ -24,6 +24,31 @@ export interface CustomExtractor {
   extract: "element" | "inner_html" | "text" | "function_value";
 }
 
+export type SegmentOp =
+  | "contains"
+  | "does_not_contain"
+  | "equals"
+  | "does_not_equal"
+  | "starts_with"
+  | "ends_with"
+  | "regex"
+  | "not_regex"
+  | "greater_than"
+  | "less_than";
+
+export interface SegmentRule {
+  field: string;
+  op: SegmentOp;
+  value: string;
+}
+
+export interface Segment {
+  name: string;
+  color: string;
+  match_all: boolean;
+  rules: SegmentRule[];
+}
+
 export interface CrawlAnalysisConfig {
   auto_analyse: boolean;
   link_score: boolean;
@@ -234,6 +259,7 @@ export interface CrawlConfig {
   custom_extraction: CustomExtractor[];
   custom_javascript: CustomJavaScript[];
   crawl_analysis: CrawlAnalysisConfig;
+  segments: Segment[];
   link_positions_enabled: boolean;
   link_positions: { name: string; contains: string }[];
   preferences: Preferences;
@@ -269,6 +295,7 @@ export type Field =
   | { kind: "custom-extraction" }
   | { kind: "custom-javascript" }
   | { kind: "authentication"; label: string }
+  | { kind: "segments"; label: string }
   | { kind: "note"; text: string };
 
 export interface Group {
@@ -912,6 +939,11 @@ export const NODES: Node[] = [
     ],
   },
   {
+    id: "segments",
+    label: "Segments",
+    groups: [{ fields: [{ kind: "segments", label: "Segments rules colour precedence" }] }],
+  },
+  {
     id: "crawl-analysis",
     label: "Crawl Analysis",
     groups: [
@@ -980,6 +1012,8 @@ export function allFields(): { key: string; label: string; node: Node; group?: s
           out.push({ key: "custom_extraction", label, node });
         } else if (f.kind === "custom-javascript") {
           out.push({ key: "custom_javascript", label, node });
+        } else if (f.kind === "segments") {
+          out.push({ key: "segments", label: "Segments", node });
         }
       }
     }
