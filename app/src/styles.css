@@ -442,3 +442,165 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
   display: block;
   margin: 3px 0;
 }
+
+/* ======================================================================
+   Theme: black surfaces, amber accent, DM Sans with Big Shoulders Display
+   for display type, pill-shaped controls (styled after jellyfish.com).
+   This block overrides the tokens and component styles above.
+   ====================================================================== */
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --panel: #0b0b0b;
+  --panel-2: #141414;
+  --border: rgb(255 255 255 / 0.14);
+  --border-strong: rgb(255 255 255 / 0.3);
+  --text: #ffffff;
+  --muted: #8f8f8f;
+  --accent: #f8b133;
+  --accent-ink: #000000;
+  --accent-soft: rgb(248 177 51 / 0.16);
+  --row-odd: #060606;
+  --row-hover: #161616;
+  --issue: #ff6b6b;
+  --warning: #ff9f43;
+  --opportunity: #6aa8ee;
+  --good: #3ddc97;
+  --bad: #ff6b6b;
+  --changed: rgb(248 177 51 / 0.14);
+  --display: "Big Shoulders Display", "DM Sans", sans-serif;
+  font-family: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+}
+body { background: var(--bg); }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* Controls: pills with hairline borders; primary is amber on black. */
+button {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-weight: 500;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.primary,
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+input, select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+input[type="color"] { padding: 0 2px; border-radius: 8px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+select option { background: var(--panel-2); color: var(--text); }
+
+/* Header: the wordmark in Big Shoulders Display, amber. */
+.toolbar { background: var(--bg); border-bottom: 1px solid var(--border); padding: 8px 12px; gap: 8px; }
+.brand {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: 0.2px;
+  margin-right: 10px;
+}
+.brand img, .brand svg { vertical-align: middle; }
+.progress { border-radius: 999px; border-color: var(--border-strong); background: var(--panel); }
+.progress .bar { background: var(--accent-soft); }
+.progress span { font-weight: 500; }
+
+/* Tabs: segmented pills; the active tab is amber with black text. */
+.tabbar { background: var(--bg); padding: 8px 12px; gap: 4px; border-bottom: 1px solid var(--border); }
+.tabbar button { border-radius: 999px; border: 1px solid transparent; color: var(--muted); }
+.tabbar button:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.tabbar button.active,
+.detail-tabs button.active,
+.side-tabs button.active,
+.source-switch button.active,
+.subtabs button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.detail-tabs, .side-tabs { background: var(--panel); flex-wrap: wrap; gap: 4px; padding: 6px 10px; }
+.detail-tabs button, .side-tabs button { border-radius: 999px; color: var(--muted); border: 1px solid transparent; }
+.detail-tabs button:hover:not(:disabled), .side-tabs button:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+
+.filterbar { background: var(--bg); padding: 8px 12px; }
+.message { color: var(--accent); }
+
+/* Grid: quiet hairlines, amber selection marker. */
+.grid-header { background: var(--panel); }
+.cell { border-right-color: rgb(255 255 255 / 0.06); }
+.cell.head { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
+.cell.head:hover:not(:disabled) { color: var(--accent); }
+.grid-row.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.grid-footer { background: var(--panel); }
+th { background: var(--panel); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
+.kv th { text-transform: none; font-size: 12px; letter-spacing: 0; color: var(--muted); }
+td { border-bottom-color: rgb(255 255 255 / 0.07); }
+
+.side { border-left: 1px solid var(--border); background: var(--bg); }
+.detail { border-top: 1px solid var(--border-strong); }
+.tree-head { font-weight: 600; }
+.badge { background: var(--accent); color: var(--accent-ink); border-radius: 999px; font-weight: 700; }
+.pill { border-radius: 999px; padding: 1px 8px; font-weight: 600; }
+.pill.warning { color: var(--accent-ink); }
+
+/* Dialogs: near-black cards, display-type titles, uppercase labels. */
+.modal-backdrop { background: rgb(0 0 0 / 0.7); backdrop-filter: blur(2px); }
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  padding: 20px 24px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+}
+.modal h2 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.config-group { border-color: var(--border); border-radius: 14px; }
+.config-group legend, fieldset legend {
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.hint { color: var(--muted); }
+.hint.warn { color: var(--accent); }
+.mapping-table th { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.segment-card { border-color: var(--border); border-radius: 14px; background: var(--panel-2); }
+
+/* Scrollbars to match. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+/* A badge inside an active (amber) tab inverts. */
+button.active .badge { background: var(--accent-ink); color: var(--accent); }

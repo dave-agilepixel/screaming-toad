@@ -81,3 +81,7 @@ In this order (spec §9–10):
 ## Building installers
 
 `cd app && npm run tauri build` (or `-- --bundles nsis` for just the Windows installer). The build first runs `npm run sidecar`, which compiles the `toad` CLI in release mode and copies it to `app/src-tauri/binaries/toad-<target-triple>.exe`. Tauri bundles it next to the app executable as `toad.exe`; File > Scheduling registers tasks that run it. `tauri dev` does the same with a debug build (`npm run sidecar:dev`). Output: `target/release/bundle/`.
+
+## Look and feel
+
+The UI is a single dark theme styled after jellyfish.com: black surfaces, amber `#F8B133` accent, DM Sans text, Big Shoulders Display (800) for the wordmark and dialog titles, pill-shaped buttons and inputs, and segmented pill tabs (active = amber with black text). The fonts are bundled from `@fontsource` (no network needed). All colours are CSS variables in the theme block at the end of `app/src/styles.css`.
