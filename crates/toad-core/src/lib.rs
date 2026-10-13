@@ -12,6 +12,7 @@ pub mod robots;
 pub mod sitemap;
 pub mod structured;
 pub mod urlutil;
+pub mod xpath;
 
 pub use config::CrawlConfig;
 pub use crawler::{CrawlControl, CrawlEvent, Crawler, PendingLink};

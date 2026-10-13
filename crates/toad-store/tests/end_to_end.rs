@@ -94,7 +94,7 @@ async fn crawl_finds_known_issues() {
     cfg.crawl_linked_sitemaps = true;
     cfg.near_duplicates = true;
     cfg.custom_search = vec![CustomSearch { name: "GA tag".into(), query: "gtag(".into(), ..Default::default() }];
-    cfg.custom_extraction = vec![CustomExtractor { name: "H1 text".into(), expression: "h1".into(), ..Default::default() }];
+    cfg.custom_extraction = vec![CustomExtractor { name: "H1 text".into(), kind: toad_core::config::ExtractorKind::Css, expression: "h1".into(), ..Default::default() }];
 
     let dir = std::env::temp_dir().join(format!("toad-e2e-{port}"));
     std::fs::create_dir_all(&dir).unwrap();

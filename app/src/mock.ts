@@ -127,6 +127,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
     case "download_robots":
       return "User-agent: *\nDisallow: /private/\nSitemap: https://www.example.com/sitemap.xml\n" as T;
+    case "check_expression":
+      return (String(args?.expression).includes("[") && !String(args?.expression).includes("]") ? "invalid XPath: unclosed [" : null) as T;
     case "recent_profiles":
       return [{ path: "C:/profiles/ecommerce.toadconfig", name: "ecommerce", exists: true }, { path: "C:/old/gone.toadconfig", name: "gone", exists: false }] as T;
     case "has_default_profile":
@@ -257,6 +259,8 @@ const DEFAULT_CONFIG = {
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
   extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
   custom_search: [], custom_extraction: [],
+  link_positions_enabled: true,
+  link_positions: [{ name: "Head", contains: "/head/" }, { name: "Navigation", contains: "nav" }, { name: "Header", contains: "header" }, { name: "Aside", contains: "aside" }, { name: "Footer", contains: "footer" }, { name: "Content", contains: "/" }],
   preferences: {
     title_min_chars: 30, title_max_chars: 60, title_min_px: 200, title_max_px: 561,
     description_min_chars: 70, description_max_chars: 155, description_min_px: 400, description_max_px: 985,

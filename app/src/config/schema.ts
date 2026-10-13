@@ -12,15 +12,16 @@ export interface CustomSearch {
   kind: "text" | "regex";
   query: string;
   case_sensitive: boolean;
-  search_in: "html" | "html_head" | "html_body" | "page_text" | "content_area";
+  search_in: "html" | "html_head" | "html_body" | "page_text" | "page_text_no_anchors" | "content_area" | "xpath";
+  xpath: string;
 }
 
 export interface CustomExtractor {
   name: string;
-  kind: "css" | "regex";
+  kind: "xpath" | "css" | "regex";
   expression: string;
   attribute: string | null;
-  extract: "element" | "inner_html" | "text";
+  extract: "element" | "inner_html" | "text" | "function_value";
 }
 
 export interface ContentArea {
@@ -169,6 +170,8 @@ export interface CrawlConfig {
   near_duplicates_indexable_only: boolean;
   custom_search: CustomSearch[];
   custom_extraction: CustomExtractor[];
+  link_positions_enabled: boolean;
+  link_positions: { name: string; contains: string }[];
   preferences: Preferences;
 }
 
@@ -191,6 +194,7 @@ export type Field =
   | { kind: "path-limits"; key: string; label: string; help?: string }
   | { kind: "custom-robots"; key: string; label: string; help?: string }
   | { kind: "ua-preset"; label: string }
+  | { kind: "link-positions"; key: string; label: string }
   | { kind: "rewrite-rules"; key: string; label: string; help?: string }
   /** A live test box: how one URL is rewritten / classified / matched. */
   | { kind: "url-test"; label: string; show: "rewrite" | "cdn" | "include" | "exclude" }
@@ -665,6 +669,19 @@ export const NODES: Node[] = [
   { id: "custom", label: "Custom", groups: [] },
   { id: "custom-search", label: "Search", parent: "custom", groups: [{ fields: [{ kind: "custom-search" }] }] },
   { id: "custom-extraction", label: "Extraction", parent: "custom", groups: [{ fields: [{ kind: "custom-extraction" }] }] },
+  {
+    id: "link-positions",
+    label: "Link Positions",
+    parent: "custom",
+    groups: [
+      {
+        fields: [
+          { kind: "bool", key: "link_positions_enabled", label: "Enable", help: "Off: the Link Path and Link Position columns are left empty, which saves memory on very large crawls." },
+          { kind: "link-positions", key: "link_positions", label: "Link Positions" },
+        ],
+      },
+    ],
+  },
 ];
 
 // ------------------------------------------------------------------ helpers

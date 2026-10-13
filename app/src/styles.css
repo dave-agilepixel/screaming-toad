@@ -327,3 +327,10 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
 .header-name { display: flex; align-items: center; gap: 4px; }
 .valid-mark { color: var(--good); }
 .invalid-mark { color: var(--bad); font-weight: 600; }
+
+/* ------------------------------------------------------------ Custom rules */
+.rule textarea.grow { flex: 1; min-width: 200px; font-family: Consolas, monospace; font-size: 12px; }
+.bulk-add { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.bulk-add h4 { margin: 0; }
+.bulk-add textarea { width: 100%; font-family: Consolas, monospace; }
+.bulk-add label.check input:not([type=checkbox]) { margin-left: 6px; }

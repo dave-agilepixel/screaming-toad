@@ -226,7 +226,8 @@ struct CrawlArgs {
     /// Custom search with a regex, "Name=pattern". Repeatable.
     #[arg(long)]
     search_regex: Vec<String>,
-    /// Custom extraction: "Name=css:SELECTOR", "Name=css:SELECTOR@attribute"
+    /// Custom extraction: "Name=xpath://h3", "Name=xpath:count(//a)",
+    /// "Name=css:SELECTOR", "Name=css:SELECTOR@attribute"
     /// or "Name=regex:PATTERN". Repeatable.
     #[arg(long)]
     extract: Vec<String>,
@@ -396,8 +397,13 @@ fn custom_rules(args: &CrawlArgs, cfg: &mut CrawlConfig) -> anyhow::Result<()> {
             CustomExtractor { name, kind: ExtractorKind::Css, expression: selector, attribute, ..Default::default() }
         } else if let Some(re) = spec.strip_prefix("regex:") {
             CustomExtractor { name, kind: ExtractorKind::Regex, expression: re.to_string(), ..Default::default() }
+        } else if let Some(xp) = spec.strip_prefix("xpath:") {
+            // count(), string-length() and other functions return a single value.
+            let function = !xp.trim_start().starts_with('/') && !xp.trim_start().starts_with('(');
+            let extract = if function { toad_core::config::ExtractWhat::FunctionValue } else { toad_core::config::ExtractWhat::InnerHtml };
+            CustomExtractor { name, kind: ExtractorKind::Xpath, expression: xp.to_string(), extract, ..Default::default() }
         } else {
-            bail!("--extract expects Name=css:SELECTOR or Name=regex:PATTERN, got '{x}'");
+            bail!("--extract expects Name=xpath:EXPR, Name=css:SELECTOR or Name=regex:PATTERN, got '{x}'");
         };
         cfg.custom_extraction.push(extractor);
     }

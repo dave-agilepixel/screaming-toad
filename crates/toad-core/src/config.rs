@@ -227,6 +227,12 @@ pub struct CrawlConfig {
     pub custom_search: Vec<CustomSearch>,
     pub custom_extraction: Vec<CustomExtractor>,
 
+    // Configuration > Custom > Link Positions
+    /// Off: link paths and positions are not recorded (saves memory).
+    pub link_positions_enabled: bool,
+    /// Matched top-down against each link's path; the first match wins.
+    pub link_positions: Vec<LinkPosition>,
+
     // Configuration > Spider > Preferences
     pub preferences: Preferences,
 }
@@ -334,6 +340,8 @@ impl Default for CrawlConfig {
             near_duplicates_indexable_only: true,
             custom_search: vec![],
             custom_extraction: vec![],
+            link_positions_enabled: true,
+            link_positions: LinkPosition::defaults(),
             preferences: Preferences::default(),
         }
     }
@@ -405,6 +413,12 @@ impl CrawlConfig {
         if let Err(e) = crate::custom::CustomRules::compile(self) {
             problems.push(format!("Custom: {e}"));
         }
+        if self.custom_search.len() > 100 {
+            problems.push(format!("Custom Search: at most 100 searches ({} configured)", self.custom_search.len()));
+        }
+        if self.custom_extraction.len() > 100 {
+            problems.push(format!("Custom Extraction: at most 100 extractors ({} configured)", self.custom_extraction.len()));
+        }
         let mut names = std::collections::HashSet::new();
         for name in self.custom_search.iter().map(|s| &s.name).chain(self.custom_extraction.iter().map(|x| &x.name)) {
             if name.trim().is_empty() {
@@ -456,6 +470,29 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Custom > Link Positions: one row (name, link-path substring).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LinkPosition {
+    pub name: String,
+    pub contains: String,
+}
+
+impl LinkPosition {
+    /// Content (`/`) matches every path, so it stays last.
+    pub fn defaults() -> Vec<Self> {
+        [("Head", "/head/"), ("Navigation", "nav"), ("Header", "header"), ("Aside", "aside"), ("Footer", "footer"), ("Content", "/")]
+            .iter()
+            .map(|(n, c)| Self { name: n.to_string(), contains: c.to_string() })
+            .collect()
+    }
+
+    /// The first position whose substring the link path contains.
+    pub fn classify<'a>(positions: &'a [LinkPosition], link_path: &str) -> Option<&'a str> {
+        positions.iter().find(|p| !p.contains.is_empty() && link_path.contains(p.contains.as_str())).map(|p| p.name.as_str())
     }
 }
 
@@ -518,6 +555,8 @@ pub struct CustomSearch {
     /// Text searches only; regex is case-sensitive unless it uses `(?i)`.
     pub case_sensitive: bool,
     pub search_in: SearchIn,
+    /// Search In: XPath — the expression whose matches are searched.
+    pub xpath: String,
 }
 
 impl Default for CustomSearch {
@@ -529,6 +568,7 @@ impl Default for CustomSearch {
             query: String::new(),
             case_sensitive: false,
             search_in: SearchIn::Html,
+            xpath: String::new(),
         }
     }
 }
@@ -557,7 +597,11 @@ pub enum SearchIn {
     HtmlHead,
     HtmlBody,
     PageText,
+    /// Page text without the text of links.
+    PageTextNoAnchors,
     ContentArea,
+    /// The HTML of the elements an XPath expression selects.
+    Xpath,
 }
 
 /// Configuration > Custom > Extraction. XPath is not supported yet; CSS
@@ -577,7 +621,7 @@ impl Default for CustomExtractor {
     fn default() -> Self {
         Self {
             name: String::new(),
-            kind: ExtractorKind::Css,
+            kind: ExtractorKind::Xpath,
             expression: String::new(),
             attribute: None,
             extract: ExtractWhat::InnerHtml,
@@ -589,6 +633,7 @@ impl Default for CustomExtractor {
 #[serde(rename_all = "snake_case")]
 pub enum ExtractorKind {
     #[default]
+    Xpath,
     Css,
     Regex,
 }
@@ -600,6 +645,8 @@ pub enum ExtractWhat {
     #[default]
     InnerHtml,
     Text,
+    /// XPath functions such as count() or string-length(): the result as text.
+    FunctionValue,
 }
 
 /// Text used for word count, readability and duplicate checks.

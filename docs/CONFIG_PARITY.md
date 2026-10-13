@@ -77,6 +77,23 @@ The scores below are as audited. Since then:
   - **§1.17 User-Agent:** presets (Googlebot Smartphone, Desktop, Image and News, Google-InspectionTool, Bingbot, Chrome, Chrome for Android, Firefox, Safari, Edge, GPTBot, ClaudeBot and PerplexityBot) fill both the request user-agent and the robots user-agent. The AI crawler strings are unverified.
   - **§1.18 HTTP Header:** header-name suggestions and a validity mark (the read-only User-Agent row, Add and Reset to Default already existed).
   - Still deliberate: no Googlebot fallback when selecting a robots group (HANDOVER).
+- **WP6, Custom Search, Extraction and Link Positions:** done.
+  - **XPath 1.0:** the page is converted from HTML into an XML tree (`xpath.rs`) and queried with sxd-xpath. XPath is the default extractor type, as in Screaming Frog.
+    - Supports Element, Inner HTML and Text output, Function Value (`count()`, `string-length()`), attribute nodes (`//a/@href`), the optional Attribute field, and `|` unions.
+    - XPath 2.0/3.1 functions are a known gap.
+  - **§1.19 Custom Search:**
+    - Search In gains Page Text No Anchors and XPath (with an expression field).
+    - A multi-line query editor and a validity mark for regex queries.
+    - Duplicate, Move Up/Down, Bulk Add (shared settings, optional name prefix), Delete All, and at most 100 searches.
+  - **§1.20 Custom Extraction:**
+    - XPath, CSSPath and Regex, with a validity mark per row (the `check_expression` command).
+    - Function Value, Move, Duplicate, Delete All, at most 100 extractors, and 1,000 values per page in total.
+    - The CLI gains `--extract Name=xpath:EXPR`.
+  - **§1.21 Custom Link Positions:**
+    - An Enable toggle: off leaves Link Path and Link Position empty.
+    - An ordered table (Add, Move, Delete, Delete All) and a Test box.
+  - Not done: Visual Custom Extraction (needs the WP9 browser), and the Custom Search > Filter X Inlinks bulk export.
+  - Default change: new and unspecified extractors are XPath, so existing profiles that relied on the old CSS default need `"kind": "css"`. The CLI's `css:` prefix is explicit.
 
 ## How to read this
 

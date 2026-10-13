@@ -10,17 +10,6 @@ use scraper::{ElementRef, Html, Node};
 use std::sync::OnceLock;
 use url::Url;
 
-/// Default link positions, matched in order against the link path.
-/// Content (`/`) must stay last because it matches everything.
-const LINK_POSITIONS: [(&str, &str); 6] = [
-    ("Head", "/head/"),
-    ("Navigation", "nav"),
-    ("Header", "header"),
-    ("Aside", "aside"),
-    ("Footer", "footer"),
-    ("Content", "/"),
-];
-
 /// Elements whose text is never page content.
 const NON_TEXT_ELEMENTS: [&str; 7] = ["script", "style", "noscript", "template", "svg", "canvas", "head"];
 
@@ -305,15 +294,23 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
             .unwrap_or_default();
         let body_html = body_el.map(|b| b.html()).unwrap_or_default();
         let page_text = collapse_ws(&all_text);
+        let mut no_anchors = String::new();
+        if let Some(body) = body_el {
+            collect_text(body, &ContentArea { exclude_elements: vec!["a".into()], ..Default::default() }, true, &mut no_anchors);
+        }
+        let page_text_no_anchors = collapse_ws(&no_anchors);
+        let xdoc = rules.needs_xpath().then(|| crate::xpath::XPathDoc::from_html(&doc));
         let targets = SearchTargets {
             html,
             head_html: &head_html,
             body_html: &body_html,
             page_text: &page_text,
+            page_text_no_anchors: &page_text_no_anchors,
             content_text: &content,
+            xpath: xdoc.as_ref(),
         };
         p.custom_search = run_searches(rules, &targets);
-        p.custom_extraction = run_extractors(rules, &doc, html);
+        p.custom_extraction = run_extractors(rules, &doc, html, xdoc.as_ref());
     }
     p.content_text = content;
 
@@ -336,12 +333,14 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
     let rel = v.attr("rel").unwrap_or("").trim().to_string();
     let rel_lower = rel.to_ascii_lowercase();
     let follow = !["nofollow", "ugc", "sponsored"].iter().any(|r| rel_lower.split_whitespace().any(|t| t == *r));
-    let path = link_path(el);
-    let position = LINK_POSITIONS
-        .iter()
-        .find(|(_, needle)| path.contains(needle))
-        .map(|(name, _)| name.to_string())
-        .unwrap_or_else(|| "Content".to_string());
+    // Custom > Link Positions: off skips the path entirely (saves memory).
+    let (path, position) = if cfg.link_positions_enabled {
+        let path = link_path(el);
+        let position = crate::config::LinkPosition::classify(&cfg.link_positions, &path).unwrap_or("").to_string();
+        (path, position)
+    } else {
+        (String::new(), String::new())
+    };
     Some(Link {
         kind,
         to: to.to_string(),
@@ -377,8 +376,12 @@ fn uncrawlable_link(raw: &str, el: &ElementRef, base: &Url, cfg: &CrawlConfig) -
         rel: el.value().attr("rel").unwrap_or("").to_string(),
         target: String::new(),
         path_type: PathType::of(raw).as_str().to_string(),
-        link_path: link_path(el),
-        position: "Content".into(),
+        link_path: if cfg.link_positions_enabled { link_path(el) } else { String::new() },
+        position: if cfg.link_positions_enabled {
+            crate::config::LinkPosition::classify(&cfg.link_positions, &link_path(el)).unwrap_or("").to_string()
+        } else {
+            String::new()
+        },
         hreflang: None,
     }
 }

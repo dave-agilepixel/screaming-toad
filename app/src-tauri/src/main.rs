@@ -401,6 +401,20 @@ fn test_url(config: CrawlConfig, start: Option<String>, url: String) -> toad_cor
     toad_core::urlutil::test_url(&config, start.as_deref(), &url)
 }
 
+/// Custom Search / Extraction: the validity tick per row. None = valid.
+#[tauri::command]
+fn check_expression(kind: String, expression: String) -> Option<String> {
+    if expression.trim().is_empty() {
+        return None;
+    }
+    match kind.as_str() {
+        "xpath" => toad_core::xpath::validate(&expression).err(),
+        "css" => scraper::Selector::parse(&expression).err().map(|e| format!("invalid CSS selector: {e:?}")),
+        "regex" => regex::Regex::new(&expression).err().map(|e| e.to_string()),
+        _ => None,
+    }
+}
+
 /// robots.txt > Test: whether `url` is allowed by `txt` for `user_agent`.
 #[tauri::command]
 fn test_robots(txt: String, user_agent: String, url: String) -> CmdResult<toad_core::robots::RobotsTest> {
@@ -521,6 +535,7 @@ fn main() {
             test_url,
             update_exclude,
             test_robots,
+            check_expression,
             download_robots,
             set_config,
             reset_config,

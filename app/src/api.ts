@@ -120,6 +120,7 @@ export const api = {
   testUrl: (config: CrawlConfig, start: string | null, url: string) => invoke<UrlTest>("test_url", { config, start, url }),
   updateExclude: (patterns: string[]) => invoke<boolean>("update_exclude", { patterns }),
   testRobots: (txt: string, userAgent: string, url: string) => invoke<RobotsTest>("test_robots", { txt, userAgent, url }),
+  checkExpression: (kind: string, expression: string) => invoke<string | null>("check_expression", { kind, expression }),
   downloadRobots: (host: string) => invoke<string>("download_robots", { host }),
   validateConfig: (config: CrawlConfig) => invoke<string[]>("validate_config", { config }),
   recentProfiles: () => invoke<ProfileInfo[]>("recent_profiles"),

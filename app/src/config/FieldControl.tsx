@@ -363,6 +363,9 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
     case "url-test":
       return <UrlTestBox cfg={cfg} show={f.show} label={f.label} />;
 
+    case "link-positions":
+      return <LinkPositionsField cfg={cfg} set={set} />;
+
     case "custom-search":
       return <SearchEditor rules={cfg.custom_search} onChange={(v) => set("custom_search", v)} />;
 
@@ -679,6 +682,8 @@ function HeadersField({
   );
 }
 
+const MAX_RULES = 100;
+
 const newSearch = (n: number): CustomSearch => ({
   name: `Search ${n}`,
   mode: "contains",
@@ -686,11 +691,12 @@ const newSearch = (n: number): CustomSearch => ({
   query: "",
   case_sensitive: false,
   search_in: "html",
+  xpath: "",
 });
 
 const newExtractor = (n: number): CustomExtractor => ({
   name: `Extractor ${n}`,
-  kind: "css",
+  kind: "xpath",
   expression: "",
   attribute: null,
   extract: "inner_html",
@@ -704,10 +710,55 @@ function move<T>(list: T[], i: number, by: number): T[] {
   return next;
 }
 
+/** ✓ / ✗ for an expression, checked by the backend as the user types. */
+function Validity({ kind, expression }: { kind: string; expression: string }) {
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!expression.trim()) {
+      setError(null);
+      return;
+    }
+    const t = setTimeout(() => api.checkExpression(kind, expression).then(setError).catch(() => setError(null)), 250);
+    return () => clearTimeout(t);
+  }, [kind, expression]);
+  if (!expression.trim()) return <span className="valid-mark muted">·</span>;
+  return error ? (
+    <span className="invalid-mark" title={error}>
+      ✗
+    </span>
+  ) : (
+    <span className="valid-mark" title="Valid">
+      ✓
+    </span>
+  );
+}
+
+function RowButtons<T>({ rules, i, onChange, copy }: { rules: T[]; i: number; onChange: (v: T[]) => void; copy: (r: T) => T }) {
+  return (
+    <span className="rule-buttons">
+      <button onClick={() => onChange(move(rules, i, -1))} disabled={i === 0} title="Move up">
+        ↑
+      </button>
+      <button onClick={() => onChange(move(rules, i, 1))} disabled={i === rules.length - 1} title="Move down">
+        ↓
+      </button>
+      <button onClick={() => onChange([...rules.slice(0, i + 1), copy(rules[i]), ...rules.slice(i + 1)])} disabled={rules.length >= MAX_RULES} title="Duplicate">
+        ⧉
+      </button>
+      <button onClick={() => onChange(rules.filter((_, j) => j !== i))} title="Delete">
+        ✕
+      </button>
+    </span>
+  );
+}
+
 function SearchEditor({ rules, onChange }: { rules: CustomSearch[]; onChange: (v: CustomSearch[]) => void }) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [bulk, setBulk] = useState(false);
   const update = (i: number, patch: Partial<CustomSearch>) => onChange(rules.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   return (
     <div className="rules">
+      <p className="hint">Search the source code or content of internal HTML pages. Each search is a filter in the Custom Search tab.</p>
       {rules.map((s, i) => (
         <div key={i} className="rule">
           <input placeholder="Name" value={s.name} onChange={(e) => update(i, { name: e.target.value })} />
@@ -719,36 +770,123 @@ function SearchEditor({ rules, onChange }: { rules: CustomSearch[]; onChange: (v
             <option value="text">Text</option>
             <option value="regex">Regex</option>
           </select>
-          <input className="grow" placeholder="Search for…" value={s.query} onChange={(e) => update(i, { query: e.target.value })} spellCheck={false} />
+          {expanded === i ? (
+            <textarea className="grow" rows={5} placeholder="Search for… (multi-line, e.g. a whole tracking snippet)" value={s.query} onChange={(e) => update(i, { query: e.target.value })} spellCheck={false} />
+          ) : (
+            <input className="grow" placeholder="Search for…" value={s.query} onChange={(e) => update(i, { query: e.target.value })} spellCheck={false} />
+          )}
+          <button onClick={() => setExpanded(expanded === i ? null : i)} title="Multi-line query">
+            {expanded === i ? "⤡" : "⤢"}
+          </button>
+          {s.kind === "regex" && <Validity kind="regex" expression={s.query} />}
           <select value={s.search_in} onChange={(e) => update(i, { search_in: e.target.value as CustomSearch["search_in"] })}>
             <option value="html">HTML</option>
+            <option value="page_text">Page Text</option>
+            <option value="page_text_no_anchors">Page Text No Anchors</option>
             <option value="html_head">HTML Head</option>
             <option value="html_body">HTML Body</option>
-            <option value="page_text">Page Text</option>
+            <option value="xpath">XPath</option>
             <option value="content_area">Content Area</option>
           </select>
-          <label className="check" title="Text searches only; for regex use (?i) to ignore case">
+          {s.search_in === "xpath" && (
+            <>
+              <input placeholder="XPath, e.g. //h3" value={s.xpath} onChange={(e) => update(i, { xpath: e.target.value })} spellCheck={false} />
+              <Validity kind="xpath" expression={s.xpath} />
+            </>
+          )}
+          <label className="check" title="Text searches only; for regex start with (?i) to ignore case">
             <input type="checkbox" checked={s.case_sensitive} disabled={s.kind === "regex"} onChange={(e) => update(i, { case_sensitive: e.target.checked })} />
             Case Sensitive
           </label>
-          <span className="rule-buttons">
-            <button onClick={() => onChange(move(rules, i, -1))} disabled={i === 0} title="Move up">
-              ↑
-            </button>
-            <button onClick={() => onChange(move(rules, i, 1))} disabled={i === rules.length - 1} title="Move down">
-              ↓
-            </button>
-            <button onClick={() => onChange([...rules.slice(0, i + 1), { ...s, name: `${s.name} copy` }, ...rules.slice(i + 1)])} title="Duplicate">
-              ⧉
-            </button>
-            <button onClick={() => onChange(rules.filter((_, j) => j !== i))} title="Delete">
-              ✕
-            </button>
-          </span>
+          <RowButtons rules={rules} i={i} onChange={onChange} copy={(r) => ({ ...r, name: `${r.name} copy` })} />
         </div>
       ))}
-      <button onClick={() => onChange([...rules, newSearch(rules.length + 1)])}>Add</button>
-      <p className="hint">Each search becomes a filter in the Custom Search tab with a count of matches per page.</p>
+      <div className="button-row">
+        <button onClick={() => onChange([...rules, newSearch(rules.length + 1)])} disabled={rules.length >= MAX_RULES}>
+          Add
+        </button>
+        <button onClick={() => setBulk(true)} disabled={rules.length >= MAX_RULES}>
+          Bulk Add…
+        </button>
+        <button onClick={() => onChange([])} disabled={rules.length === 0}>
+          Delete All
+        </button>
+        <span className="muted">
+          {rules.length} / {MAX_RULES}
+        </span>
+      </div>
+      <p className="hint">
+        Text matching ignores case unless Case Sensitive is ticked; regex is case-sensitive unless it starts with (?i). Contains counts matches; Does Not Contain flags pages with none.
+      </p>
+      {bulk && (
+        <BulkAddSearches
+          start={rules.length}
+          room={MAX_RULES - rules.length}
+          onCancel={() => setBulk(false)}
+          onAdd={(added) => {
+            onChange([...rules, ...added]);
+            setBulk(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Custom Search > Bulk Add: one search per line, sharing the settings below. */
+function BulkAddSearches({ start, room, onAdd, onCancel }: { start: number; room: number; onAdd: (s: CustomSearch[]) => void; onCancel: () => void }) {
+  const [text, setText] = useState("");
+  const [useName, setUseName] = useState(false);
+  const [name, setName] = useState("Keyword");
+  const [template, setTemplate] = useState<CustomSearch>(newSearch(0));
+  const queries = text
+    .split(/\r?\n/)
+    .map((q) => q.trim())
+    .filter(Boolean)
+    .slice(0, room);
+  return (
+    <div className="bulk-add">
+      <h4>Bulk Add</h4>
+      <label className="check">
+        <input type="checkbox" checked={useName} onChange={(e) => setUseName(e.target.checked)} /> Specify search name
+        <input value={name} disabled={!useName} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <textarea rows={8} placeholder={"One query per line, e.g.\ntoad\nfrog\nnewt"} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
+      <div className="button-row">
+        <select value={template.mode} onChange={(e) => setTemplate({ ...template, mode: e.target.value as CustomSearch["mode"] })}>
+          <option value="contains">Contains</option>
+          <option value="does_not_contain">Does Not Contain</option>
+        </select>
+        <select value={template.kind} onChange={(e) => setTemplate({ ...template, kind: e.target.value as CustomSearch["kind"] })}>
+          <option value="text">Text</option>
+          <option value="regex">Regex</option>
+        </select>
+        <select value={template.search_in} onChange={(e) => setTemplate({ ...template, search_in: e.target.value as CustomSearch["search_in"] })}>
+          <option value="html">HTML</option>
+          <option value="page_text">Page Text</option>
+          <option value="page_text_no_anchors">Page Text No Anchors</option>
+          <option value="html_head">HTML Head</option>
+          <option value="html_body">HTML Body</option>
+          <option value="content_area">Content Area</option>
+        </select>
+        <label className="check">
+          <input type="checkbox" checked={template.case_sensitive} onChange={(e) => setTemplate({ ...template, case_sensitive: e.target.checked })} /> Case Sensitive
+        </label>
+      </div>
+      <div className="button-row">
+        <span className="muted">
+          {queries.length} search{queries.length === 1 ? "" : "es"} (room for {room})
+        </span>
+        <span className="spacer" />
+        <button onClick={onCancel}>Cancel</button>
+        <button
+          className="primary"
+          disabled={queries.length === 0}
+          onClick={() => onAdd(queries.map((q, k) => ({ ...template, query: q, name: useName ? `${name} ${start + k + 1}` : q })))}
+        >
+          Add {queries.length}
+        </button>
+      </div>
     </div>
   );
 }
@@ -757,48 +895,111 @@ function ExtractionEditor({ rules, onChange }: { rules: CustomExtractor[]; onCha
   const update = (i: number, patch: Partial<CustomExtractor>) => onChange(rules.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   return (
     <div className="rules">
+      <p className="hint">Extract data from internal HTML pages using XPath, CSS Path or regex. Each extractor becomes columns in the Custom Extraction tab.</p>
       {rules.map((x, i) => (
         <div key={i} className="rule">
           <input placeholder="Name" value={x.name} onChange={(e) => update(i, { name: e.target.value })} />
           <select value={x.kind} onChange={(e) => update(i, { kind: e.target.value as CustomExtractor["kind"] })}>
+            <option value="xpath">XPath</option>
             <option value="css">CSSPath</option>
             <option value="regex">Regex</option>
           </select>
           <input
             className="grow"
-            placeholder={x.kind === "css" ? "e.g. span.price" : 'e.g. "sku":"([^"]+)"'}
+            placeholder={x.kind === "xpath" ? "e.g. //p[@class='price'] or count(//a)" : x.kind === "css" ? "e.g. span.price" : 'e.g. "sku":"([^"]+)"'}
             value={x.expression}
             onChange={(e) => update(i, { expression: e.target.value })}
             spellCheck={false}
           />
-          {x.kind === "css" && (
+          <Validity kind={x.kind} expression={x.expression} />
+          {x.kind !== "regex" && (
             <>
               <input placeholder="Attribute (optional)" value={x.attribute ?? ""} onChange={(e) => update(i, { attribute: e.target.value || null })} />
               <select value={x.extract} disabled={!!x.attribute} onChange={(e) => update(i, { extract: e.target.value as CustomExtractor["extract"] })}>
                 <option value="element">Extract HTML Element</option>
                 <option value="inner_html">Extract Inner HTML</option>
                 <option value="text">Extract Text</option>
+                {x.kind === "xpath" && <option value="function_value">Function Value</option>}
               </select>
             </>
           )}
-          <span className="rule-buttons">
-            <button onClick={() => onChange(move(rules, i, -1))} disabled={i === 0} title="Move up">
-              ↑
-            </button>
-            <button onClick={() => onChange(move(rules, i, 1))} disabled={i === rules.length - 1} title="Move down">
-              ↓
-            </button>
-            <button onClick={() => onChange([...rules.slice(0, i + 1), { ...x, name: `${x.name} copy` }, ...rules.slice(i + 1)])} title="Duplicate">
-              ⧉
-            </button>
-            <button onClick={() => onChange(rules.filter((_, j) => j !== i))} title="Delete">
-              ✕
-            </button>
-          </span>
+          <RowButtons rules={rules} i={i} onChange={onChange} copy={(r) => ({ ...r, name: `${r.name} copy` })} />
         </div>
       ))}
-      <button onClick={() => onChange([...rules, newExtractor(rules.length + 1)])}>Add</button>
-      <p className="hint">Regex extractors return the first capture group, or the whole match if there is none. XPath is planned.</p>
+      <div className="button-row">
+        <button onClick={() => onChange([...rules, newExtractor(rules.length + 1)])} disabled={rules.length >= MAX_RULES}>
+          Add
+        </button>
+        <button onClick={() => onChange([])} disabled={rules.length === 0}>
+          Delete All
+        </button>
+        <span className="muted">
+          {rules.length} / {MAX_RULES}
+        </span>
+      </div>
+      <p className="hint">
+        XPath 1.0 (functions such as count() and string-length() with Function Value; combine expressions with |). Regex returns the first capture group, or the whole
+        match. Up to 1,000 values per page in total.
+      </p>
+    </div>
+  );
+}
+
+/** Custom > Link Positions: ordered name → link-path substring table, with a Test box. */
+function LinkPositionsField({ cfg, set }: { cfg: CrawlConfig; set: (key: string, value: unknown) => void }) {
+  const rows = cfg.link_positions;
+  const [path, setPath] = useState("/html/body/header/nav/a");
+  const update = (i: number, patch: Partial<{ name: string; contains: string }>) => set("link_positions", rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const matched = rows.find((p) => p.contains && path.includes(p.contains));
+  return (
+    <div className="field">
+      <table className="mapping-table">
+        <thead>
+          <tr>
+            <th>Link Position</th>
+            <th>Link Path contains</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td>
+                <input value={r.name} disabled={!cfg.link_positions_enabled} onChange={(e) => update(i, { name: e.target.value })} />
+              </td>
+              <td>
+                <input value={r.contains} disabled={!cfg.link_positions_enabled} onChange={(e) => update(i, { contains: e.target.value })} spellCheck={false} />
+              </td>
+              <td className="rule-buttons">
+                <button onClick={() => set("link_positions", move(rows, i, -1))} disabled={i === 0}>
+                  ↑
+                </button>
+                <button onClick={() => set("link_positions", move(rows, i, 1))} disabled={i === rows.length - 1}>
+                  ↓
+                </button>
+                <button onClick={() => set("link_positions", rows.filter((_, j) => j !== i))}>Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="button-row">
+        <button onClick={() => set("link_positions", [...rows, { name: "", contains: "" }])} disabled={!cfg.link_positions_enabled}>
+          Add
+        </button>
+        <button onClick={() => set("link_positions", [])} disabled={rows.length === 0}>
+          Delete All
+        </button>
+      </div>
+      <p className="hint">Rows are tested top-down against each link's path and the first match wins; keep Content (/) last because it matches everything.</p>
+      <fieldset className="url-test">
+        <legend>Test</legend>
+        <label className="stack">
+          Link Path
+          <input value={path} onChange={(e) => setPath(e.target.value)} spellCheck={false} />
+        </label>
+        <p className="verdict good">Matched Link Position: {matched ? matched.name || "(unnamed)" : "none"}</p>
+      </fieldset>
     </div>
   );
 }
