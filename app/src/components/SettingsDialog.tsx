@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { crawlsApi, notifyApi, type AppSettings, type NotificationSettings, type ProxyConfig } from "../api";
 import { ApiKeyField } from "./ApiFields";
+import { applyAppearance, DEFAULT_ACCENT } from "../appearance";
 
 const PRESETS: [string, number | null][] = [
   ["Never", null],
@@ -10,17 +11,30 @@ const PRESETS: [string, number | null][] = [
 ];
 
 /** File > Settings: storage folder, crawl retention, proxy and trusted certificates. */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ onClose: close }: { onClose: () => void }) {
   const [s, setS] = useState<AppSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mail, setMail] = useState<NotificationSettings | null>(null);
   const [mailNote, setMailNote] = useState<string | null>(null);
+  // What was applied when the dialog opened, to restore on Cancel.
+  const [initial, setInitial] = useState<{ theme: AppSettings["theme"]; accent: string } | null>(null);
 
   useEffect(() => {
-    crawlsApi.getSettings().then(setS).catch((e) => setError(String(e)));
+    crawlsApi
+      .getSettings()
+      .then((x) => {
+        setS(x);
+        setInitial({ theme: x.theme, accent: x.accent });
+      })
+      .catch((e) => setError(String(e)));
     notifyApi.get().then(setMail).catch((e) => setError(String(e)));
   }, []);
 
+  // Closing without saving puts the appearance back.
+  const onClose = () => {
+    if (initial) applyAppearance(initial.theme, initial.accent);
+    close();
+  };
   if (!s) return null;
   const preset = PRESETS.find(([, d]) => d === s.retention_days)?.[0] ?? "Custom";
 
@@ -55,7 +69,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     try {
       if (mail) await notifyApi.set(mail);
       await crawlsApi.setSettings(s);
-      onClose();
+      close();
     } catch (e) {
       setError(String(e));
     }
@@ -166,6 +180,48 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <div className="button-row">
               <button onClick={addCert}>Add…</button>
             </div>
+          </div>
+        </fieldset>
+        <fieldset className="config-group">
+          <legend>Appearance</legend>
+          <div className="field">
+            <label className="row">
+              Theme
+              <select
+                value={s.theme}
+                onChange={(e) => {
+                  const theme = e.target.value as AppSettings["theme"];
+                  setS({ ...s, theme });
+                  applyAppearance(theme, s.accent);
+                }}
+              >
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="system">Match the system</option>
+              </select>
+            </label>
+            <label className="row">
+              Accent colour
+              <span className="button-row">
+                <input
+                  type="color"
+                  value={s.accent}
+                  onChange={(e) => {
+                    setS({ ...s, accent: e.target.value });
+                    applyAppearance(s.theme, e.target.value);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    setS({ ...s, accent: DEFAULT_ACCENT });
+                    applyAppearance(s.theme, DEFAULT_ACCENT);
+                  }}
+                  disabled={s.accent.toLowerCase() === DEFAULT_ACCENT}
+                >
+                  Default
+                </button>
+              </span>
+            </label>
           </div>
         </fieldset>
         <fieldset className="config-group">

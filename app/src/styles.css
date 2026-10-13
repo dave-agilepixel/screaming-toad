@@ -459,6 +459,9 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
   --muted: #8f8f8f;
   --accent: #f8b133;
   --accent-ink: #000000;
+  --accent-text: var(--accent);
+  --hairline: rgb(255 255 255 / 0.06);
+  --scroll-thumb: #2a2a2a;
   --accent-soft: rgb(248 177 51 / 0.16);
   --row-odd: #060606;
   --row-hover: #161616;
@@ -486,7 +489,7 @@ button {
   font-weight: 500;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); }
 button.primary,
 button.primary:hover:not(:disabled) {
   background: var(--accent);
@@ -518,7 +521,7 @@ select option { background: var(--panel-2); color: var(--text); }
   font-weight: 800;
   font-size: 22px;
   line-height: 1;
-  color: var(--accent);
+  color: var(--accent-text);
   letter-spacing: 0.2px;
   margin-right: 10px;
 }
@@ -546,18 +549,18 @@ select option { background: var(--panel-2); color: var(--text); }
 .detail-tabs button:hover:not(:disabled), .side-tabs button:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
 
 .filterbar { background: var(--bg); padding: 8px 12px; }
-.message { color: var(--accent); }
+.message { color: var(--accent-text); }
 
 /* Grid: quiet hairlines, amber selection marker. */
 .grid-header { background: var(--panel); }
-.cell { border-right-color: rgb(255 255 255 / 0.06); }
+.cell { border-right-color: var(--hairline); }
 .cell.head { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
-.cell.head:hover:not(:disabled) { color: var(--accent); }
+.cell.head:hover:not(:disabled) { color: var(--accent-text); }
 .grid-row.selected { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .grid-footer { background: var(--panel); }
 th { background: var(--panel); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
 .kv th { text-transform: none; font-size: 12px; letter-spacing: 0; color: var(--muted); }
-td { border-bottom-color: rgb(255 255 255 / 0.07); }
+td { border-bottom-color: var(--hairline); }
 
 .side { border-left: 1px solid var(--border); background: var(--bg); }
 .detail { border-top: 1px solid var(--border-strong); }
@@ -581,7 +584,7 @@ td { border-bottom-color: rgb(255 255 255 / 0.07); }
   font-size: 30px;
   line-height: 1;
   letter-spacing: 0.3px;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-bottom: 16px;
 }
 .config-group { border-color: var(--border); border-radius: 14px; }
@@ -593,14 +596,14 @@ td { border-bottom-color: rgb(255 255 255 / 0.07); }
   color: var(--muted);
 }
 .hint { color: var(--muted); }
-.hint.warn { color: var(--accent); }
+.hint.warn { color: var(--accent-text); }
 .mapping-table th { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .segment-card { border-color: var(--border); border-radius: 14px; background: var(--panel-2); }
 
 /* Scrollbars to match. */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 999px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 999px; border: 2px solid var(--bg); }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 /* A badge inside an active (amber) tab inverts. */
 button.active .badge { background: var(--accent-ink); color: var(--accent); }
@@ -608,11 +611,11 @@ button.active .badge { background: var(--accent-ink); color: var(--accent); }
 /* Visualisations */
 .viz-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bg); display: flex; flex-direction: column; }
 .viz-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.viz-head h2 { font-family: var(--display); font-weight: 800; font-size: 26px; color: var(--accent); margin: 0 8px 0 0; line-height: 1; }
+.viz-head h2 { font-family: var(--display); font-weight: 800; font-size: 26px; color: var(--accent-text); margin: 0 8px 0 0; line-height: 1; }
 .viz-head label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .viz-body { flex: 1; position: relative; min-height: 0; }
 .viz-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
-.viz-link { fill: none; stroke: rgb(255 255 255 / 0.16); stroke-width: 1.2px; }
+.viz-link { fill: none; stroke: var(--border-strong); stroke-width: 1.2px; }
 .viz-node { cursor: pointer; }
 .viz-node text { fill: var(--text); font-size: 11px; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
 .viz-node:hover circle { stroke: #fff; stroke-width: 2px; }
@@ -633,3 +636,28 @@ button.active .badge { background: var(--accent-ink); color: var(--accent); }
 .viz-cloud { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 18px; padding: 40px; max-width: 1100px; margin: 0 auto; }
 .viz-cloud span { font-weight: 600; line-height: 1.1; }
 .viz-head input.grow { flex: 1; min-width: 320px; }
+
+/* Light theme (File > Settings > Appearance). The accent stays the same for
+   fills; text in the accent colour uses a darker shade (--accent-text). */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --panel: #f5f5f4;
+  --panel-2: #ffffff;
+  --border: rgb(0 0 0 / 0.12);
+  --border-strong: rgb(0 0 0 / 0.25);
+  --hairline: rgb(0 0 0 / 0.06);
+  --scroll-thumb: #cfcfcf;
+  --text: #111111;
+  --muted: #6b6b6b;
+  --row-odd: #fafaf9;
+  --row-hover: #f0efed;
+  --issue: #c62f2f;
+  --warning: #b86e00;
+  --opportunity: #2a6fb8;
+  --good: #2f8a45;
+  --bad: #c62f2f;
+  --changed: rgb(248 177 51 / 0.2);
+}
+:root[data-theme="light"] .modal-backdrop { background: rgb(0 0 0 / 0.35); }
+:root[data-theme="light"] .modal { box-shadow: 0 24px 60px rgb(0 0 0 / 0.18); }

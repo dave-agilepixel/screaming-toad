@@ -31,7 +31,8 @@ import { SchedulingDialog } from "./components/SchedulingDialog";
 import { Visualisations, type VizKind } from "./components/Visualisations";
 import { AuthPromptDialog } from "./components/AuthenticationPanel";
 import type { AuthRequired } from "./api";
-import { apiAccess } from "./api";
+import { apiAccess, crawlsApi as settingsApi } from "./api";
+import { applyAppearance } from "./appearance";
 
 type Status = "idle" | "crawling" | "paused" | "analysing" | "done";
 type Mode = "spider" | "list" | "compare";
@@ -472,6 +473,13 @@ export default function App() {
   );
 
   const crawling = status === "crawling" || status === "paused";
+  // File > Settings > Appearance.
+  useEffect(() => {
+    settingsApi
+      .getSettings()
+      .then((s) => applyAppearance(s.theme ?? "dark", s.accent ?? "#f8b133"))
+      .catch(console.error);
+  }, []);
   const loadSegments = useCallback(() => {
     api
       .getConfig()

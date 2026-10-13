@@ -191,6 +191,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
         mcp_server: false,
         mcp_port: 11435,
+        theme: "dark",
+        accent: "#f8b133",
       } as T;
     case "viz_crawl_tree":
     case "viz_directory_tree":

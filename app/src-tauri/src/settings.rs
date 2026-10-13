@@ -77,6 +77,20 @@ pub struct AppSettings {
     pub mcp_server: bool,
     #[serde(default = "default_mcp_port")]
     pub mcp_port: u16,
+    /// Appearance: "dark", "light" or "system".
+    #[serde(default = "default_theme")]
+    pub theme: String,
+    /// Appearance: the accent colour (#rrggbb).
+    #[serde(default = "default_accent")]
+    pub accent: String,
+}
+
+fn default_theme() -> String {
+    "dark".into()
+}
+
+fn default_accent() -> String {
+    "#f8b133".into()
 }
 
 fn default_mcp_port() -> u16 {
@@ -85,7 +99,7 @@ fn default_mcp_port() -> u16 {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { storage_dir: None, retention_days: None, last_mode: "spider".into(), network: Default::default(), mcp_server: false, mcp_port: toad_mcp::DEFAULT_PORT }
+        Self { storage_dir: None, retention_days: None, last_mode: "spider".into(), network: Default::default(), mcp_server: false, mcp_port: toad_mcp::DEFAULT_PORT, theme: default_theme(), accent: default_accent() }
     }
 }
 

@@ -593,6 +593,8 @@ export interface AppSettings {
   network: NetworkSettings;
   mcp_server: boolean;
   mcp_port: number;
+  theme: "dark" | "light" | "system";
+  accent: string;
 }
 
 export const crawlsApi = {

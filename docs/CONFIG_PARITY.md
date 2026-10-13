@@ -792,10 +792,10 @@ The packages are ordered by user value and dependency. Sizes: **S** ≈ under 1 
   - Options: colour by Indexability / Crawl Depth / Response Code / Segment / Cluster; size by Unique Inlinks / Link Score / fixed; max nodes; labels. Hover shows a URL's details, and double-click selects it in the grid.
   - **Not done:** the 3D force-directed diagrams, and SF's finer cog options (e.g. per-node expand depth, custom colour scales).
 - §2.5: **done.** XML Sitemap dialog sections Pages (with Response Codes 3xx/4xx/5xx), Last Modified, Priority (editable per depth), Change Frequency (by Last-Modified or editable per depth), Images (image:image per page: noindex images, non-200 images, at most N inlinks, CDN regex), Hreflang (xhtml:link alternates) and By Segment; CLI `toad sitemap --include-status --images --hreflang --priority-by-depth --changefreq-by-depth`; the separate images sitemap from WP13.
-- §2.1:
-  - Theme: Light/Dark. The app now has one dark theme styled after jellyfish.com (see HANDOVER.md, Look and feel); a light variant would only need new token values in the theme block of `styles.css`.
-  - Accent colour.
-  - UI language.
+- §2.1 Appearance: **done** (deferred C).
+  - File > Settings > Appearance offers a Dark theme (default, styled after jellyfish.com), a Light theme, or Match the system. There is also an accent-colour picker with Default. Both preview live, are restored on Cancel, and are saved in the app settings.
+  - Text on accent fills switches between black and white by luminance. Accent-coloured text is darkened on the light theme to stay readable.
+  - **Not done: UI language.** Every UI string would need extracting into translation files (several hundred strings), plus translations. It's a separate project if wanted.
 
 ---
 

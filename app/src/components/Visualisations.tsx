@@ -356,6 +356,9 @@ function ForceGraph({
       : nodes.filter((n) => n.d.parent !== null && byId.has(n.d.parent)).map((n) => ({ source: byId.get(n.d.parent!)!, target: n }));
     nodesRef.current = nodes;
 
+    const css = getComputedStyle(document.documentElement);
+    const linkColour = css.getPropertyValue("--border").trim() || "rgba(255,255,255,0.12)";
+    const textColour = css.getPropertyValue("--text").trim() || "#fff";
     const draw = () => {
       const t = transformRef.current;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -363,7 +366,7 @@ function ForceGraph({
       ctx.save();
       ctx.translate(t.x, t.y);
       ctx.scale(t.k, t.k);
-      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.strokeStyle = linkColour;
       ctx.lineWidth = 1 / t.k;
       ctx.beginPath();
       for (const l of linkData) {
@@ -380,7 +383,7 @@ function ForceGraph({
         ctx.fill();
       }
       if (opts.labels && t.k > 0.8) {
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.fillStyle = textColour;
         ctx.font = `${11 / t.k}px "DM Sans", sans-serif`;
         for (const n of nodes) {
           if (n.r >= 6 || t.k > 2) ctx.fillText(n.d.label, n.x! + n.r + 2, n.y! + 3 / t.k);
