@@ -535,6 +535,8 @@ export interface AppSettings {
   retention_days: number | null;
   last_mode: string;
   network: NetworkSettings;
+  mcp_server: boolean;
+  mcp_port: number;
 }
 
 export const crawlsApi = {

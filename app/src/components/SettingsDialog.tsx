@@ -168,6 +168,23 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </fieldset>
+        <fieldset className="config-group">
+          <legend>MCP Server</legend>
+          <div className="field">
+            <label className="row">
+              <span>Let AI assistants read crawls (Model Context Protocol)</span>
+              <input type="checkbox" checked={s.mcp_server} onChange={(e) => setS({ ...s, mcp_server: e.target.checked })} />
+            </label>
+            <label className="row">
+              Port
+              <input type="number" min={1024} max={65535} value={s.mcp_port} onChange={(e) => setS({ ...s, mcp_port: Number(e.target.value) })} style={{ width: "7em" }} />
+            </label>
+            <p className="hint">
+              Read-only tools (list crawls, issues, any tab and filter, URL details, links, reports, compare) at http://127.0.0.1:{s.mcp_port}/mcp, for this
+              computer only. For clients that use STDIO, run <code>toad mcp --dir "crawls folder"</code> instead.
+            </p>
+          </div>
+        </fieldset>
         {mail && (
           <fieldset className="config-group">
             <legend>Notifications (Email)</legend>

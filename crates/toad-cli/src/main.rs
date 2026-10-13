@@ -106,6 +106,17 @@ enum Command {
         #[arg(long)]
         config: Option<PathBuf>,
     },
+    /// MCP server for AI assistants: read-only tools over the crawls in a
+    /// folder. STDIO by default (for Claude Desktop and similar), or
+    /// Streamable HTTP on 127.0.0.1 with --http.
+    Mcp {
+        /// Folder of crawls (default: the current folder).
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Serve Streamable HTTP on this port (11435 in the app) instead of STDIO.
+        #[arg(long, value_name = "PORT", num_args = 0..=1, default_missing_value = "11435")]
+        http: Option<u16>,
+    },
     /// Run a scheduled task (File > Scheduling) now; the OS scheduler calls this.
     RunTask { id: String },
     /// List scheduled tasks and recent runs.
@@ -469,6 +480,16 @@ async fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Crawl(args) => crawl(args).await.map(|_| ()),
         Command::RunTask { id } => run_task(&id).await,
+        Command::Mcp { dir, http } => {
+            let server = toad_mcp::Server::new(dir);
+            match http {
+                Some(port) => {
+                    eprintln!("MCP server on http://127.0.0.1:{port}/mcp (Ctrl+C to stop)");
+                    server.serve_http(port, async { let _ = tokio::signal::ctrl_c().await; }).await
+                }
+                None => server.serve_stdio().await,
+            }
+        }
         Command::Tasks => {
             for t in toad_sched::load_tasks() {
                 println!("{:<14} {:<30} {:<8} {}", t.id, t.name, if t.enabled { "on" } else { "off" }, t.describe());

@@ -72,11 +72,20 @@ pub struct AppSettings {
     /// Proxy and Trusted Certificates.
     #[serde(default)]
     pub network: toad_core::auth::NetworkSettings,
+    /// MCP Server: read-only crawl tools for AI assistants on 127.0.0.1.
+    #[serde(default)]
+    pub mcp_server: bool,
+    #[serde(default = "default_mcp_port")]
+    pub mcp_port: u16,
+}
+
+fn default_mcp_port() -> u16 {
+    toad_mcp::DEFAULT_PORT
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { storage_dir: None, retention_days: None, last_mode: "spider".into(), network: Default::default() }
+        Self { storage_dir: None, retention_days: None, last_mode: "spider".into(), network: Default::default(), mcp_server: false, mcp_port: toad_mcp::DEFAULT_PORT }
     }
 }
 
@@ -138,8 +147,37 @@ pub fn set_app_settings(app: AppHandle, state: State<'_, AppState>, settings: Ap
         std::fs::create_dir_all(parent).map_err(err)?;
     }
     std::fs::write(&path, serde_json::to_string_pretty(&settings).map_err(err)?).map_err(err)?;
+    let mcp = (settings.mcp_server, settings.mcp_port);
     *state.settings.lock().map_err(err)? = settings;
     apply_retention(&app);
+    apply_mcp(&app, &state, mcp.0, mcp.1)?;
+    Ok(())
+}
+
+/// Start or stop the MCP server to match the settings.
+pub fn apply_mcp(app: &AppHandle, state: &AppState, on: bool, port: u16) -> CmdResult<()> {
+    let mut slot = state.mcp_stop.lock().map_err(err)?;
+    if let Some((stop, running_port)) = slot.take() {
+        if on && running_port == port {
+            *slot = Some((stop, running_port));
+            return Ok(());
+        }
+        let _ = stop.send(());
+    }
+    if !on {
+        return Ok(());
+    }
+    let dir = crawls_dir(app, state)?;
+    // Bind now so a busy port is reported in Settings.
+    let std_listener = std::net::TcpListener::bind(("127.0.0.1", port)).map_err(|e| format!("MCP server: port {port} is not free ({e})"))?;
+    std_listener.set_nonblocking(true).map_err(err)?;
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    tauri::async_runtime::spawn(async move {
+        if let Ok(listener) = tokio::net::TcpListener::from_std(std_listener) {
+            let _ = toad_mcp::Server::new(dir).serve_listener(listener, async { let _ = rx.await; }).await;
+        }
+    });
+    *slot = Some((tx, port));
     Ok(())
 }
 

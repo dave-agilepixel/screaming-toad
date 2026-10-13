@@ -1,0 +1,18 @@
+[package]
+name = "toad-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP server: read-only tools over saved crawls, over STDIO or Streamable HTTP"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toad-store.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "io-std"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "io-util", "macros", "rt-multi-thread"] }
+toad-core.workspace = true
+url.workspace = true

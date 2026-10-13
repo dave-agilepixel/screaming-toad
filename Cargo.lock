@@ -4025,6 +4025,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "toad-apis",
  "toad-core",
+ "toad-mcp",
  "toad-sched",
  "toad-store",
  "tokio",
@@ -5116,6 +5117,7 @@ dependencies = [
  "serde_json",
  "toad-apis",
  "toad-core",
+ "toad-mcp",
  "toad-sched",
  "toad-store",
  "tokio",
@@ -5145,6 +5147,19 @@ dependencies = [
  "spellbook",
  "sxd-document",
  "sxd-xpath",
+ "tokio",
+ "url",
+]
+
+[[package]]
+name = "toad-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "toad-core",
+ "toad-store",
  "tokio",
  "url",
 ]

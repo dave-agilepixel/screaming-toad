@@ -17,7 +17,7 @@ What has been verified so far:
 - The React UI type-checks (`tsc`) and builds (`vite`).
 - The UI was clicked through in a browser using `app/src/mock.ts`.
 
-**Stack:** a Rust workspace (`toad-core`, `toad-store`, `toad-cli`) plus a Tauri 2 desktop shell (`app/src-tauri`) with a React and TypeScript UI (`app/src`). Each crawl is one SQLite file (`.toad`).
+**Stack:** a Rust workspace (`toad-core` crawl engine, `toad-store` SQLite store and filters, `toad-apis` PSI/Google/AI/link-metric providers, notifications and the shared credential store, `toad-sched` scheduled tasks, `toad-mcp` MCP server, `toad-cli` the `toad` binary) plus a Tauri 2 desktop shell (`app/src-tauri`) with a React and TypeScript UI (`app/src`). Each crawl is one SQLite file (`.toad`).
 
 **What's built:** see the "What's in this first build" section of README.md. In short:
 - Spider and List modes

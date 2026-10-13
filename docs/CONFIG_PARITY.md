@@ -258,6 +258,41 @@ The scores below are as audited. Since then:
     - Local Lighthouse.
     - AI prompt library and per-prompt advanced overrides.
     - Embeddings are compared all-pairs: O(n²), fine for tens of thousands of pages, not millions.
+- **WP13, Automation and output:** done, apart from the items listed below.
+  - **Exports:**
+    - XLSX (`rust_xlsxwriter`: numbers as numbers, bold frozen header, 31-character unique sheet names).
+    - The grid Export and Reports can save CSV or XLSX.
+    - Multi Export: any tab filters, reports and bulk exports; CSV or XLSX; optionally one workbook; skip empty.
+    - Presets in `~/.toad/export_presets.json`, shared with the CLI's `--export-preset`.
+    - New Reports > Crawl Overview.
+    - Images sitemap: pages with their images; leaves out images on more than N pages; a CDN regex; 1,000 images a page; chunked with an index.
+  - **CLI:**
+    - Exports and sitemaps: `--bulk-export`, `--save-report`, `--export-preset`, `--export-format csv|xlsx`, `--consolidate`, `--skip-empty`, `--create-sitemap`, `--create-images-sitemap`.
+    - Output: `--overwrite` (otherwise the run refuses before crawling if files exist), `--timestamped-output` (`<output>/<task>/<YYYY.MM.DD.HH.MM.SS>/`, crawl file included), `--task-name`, `--project-name`.
+    - After the crawl: `--email-on-complete[=addresses]`, `--compare-with-previous` (Auto Compare), `--use-profile-apis`.
+    - Commands: `run-task`, `tasks`, `mcp`.
+    - The CLI reads keys from `TOAD_*` variables, then the OS credential store.
+  - **Notifications:**
+    - File > Settings > Notifications: SMTP (STARTTLS, TLS or none) via `lettre`, with the password in the OS credential store and default recipients. Settings are in `~/.toad/notifications.json`, shared with the CLI.
+    - Send Test Email.
+    - The email has the crawl summary, top issues, the changes since the previous crawl (Auto Compare), and the files written.
+  - **Scheduling (`toad-sched`):**
+    - Tasks are stored in `~/.toad/schedules.json` and registered with the OS scheduler:
+      - Windows Task Scheduler via an XML definition (locale-independent; runs while logged on; verified by registering and removing a real task).
+      - launchd plists on macOS; crontab lines on Linux (generated and unit-tested, not run on those systems).
+    - Frequencies: once, daily, weekly or monthly.
+    - Each run executes `toad run-task <id>` headless into a dated folder. It does exports, sitemaps, API data (from the profile), Auto Compare with the task's previous crawl and the email, and appends to `~/.toad/schedule_history.jsonl`.
+    - App: the Scheduling dialog has tasks (add, edit, delete, Run Now) and History.
+  - **MCP Server (`toad-mcp`):**
+    - Read-only tools: list_crawls, list_tabs, crawl_overview, crawl_issues, query_urls (tab, filter, search, segment, paging), url_details, inlinks, outlinks, list_reports, run_report, compare_crawls.
+    - Transports: STDIO (`toad mcp --dir <crawls>`), or Streamable HTTP on 127.0.0.1 (default port 11435) via File > Settings > MCP Server or `toad mcp --http`.
+    - HTTP returns plain JSON responses and rejects cross-site Origins.
+  - **Not done:**
+    - Google Sheets / Drive output (`--crawl-google-sheet`) and the Looker Studio export.
+    - Outlook/Gmail OAuth for email (SMTP with an app password instead).
+    - "Next run" times from the OS scheduler.
+    - Bundling the `toad` CLI as a Tauri sidecar for installed builds (in development it sits next to the app executable).
+    - The MCP server's SSE streams (not needed for request/response tools).
 
 ## How to read this
 

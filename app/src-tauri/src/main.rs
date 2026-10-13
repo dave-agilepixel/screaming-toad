@@ -34,6 +34,8 @@ struct AppState {
     pending_auth: Arc<Mutex<std::collections::HashMap<u64, tokio::sync::oneshot::Sender<Option<(String, String)>>>>>,
     /// Forms Based: the open login window.
     login: tokio::sync::Mutex<Option<toad_core::render::LoginWindow>>,
+    /// The running MCP server: its stop signal and port.
+    mcp_stop: Mutex<Option<(tokio::sync::oneshot::Sender<()>, u16)>>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -701,6 +703,15 @@ fn main() {
             *app.state::<AppState>().config.lock().expect("config lock") = cfg;
             *app.state::<AppState>().settings.lock().expect("settings lock") = settings::load(app.handle());
             settings::apply_retention(app.handle());
+            let (on, port) = {
+                let s = app.state::<AppState>().settings.lock().expect("settings lock").clone();
+                (s.mcp_server, s.mcp_port)
+            };
+            if on {
+                if let Err(e) = settings::apply_mcp(app.handle(), &app.state::<AppState>(), true, port) {
+                    eprintln!("{e}");
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

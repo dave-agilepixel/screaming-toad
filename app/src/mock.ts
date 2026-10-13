@@ -189,6 +189,8 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         retention_days: null,
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
+        mcp_server: false,
+        mcp_port: 11435,
       } as T;
     case "get_tasks":
       return [
