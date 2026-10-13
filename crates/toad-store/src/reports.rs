@@ -102,14 +102,6 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
       FROM urls u LEFT JOIN urls f ON f.address = u.final_destination
       WHERE u.redirect_url IS NOT NULL AND (f.id IS NULL OR f.status_code = 0 OR f.status_code >= 400)
       ORDER BY u.crawl_order"),
-    ("Canonical Chains", ReportKind::Report, "Canonicals pointing at URLs that redirect or are canonicalised again.",
-     "SELECT u.address AS \"Address\", coalesce(u.canonical_1, u.http_canonical) AS \"Canonical\",
-             t.status_code AS \"Canonical Status Code\", t.redirect_url AS \"Canonical Redirects To\",
-             coalesce(t.canonical_1, t.http_canonical) AS \"Canonical's Canonical\"
-      FROM urls u JOIN urls t ON t.address = coalesce(u.canonical_1, u.http_canonical)
-      WHERE coalesce(u.canonical_1, u.http_canonical) <> u.address
-        AND (t.redirect_url IS NOT NULL OR coalesce(t.canonical_1, t.http_canonical, t.address) <> t.address)
-      ORDER BY u.crawl_order"),
     ("Non-Indexable Canonicals", ReportKind::Report, "Canonical targets that are blocked, error, redirect or are noindex.",
      "SELECT u.address AS \"Address\", coalesce(u.canonical_1, u.http_canonical) AS \"Canonical\",
              t.status_code AS \"Canonical Status Code\", t.indexability_status AS \"Canonical Indexability Status\",

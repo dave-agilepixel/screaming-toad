@@ -5,3 +5,8 @@
 node_modules/
 dist/
 /installers
+
+# Research compiled from Screaming Frog's documentation: kept locally, not published
+/research/
+/SCREAMING_FROG_SPEC.md
+/CONFIG_REFERENCE.md

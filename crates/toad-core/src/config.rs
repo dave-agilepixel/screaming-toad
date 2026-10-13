@@ -916,8 +916,7 @@ pub enum SearchIn {
     Xpath,
 }
 
-/// Configuration > Custom > Extraction. XPath is not supported yet; CSS
-/// selectors cover most of the same ground.
+/// Configuration > Custom > Extraction: XPath 1.0, CSS selectors or regex.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CustomExtractor {

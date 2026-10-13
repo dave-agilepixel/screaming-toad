@@ -395,7 +395,7 @@ struct CrawlArgs {
     /// Exports after the crawl, e.g. "Internal:All,Response Codes:Internal Client Error (4XX)".
     #[arg(long)]
     export_tabs: Option<String>,
-    /// Bulk exports after the crawl, e.g. "All Inlinks,All Outlinks" (see `toad report <crawl> --list`).
+    /// Bulk exports after the crawl, e.g. "All Inlinks,All Anchor Text" (see `toad report <crawl> --list`).
     #[arg(long)]
     bulk_export: Option<String>,
     /// Reports after the crawl, e.g. "Crawl Overview,Redirect Chains".

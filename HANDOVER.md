@@ -10,6 +10,8 @@ Build **Screaming Toad**, a desktop SEO crawler modelled on the Screaming Frog S
 
 The `research/` folder holds the raw notes those two were built from.
 
+These three are compiled from Screaming Frog's documentation, so they are **not in the public repo**: `.gitignore` excludes them and they live only on the development PC (and in commits before 13 Oct 2026). Ask the maintainer for a copy.
+
 ## Where it stands
 The code is written but **has never been compiled**. The previous PC blocks every newly built program (it's managed by Defender for Endpoint), so neither `cargo build` nor its build scripts could run.
 
@@ -86,7 +88,7 @@ On a PC where Smart App Control blocks `rustc.exe` (os error 4551), nothing comp
 
 ## CI (GitHub Actions)
 
-The code lives in a **private** repo, [wrenda-admin/screaming-toad](https://github.com/wrenda-admin/screaming-toad) (remote `origin`, branch `master`). `.github/workflows/ci.yml` runs on every push, on pull requests and on demand (Actions > CI > Run workflow, or `gh workflow run CI`). It has two jobs.
+The code lives in a **public** repo, [wrenda-admin/screaming-toad](https://github.com/wrenda-admin/screaming-toad) (remote `origin`, branch `master`). `.github/workflows/ci.yml` runs on every push, on pull requests and on demand (Actions > CI > Run workflow, or `gh workflow run CI`). It has two jobs.
 
 **Test**: windows-latest, ubuntu-latest and macos-latest.
 1. Build the UI (`npm ci && npm run build`); Tauri needs `app/dist`.
