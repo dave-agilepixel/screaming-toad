@@ -269,7 +269,7 @@ const DEFAULT_CONFIG = {
   url_rewrite_rules: [] as { regex: string; replace: string }[], lowercase_urls: false, percent_encoding_case: "uppercase" as const, cdns: [] as string[],
   content_area: { mode: "exclude" as const, check_alt_text: false, include_elements: [], exclude_elements: ["nav", "footer"], include_classes: [], exclude_classes: [], include_ids: [], exclude_ids: [] },
   extraction: { page_title: true, meta_description: true, meta_keywords: true, h1: true, h2: true, word_count: true, readability: true, text_to_code_ratio: true, hash: true, page_size: true, forms: true, response_time: true, last_modified: true, http_headers: false, cookies: false, meta_robots: true, x_robots_tag: true },
-  extract_structured_data: true, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
+  structured_data: { json_ld: true, microdata: true, rdfa: false, schema_org_validation: true, google_rich_results: true, case_sensitive: false }, near_duplicates: false, near_duplicate_threshold: 0.9, near_duplicates_indexable_only: true,
   spelling: { spell_check: false, grammar_check: false, language_mode: "auto" as const, language: "en-US", grammar_server: "", disabled_grammar_rules: [] as string[], ignore_words: [] as string[] },
   custom_search: [], custom_extraction: [],
   link_positions_enabled: true,

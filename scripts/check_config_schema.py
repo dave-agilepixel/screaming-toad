@@ -20,7 +20,7 @@ def interface(name):
     return set(re.findall(r"^\s+(\w+):", body, re.M))
 
 
-for name, obj in [("CrawlConfig", cfg), ("Preferences", cfg["preferences"]), ("ContentArea", cfg["content_area"]), ("Extraction", cfg["extraction"]), ("SpellingConfig", cfg["spelling"])]:
+for name, obj in [("CrawlConfig", cfg), ("Preferences", cfg["preferences"]), ("ContentArea", cfg["content_area"]), ("Extraction", cfg["extraction"]), ("SpellingConfig", cfg["spelling"]), ("StructuredDataConfig", cfg["structured_data"])]:
     ts_keys, rust_keys = interface(name), set(obj)
     if rust_keys - ts_keys:
         problems.append(f"{name}: fields missing from the TypeScript type: {sorted(rust_keys - ts_keys)}")

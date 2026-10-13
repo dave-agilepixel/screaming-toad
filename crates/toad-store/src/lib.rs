@@ -161,17 +161,17 @@ impl Store {
                         item_stmt.execute(params![source_id, item.format, item.types.join(", "), item.properties.join(", ")])?;
                     }
                     let mut issue_stmt = tx.prepare_cached(
-                        "INSERT INTO sd_issues (url_id, item_type, severity, property, message) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        "INSERT INTO sd_issues (url_id, item_type, severity, property, message, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                     )?;
                     for e in &sd.parse_errors {
-                        issue_stmt.execute(params![source_id, "", "Parse Error", "", e])?;
+                        issue_stmt.execute(params![source_id, "", "Parse Error", "", e, toad_core::structured::SCHEMA_ORG])?;
                     }
                     for i in &sd.issues {
                         let severity = match i.severity {
                             Severity::Error => "Error",
                             Severity::Warning => "Warning",
                         };
-                        issue_stmt.execute(params![source_id, i.item_type, severity, i.property, i.message])?;
+                        issue_stmt.execute(params![source_id, i.item_type, severity, i.property, i.message, i.source])?;
                     }
                 }
             }
@@ -594,8 +594,10 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("sd_count", int(sd.map_or(0, |s| s.items.len() as i64))),
         ("sd_types", if sd_types.is_empty() { Value::Null } else { text(&sd_types.join(", ")) }),
         ("sd_formats", if sd_formats.is_empty() { Value::Null } else { text(&sd_formats.join(", ")) }),
-        ("sd_errors", int(sd.map_or(0, |s| s.issues.iter().filter(|i| i.severity == Severity::Error).count() as i64))),
-        ("sd_warnings", int(sd.map_or(0, |s| s.issues.iter().filter(|i| i.severity == Severity::Warning).count() as i64))),
+        ("sd_errors", int(sd_count(sd, Severity::Error, toad_core::structured::SCHEMA_ORG))),
+        ("sd_warnings", int(sd_count(sd, Severity::Warning, toad_core::structured::SCHEMA_ORG))),
+        ("sd_rich_errors", int(sd_count(sd, Severity::Error, toad_core::structured::GOOGLE))),
+        ("sd_rich_warnings", int(sd_count(sd, Severity::Warning, toad_core::structured::GOOGLE))),
         ("sd_parse_errors", int(sd.map_or(0, |s| s.parse_errors.len() as i64))),
         ("spelling_errors", if cfg.spelling.spell_check && page.is_some() {
             int(page.map_or(0, |p| p.language_issues.iter().filter(|i| i.kind == "Spelling").count() as i64))
@@ -612,6 +614,10 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
             _ => Value::Null,
         }),
     ]
+}
+
+fn sd_count(sd: Option<&toad_core::structured::StructuredData>, severity: Severity, source: &str) -> i64 {
+    sd.map_or(0, |s| s.issues.iter().filter(|i| i.severity == severity && i.source == source).count() as i64)
 }
 
 fn percent_decode(s: &str) -> String {

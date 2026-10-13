@@ -161,6 +161,7 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
 ];
 
 const REDIRECT_CHAINS: &str = "Redirect Chains";
+const RICH_RESULTS: &str = "Google Rich Results Features Summary";
 
 impl Store {
     pub fn reports(&self) -> Vec<ReportDef> {
@@ -168,12 +169,19 @@ impl Store {
             name: REDIRECT_CHAINS,
             kind: ReportKind::Report,
             description: "Redirects with two or more hops, or loops, with every hop listed.",
+        }, ReportDef {
+            name: RICH_RESULTS,
+            kind: ReportKind::Report,
+            description: "Each Google rich result type found, with the pages that have it and how many have errors or warnings.",
         }];
         out.extend(SQL_REPORTS.iter().map(|(name, kind, description, _)| ReportDef { name: *name, kind: *kind, description: *description }));
         out
     }
 
     pub fn report(&self, name: &str) -> anyhow::Result<Table> {
+        if name.eq_ignore_ascii_case(RICH_RESULTS) {
+            return self.rich_results_summary();
+        }
         if name.eq_ignore_ascii_case(REDIRECT_CHAINS) {
             return self.redirect_chains();
         }
@@ -211,6 +219,33 @@ impl Store {
         drop(stmt);
         let rows = self.query_strings(sql, args)?;
         Ok(Table { columns, total: rows.len() as u64, rows })
+    }
+
+    fn rich_results_summary(&self) -> anyhow::Result<Table> {
+        let mut rows = Vec::new();
+        for t in toad_core::structured::rich_result_types() {
+            let count = |sql: &str| -> anyhow::Result<i64> {
+                Ok(self.conn.query_row(sql, rusqlite::params![t], |r| r.get(0))?)
+            };
+            let pages = count(
+                "SELECT COUNT(DISTINCT i.url_id) FROM sd_items i
+                 WHERE ', ' || i.types || ', ' LIKE '%, ' || ?1 || ', %'",
+            )?;
+            if pages == 0 {
+                continue;
+            }
+            let with = |severity: &str| {
+                format!("SELECT COUNT(DISTINCT url_id) FROM sd_issues WHERE source = 'Google' AND severity = '{severity}' AND item_type = ?1")
+            };
+            let errors = count(&with("Error"))?;
+            let warnings = count(&with("Warning"))?;
+            rows.push(vec![t.to_string(), pages.to_string(), errors.to_string(), warnings.to_string(), (pages - errors).to_string()]);
+        }
+        Ok(Table {
+            columns: ["Rich Result Feature", "URLs", "URLs With Errors", "URLs With Warnings", "Eligible URLs"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
     }
 
     fn redirect_chains(&self) -> anyhow::Result<Table> {

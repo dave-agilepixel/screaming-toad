@@ -280,8 +280,8 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
     if cfg.near_duplicates || cfg.store_html {
         p.minhash = minhash::signature(&content);
     }
-    if cfg.extract_structured_data {
-        p.structured_data = Some(crate::structured::extract(&doc));
+    if cfg.structured_data.any_format() {
+        p.structured_data = Some(crate::structured::extract(&doc, &cfg.structured_data));
     }
 
     if !rules.is_empty() {

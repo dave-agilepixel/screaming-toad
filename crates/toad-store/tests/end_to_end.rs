@@ -176,9 +176,13 @@ async fn crawl_finds_known_issues() {
 
     // Structured data: the home page's Product has no offers, review or rating.
     assert_eq!(count("Structured Data", "Contains Structured Data"), 1);
-    assert_eq!(count("Structured Data", "Validation Errors"), 1);
+    // Google rich result issues and schema.org issues are separate filters.
+    assert_eq!(count("Structured Data", "Rich Result Validation Errors"), 1);
+    assert_eq!(count("Structured Data", "Validation Errors"), 0, "valid schema.org");
     let sd = store.structured_details(start.as_str()).unwrap();
-    assert!(sd.rows.iter().any(|r| r[0] == "Error" && r[2] == "Product"));
+    assert!(sd.rows.iter().any(|r| r[0] == "Error" && r[1] == "Google" && r[3] == "Product"));
+    let rich = store.report("Google Rich Results Features Summary").unwrap();
+    assert_eq!(rich.rows, vec![vec!["Product".to_string(), "1".into(), "1".into(), "1".into(), "0".into()]]);
 
     // Hreflang: /fr links back to /a as en-gb, but /a calls itself en.
     assert_eq!(count("Hreflang", "Contains Hreflang"), 2);

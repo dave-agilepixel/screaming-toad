@@ -82,7 +82,11 @@ CREATE TABLE IF NOT EXISTS urls (
     sd_formats TEXT,
     sd_errors INTEGER NOT NULL DEFAULT 0,
     sd_warnings INTEGER NOT NULL DEFAULT 0,
-    sd_parse_errors INTEGER NOT NULL DEFAULT 0
+    sd_parse_errors INTEGER NOT NULL DEFAULT 0,
+    sd_rich_errors INTEGER NOT NULL DEFAULT 0,
+    sd_rich_warnings INTEGER NOT NULL DEFAULT 0,
+    pdf_title TEXT, pdf_subject TEXT, pdf_author TEXT, pdf_keywords TEXT,
+    pdf_created TEXT, pdf_modified TEXT, pdf_pages INTEGER
 );
 
 -- Structured data items and validation issues per URL.
@@ -140,7 +144,8 @@ CREATE TABLE IF NOT EXISTS sd_issues (
     item_type TEXT,
     severity TEXT NOT NULL,
     property TEXT,
-    message TEXT
+    message TEXT,
+    source TEXT NOT NULL DEFAULT 'Google'
 );
 
 -- Page URLs listed in each crawled XML sitemap.
@@ -196,17 +201,39 @@ CREATE INDEX IF NOT EXISTS sd_issues_url ON sd_issues(url_id);
 
 /// Columns added to `urls` after the first release, as (name, type). Older
 /// crawl files get them when opened, so they can be resumed and compared.
-pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[("spelling_errors", "INTEGER"), ("grammar_errors", "INTEGER")];
+pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[
+    ("spelling_errors", "INTEGER"),
+    ("grammar_errors", "INTEGER"),
+    ("sd_rich_errors", "INTEGER NOT NULL DEFAULT 0"),
+    ("sd_rich_warnings", "INTEGER NOT NULL DEFAULT 0"),
+    ("pdf_title", "TEXT"),
+    ("pdf_subject", "TEXT"),
+    ("pdf_author", "TEXT"),
+    ("pdf_keywords", "TEXT"),
+    ("pdf_created", "TEXT"),
+    ("pdf_modified", "TEXT"),
+    ("pdf_pages", "INTEGER"),
+];
+
+/// Columns added to other tables: (table, column, type).
+pub const ADDED_COLUMNS: &[(&str, &str, &str)] = &[("sd_issues", "source", "TEXT NOT NULL DEFAULT 'Google'")];
+
+fn columns_of(conn: &rusqlite::Connection, table: &str) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = conn.prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    rows.collect()
+}
 
 pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let existing: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('urls')")?;
-        let rows = stmt.query_map([], |r| r.get(0))?;
-        rows.collect::<Result<_, _>>()?
-    };
+    let existing = columns_of(conn, "urls")?;
     for (name, ty) in ADDED_URL_COLUMNS {
         if !existing.iter().any(|c| c == name) {
             conn.execute_batch(&format!("ALTER TABLE urls ADD COLUMN {name} {ty}"))?;
+        }
+    }
+    for (table, name, ty) in ADDED_COLUMNS {
+        if !columns_of(conn, table)?.iter().any(|c| c == name) {
+            conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty}"))?;
         }
     }
     Ok(())

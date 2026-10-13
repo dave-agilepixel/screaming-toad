@@ -35,6 +35,15 @@ export interface ContentArea {
   exclude_ids: string[];
 }
 
+export interface StructuredDataConfig {
+  json_ld: boolean;
+  microdata: boolean;
+  rdfa: boolean;
+  schema_org_validation: boolean;
+  google_rich_results: boolean;
+  case_sensitive: boolean;
+}
+
 export interface SpellingConfig {
   spell_check: boolean;
   grammar_check: boolean;
@@ -175,7 +184,7 @@ export interface CrawlConfig {
   percent_encoding_case: "uppercase" | "lowercase" | "none";
   cdns: string[];
   content_area: ContentArea;
-  extract_structured_data: boolean;
+  structured_data: StructuredDataConfig;
   store_html: boolean;
   extraction: Extraction;
   near_duplicates: boolean;
@@ -339,12 +348,31 @@ export const NODES: Node[] = [
       {
         title: "Structured Data",
         fields: [
+          { kind: "bool", key: "structured_data.json_ld", label: "JSON-LD" },
+          { kind: "bool", key: "structured_data.microdata", label: "Microdata" },
+          { kind: "bool", key: "structured_data.rdfa", label: "RDFa" },
           {
             kind: "bool",
-            key: "extract_structured_data",
-            label: "JSON-LD and Microdata, with Google Rich Result Feature Validation",
-            help: "On by default in Toad (Screaming Frog has it off).",
+            key: "structured_data.schema_org_validation",
+            label: "Schema.org Validation",
+            help: "Types and properties must exist in schema.org and suit the item's type: Structured Data > Validation Errors / Warnings.",
+            disabledIf: (c) => !(c.structured_data.json_ld || c.structured_data.microdata || c.structured_data.rdfa),
           },
+          {
+            kind: "bool",
+            key: "structured_data.google_rich_results",
+            label: "Google Rich Result Feature Validation",
+            help: "Required and recommended properties for Google rich results: Rich Result Validation Errors / Warnings.",
+            disabledIf: (c) => !(c.structured_data.json_ld || c.structured_data.microdata || c.structured_data.rdfa),
+          },
+          {
+            kind: "bool",
+            key: "structured_data.case_sensitive",
+            label: "Case-Sensitive",
+            help: "Schema.org is case-sensitive; Google is not. Off: wrong case is a warning rather than an error.",
+            disabledIf: (c) => !c.structured_data.schema_org_validation,
+          },
+          { kind: "note", text: "JSON-LD, Microdata and validation are on by default in Toad (Screaming Frog has them off)." },
         ],
       },
       {

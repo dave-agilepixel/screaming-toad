@@ -206,10 +206,10 @@ pub struct CrawlConfig {
     // Configuration > Content > Area
     pub content_area: ContentArea,
 
-    // Configuration > Spider > Extraction > Structured Data (JSON-LD and
-    // Microdata, with Google rich result validation). On by default here;
-    // Screaming Frog has it off.
-    pub extract_structured_data: bool,
+    // Configuration > Spider > Extraction > Structured Data. JSON-LD and
+    // Microdata with validation are on by default here; Screaming Frog has
+    // them off (a deliberate deviation).
+    pub structured_data: StructuredDataConfig,
 
     // Configuration > Spider > Extraction: page details, URL details, directives.
     pub extraction: Extraction,
@@ -335,7 +335,7 @@ impl Default for CrawlConfig {
             percent_encoding_case: PercentCase::Uppercase,
             cdns: vec![],
             content_area: ContentArea::default(),
-            extract_structured_data: true,
+            structured_data: StructuredDataConfig::default(),
             store_html: false,
             extraction: Extraction::default(),
             near_duplicates: false,
@@ -474,6 +474,33 @@ impl CrawlConfig {
     pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())
+    }
+}
+
+/// Spider > Extraction > Structured Data.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StructuredDataConfig {
+    pub json_ld: bool,
+    pub microdata: bool,
+    pub rdfa: bool,
+    /// Types and properties checked against the schema.org vocabulary.
+    pub schema_org_validation: bool,
+    /// Google Rich Result Feature Validation.
+    pub google_rich_results: bool,
+    /// Schema.org names are case-sensitive; off flags wrong case as a warning.
+    pub case_sensitive: bool,
+}
+
+impl Default for StructuredDataConfig {
+    fn default() -> Self {
+        Self { json_ld: true, microdata: true, rdfa: false, schema_org_validation: true, google_rich_results: true, case_sensitive: false }
+    }
+}
+
+impl StructuredDataConfig {
+    pub fn any_format(&self) -> bool {
+        self.json_ld || self.microdata || self.rdfa
     }
 }
 

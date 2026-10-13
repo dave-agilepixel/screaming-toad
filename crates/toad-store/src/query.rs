@@ -231,13 +231,13 @@ impl Store {
     /// (Structured Data Details pane).
     pub fn structured_details(&self, address: &str) -> anyhow::Result<Table> {
         let rows = self.query_strings(
-            "SELECT 'Item', i.format, i.types, '', i.properties FROM sd_items i JOIN urls u ON u.id = i.url_id WHERE u.address = ?1
+            "SELECT 'Item', '', i.format, i.types, '', i.properties FROM sd_items i JOIN urls u ON u.id = i.url_id WHERE u.address = ?1
              UNION ALL
-             SELECT s.severity, '', s.item_type, s.property, s.message FROM sd_issues s JOIN urls u ON u.id = s.url_id WHERE u.address = ?1",
+             SELECT s.severity, s.source, '', s.item_type, s.property, s.message FROM sd_issues s JOIN urls u ON u.id = s.url_id WHERE u.address = ?1",
             &[Value::Text(address.to_string())],
         )?;
         Ok(Table {
-            columns: ["Kind", "Format", "Type", "Property", "Detail"].iter().map(|s| s.to_string()).collect(),
+            columns: ["Kind", "Validation", "Format", "Type", "Property", "Detail"].iter().map(|s| s.to_string()).collect(),
             total: rows.len() as u64,
             rows,
         })
