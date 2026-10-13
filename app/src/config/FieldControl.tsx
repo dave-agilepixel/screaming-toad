@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, type UrlTest } from "../api";
 import { AuthenticationPanel } from "../components/AuthenticationPanel";
 import { SegmentsEditor } from "../components/SegmentsEditor";
+import { AiPromptsEditor, ApiKeyField, GoogleAccountField, GooglePropertyField } from "../components/ApiFields";
 import { HEADER_NAMES, USER_AGENT_PRESETS, WINDOW_PRESETS, validHeaderName } from "./presets";
 import type { RobotsTest } from "../api";
 import { getPath, type CrawlConfig, type CustomExtractor, type CustomJavaScript, type CustomSearch, type Field } from "./schema";
@@ -420,6 +421,18 @@ export function FieldControl({ field: f, cfg, defaults, set, highlight }: Props)
 
     case "authentication":
       return <AuthenticationPanel />;
+
+    case "api-key":
+      return <ApiKeyField secret={f.secret} label={f.label} help={f.help} placeholder={f.placeholder} />;
+
+    case "google-account":
+      return <GoogleAccountField />;
+
+    case "google-property":
+      return <GooglePropertyField which={f.which} label={f.label} value={String(getPath(cfg, f.key) ?? "")} onChange={(v) => set(f.key, v)} />;
+
+    case "ai-prompts":
+      return <AiPromptsEditor cfg={cfg} set={set} />;
 
     case "segments":
       return <SegmentsEditor segments={cfg.segments} onChange={(v) => set("segments", v)} />;

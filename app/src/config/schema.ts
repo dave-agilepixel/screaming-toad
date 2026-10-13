@@ -24,6 +24,114 @@ export interface CustomExtractor {
   extract: "element" | "inner_html" | "text" | "function_value";
 }
 
+export type AiProvider = "open_ai" | "anthropic" | "gemini" | "ollama" | "open_ai_compatible";
+export type AiContent = "page_text" | "content_area" | "html" | "url_only";
+export type LinkTarget = "url" | "subdomain" | "root_domain";
+
+export interface PsiConfig {
+  enabled: boolean;
+  device: "mobile" | "desktop";
+  max_outstanding: number;
+  summary: boolean;
+  crux: boolean;
+  lighthouse_metrics: boolean;
+  opportunities: boolean;
+  diagnostics: boolean;
+  indexable_only: boolean;
+}
+
+export interface GscConfig {
+  enabled: boolean;
+  property: string;
+  days: number;
+  device: "all" | "desktop" | "mobile" | "tablet";
+  country: string;
+  search_type: "web" | "image" | "video" | "news" | "discover" | "google_news";
+  query_filter: string;
+  query_exclude: boolean;
+  ignore_trailing_slash: boolean;
+  case_sensitive: boolean;
+  crawl_new_urls: boolean;
+  url_inspection: boolean;
+  inspection_indexable_only: boolean;
+  inspection_daily_limit: number;
+}
+
+export interface Ga4Config {
+  enabled: boolean;
+  property: string;
+  days: number;
+  metrics: string[];
+  channel: string;
+  ignore_trailing_slash: boolean;
+  case_sensitive: boolean;
+  max_rows: number;
+  crawl_new_urls: boolean;
+}
+
+export interface AiPrompt {
+  enabled: boolean;
+  name: string;
+  provider: AiProvider;
+  model: string;
+  prompt: string;
+  content: AiContent;
+}
+
+export interface AiConfig {
+  prompts: AiPrompt[];
+  openai_base_url: string;
+  compatible_base_url: string;
+  ollama_base_url: string;
+  temperature: number;
+  max_output_tokens: number;
+  max_input_chars: number;
+  requests_per_minute: number;
+  indexable_only: boolean;
+}
+
+export interface EmbeddingsConfig {
+  enabled: boolean;
+  provider: AiProvider;
+  model: string;
+  content: AiContent;
+  include_regex: string;
+  semantic_similarity: boolean;
+  similarity_threshold: number;
+  similarity_indexable_only: boolean;
+  low_relevance: boolean;
+  low_relevance_threshold: number;
+  low_relevance_indexable_only: boolean;
+}
+
+export interface AhrefsConfig {
+  enabled: boolean;
+  target: LinkTarget;
+  organic: boolean;
+}
+
+export interface MajesticConfig {
+  enabled: boolean;
+  target: LinkTarget;
+  historic: boolean;
+}
+
+export interface MozConfig {
+  enabled: boolean;
+  target: LinkTarget;
+}
+
+export interface ApiConfig {
+  psi: PsiConfig;
+  gsc: GscConfig;
+  ga4: Ga4Config;
+  ai: AiConfig;
+  embeddings: EmbeddingsConfig;
+  ahrefs: AhrefsConfig;
+  majestic: MajesticConfig;
+  moz: MozConfig;
+}
+
 export type SegmentOp =
   | "contains"
   | "does_not_contain"
@@ -260,6 +368,7 @@ export interface CrawlConfig {
   custom_javascript: CustomJavaScript[];
   crawl_analysis: CrawlAnalysisConfig;
   segments: Segment[];
+  apis: ApiConfig;
   link_positions_enabled: boolean;
   link_positions: { name: string; contains: string }[];
   preferences: Preferences;
@@ -296,6 +405,10 @@ export type Field =
   | { kind: "custom-javascript" }
   | { kind: "authentication"; label: string }
   | { kind: "segments"; label: string }
+  | { kind: "api-key"; secret: string; label: string; help?: string; placeholder?: string }
+  | { kind: "google-account"; label: string }
+  | { kind: "google-property"; key: string; which: "gsc" | "ga4"; label: string }
+  | { kind: "ai-prompts"; key: string; label: string }
   | { kind: "note"; text: string };
 
 export interface Group {
@@ -708,6 +821,43 @@ export const NODES: Node[] = [
     ],
   },
   {
+    id: "embeddings",
+    label: "Embeddings",
+    parent: "content",
+    groups: [
+      {
+        fields: [
+          {
+            kind: "bool",
+            key: "apis.embeddings.enabled",
+            label: "Enable Embeddings",
+            help: "Page text is turned into vectors by the provider below (API keys under API Access > AI), for Content > Semantically Similar and Low Relevance Content.",
+          },
+          { kind: "select", key: "apis.embeddings.provider", label: "Provider", options: [["open_ai", "OpenAI"], ["gemini", "Gemini"], ["ollama", "Ollama"], ["open_ai_compatible", "OpenAI-compatible"]] },
+          { kind: "text", key: "apis.embeddings.model", label: "Embedding Model", placeholder: "text-embedding-3-small" },
+          { kind: "select", key: "apis.embeddings.content", label: "Content", options: [["content_area", "Content Area"], ["page_text", "Page Text"], ["html", "HTML"]] },
+          { kind: "text", key: "apis.embeddings.include_regex", label: "Embedding Filter Rules", placeholder: "Only URLs matching this regex (blank: all)" },
+        ],
+      },
+      {
+        title: "Semantic Similarity",
+        fields: [
+          { kind: "bool", key: "apis.embeddings.semantic_similarity", label: "Enable Semantic Similarity" },
+          { kind: "number", key: "apis.embeddings.similarity_threshold", label: "Similarity Threshold", min: 0, max: 1, step: 0.01 },
+          { kind: "bool", key: "apis.embeddings.similarity_indexable_only", label: "Only Check Indexable Pages" },
+        ],
+      },
+      {
+        title: "Low Relevance",
+        fields: [
+          { kind: "bool", key: "apis.embeddings.low_relevance", label: "Enable Low Relevance" },
+          { kind: "number", key: "apis.embeddings.low_relevance_threshold", label: "Low Relevance Threshold", min: 0, max: 1, step: 0.01 },
+          { kind: "bool", key: "apis.embeddings.low_relevance_indexable_only", label: "Only Check Indexable Pages" },
+        ],
+      },
+    ],
+  },
+  {
     id: "spelling",
     label: "Spelling & Grammar",
     parent: "content",
@@ -934,6 +1084,174 @@ export const NODES: Node[] = [
         fields: [
           { kind: "bool", key: "link_positions_enabled", label: "Enable", help: "Off: the Link Path and Link Position columns are left empty, which saves memory on very large crawls." },
           { kind: "link-positions", key: "link_positions", label: "Link Positions" },
+        ],
+      },
+    ],
+  },
+  { id: "api", label: "API Access", groups: [] },
+  {
+    id: "api-psi",
+    label: "PageSpeed Insights",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "api-key", secret: "psi_key", label: "API Key", help: "Optional, but without one PSI allows very few requests. Create one in Google Cloud Console (PageSpeed Insights API)." },
+          { kind: "bool", key: "apis.psi.enabled", label: "Connect: request PageSpeed data for every crawled page" },
+          { kind: "select", key: "apis.psi.device", label: "Device", options: [["mobile", "Mobile"], ["desktop", "Desktop"]] },
+          { kind: "number", key: "apis.psi.max_outstanding", label: "Max Outstanding Requests", min: 1, max: 20 },
+          { kind: "bool", key: "apis.psi.indexable_only", label: "Indexable pages only" },
+        ],
+      },
+      {
+        title: "Metrics",
+        fields: [
+          { kind: "bool", key: "apis.psi.summary", label: "Summary (performance score, size)" },
+          { kind: "bool", key: "apis.psi.crux", label: "CrUX Metrics (real users) and Core Web Vitals Assessment" },
+          { kind: "bool", key: "apis.psi.lighthouse_metrics", label: "Lighthouse Metrics (lab)" },
+          { kind: "bool", key: "apis.psi.opportunities", label: "Opportunities (insights)" },
+          { kind: "bool", key: "apis.psi.diagnostics", label: "Diagnostics" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-google",
+    label: "Google Account",
+    parent: "api",
+    groups: [{ fields: [{ kind: "google-account", label: "Google OAuth sign-in Search Console GA4" }] }],
+  },
+  {
+    id: "api-gsc",
+    label: "Google Search Console",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "bool", key: "apis.gsc.enabled", label: "Connect: request Search Console data" },
+          { kind: "google-property", key: "apis.gsc.property", which: "gsc", label: "Property" },
+          { kind: "note", text: "Sign in under API Access > Google Account first." },
+        ],
+      },
+      {
+        title: "Search Analytics",
+        fields: [
+          { kind: "number", key: "apis.gsc.days", label: "Date Range", min: 1, max: 480, unit: "days" },
+          { kind: "select", key: "apis.gsc.device", label: "Device", options: [["all", "All"], ["desktop", "Desktop"], ["mobile", "Mobile"], ["tablet", "Tablet"]] },
+          { kind: "text", key: "apis.gsc.country", label: "Country", placeholder: "ISO code, e.g. gbr (blank: all)" },
+          {
+            kind: "select",
+            key: "apis.gsc.search_type",
+            label: "Search Type",
+            options: [["web", "Web"], ["image", "Image"], ["video", "Video"], ["news", "News"], ["discover", "Discover"], ["google_news", "Google News"]],
+          },
+          { kind: "text", key: "apis.gsc.query_filter", label: "Query Filter", placeholder: "Only queries containing… (blank: all)" },
+          { kind: "bool", key: "apis.gsc.query_exclude", label: "Exclude queries containing the filter instead" },
+          { kind: "bool", key: "apis.gsc.ignore_trailing_slash", label: "Match trailing and non-trailing slash URLs" },
+          { kind: "bool", key: "apis.gsc.case_sensitive", label: "Case-sensitive URL matching" },
+          { kind: "bool", key: "apis.gsc.crawl_new_urls", label: "Crawl New URLs Discovered in Google Search Console", help: "Orphan pages: Search Console > Orphan URLs." },
+        ],
+      },
+      {
+        title: "URL Inspection",
+        fields: [
+          { kind: "bool", key: "apis.gsc.url_inspection", label: "Enable URL Inspection", help: "Index status, Google-selected canonical and rich results per page." },
+          { kind: "bool", key: "apis.gsc.inspection_indexable_only", label: "Ignore Non-Indexable URLs for URL Inspection" },
+          { kind: "number", key: "apis.gsc.inspection_daily_limit", label: "Daily limit per property", min: 1, max: 2000 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-ga4",
+    label: "Google Analytics 4",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "bool", key: "apis.ga4.enabled", label: "Connect: request GA4 data" },
+          { kind: "google-property", key: "apis.ga4.property", which: "ga4", label: "Property" },
+          { kind: "number", key: "apis.ga4.days", label: "Date Range", min: 1, max: 1000, unit: "days" },
+          { kind: "lines", key: "apis.ga4.metrics", label: "Metrics", help: "GA4 Data API metric names, one per line (e.g. sessions, engagedSessions, bounceRate, keyEvents)." },
+          { kind: "text", key: "apis.ga4.channel", label: "Channel", placeholder: "e.g. Organic Search (blank: all)" },
+          { kind: "bool", key: "apis.ga4.ignore_trailing_slash", label: "Match trailing and non-trailing slash URLs" },
+          { kind: "bool", key: "apis.ga4.case_sensitive", label: "Case-sensitive URL matching" },
+          { kind: "number", key: "apis.ga4.max_rows", label: "Limit Max Results", min: 1, max: 250000 },
+          { kind: "bool", key: "apis.ga4.crawl_new_urls", label: "Crawl New URLs Discovered in Google Analytics" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-ai",
+    label: "AI",
+    parent: "api",
+    groups: [
+      {
+        title: "Account Information",
+        fields: [
+          { kind: "api-key", secret: "openai_key", label: "OpenAI API Key" },
+          { kind: "api-key", secret: "anthropic_key", label: "Anthropic API Key" },
+          { kind: "api-key", secret: "gemini_key", label: "Gemini API Key" },
+          { kind: "api-key", secret: "compatible_key", label: "OpenAI-compatible API Key", help: "For Azure OpenAI, DeepSeek, Grok, OpenRouter, LM Studio and others." },
+          { kind: "text", key: "apis.ai.compatible_base_url", label: "OpenAI-compatible Base URL", placeholder: "https://openrouter.ai/api/v1" },
+          { kind: "text", key: "apis.ai.ollama_base_url", label: "Ollama URL" },
+          { kind: "text", key: "apis.ai.openai_base_url", label: "OpenAI Base URL" },
+        ],
+      },
+      { title: "Prompt Configuration", fields: [{ kind: "ai-prompts", key: "apis.ai.prompts", label: "Prompts" }] },
+      {
+        title: "Advanced",
+        fields: [
+          { kind: "number", key: "apis.ai.temperature", label: "Temperature", min: 0, max: 2, step: 0.1 },
+          { kind: "number", key: "apis.ai.max_output_tokens", label: "Max Output Tokens", min: 1 },
+          { kind: "number", key: "apis.ai.max_input_chars", label: "Max Page Characters Sent", min: 100 },
+          { kind: "number", key: "apis.ai.requests_per_minute", label: "Requests per Minute", min: 0, help: "0: no limit." },
+          { kind: "bool", key: "apis.ai.indexable_only", label: "Indexable pages only" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-ahrefs",
+    label: "Ahrefs",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "api-key", secret: "ahrefs_key", label: "API Key" },
+          { kind: "bool", key: "apis.ahrefs.enabled", label: "Connect: request Ahrefs metrics" },
+          { kind: "select", key: "apis.ahrefs.target", label: "Target", options: [["url", "Exact URL"], ["subdomain", "Subdomain"], ["root_domain", "Root Domain"]] },
+          { kind: "bool", key: "apis.ahrefs.organic", label: "Organic traffic and keywords" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-majestic",
+    label: "Majestic",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "api-key", secret: "majestic_key", label: "API Key" },
+          { kind: "bool", key: "apis.majestic.enabled", label: "Connect: request Majestic metrics" },
+          { kind: "select", key: "apis.majestic.target", label: "Target", options: [["url", "Exact URL"], ["subdomain", "Subdomain"], ["root_domain", "Root Domain"]] },
+          { kind: "bool", key: "apis.majestic.historic", label: "Historic index (otherwise Fresh)" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "api-moz",
+    label: "Moz",
+    parent: "api",
+    groups: [
+      {
+        fields: [
+          { kind: "api-key", secret: "moz_key", label: "Access ID and Secret Key", placeholder: "ACCESS_ID:SECRET_KEY" },
+          { kind: "bool", key: "apis.moz.enabled", label: "Connect: request Moz metrics" },
+          { kind: "select", key: "apis.moz.target", label: "Target", options: [["url", "Exact URL"], ["subdomain", "Subdomain"], ["root_domain", "Root Domain"]] },
         ],
       },
     ],

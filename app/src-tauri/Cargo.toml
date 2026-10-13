@@ -18,6 +18,9 @@ base64.workspace = true
 tokio.workspace = true
 toad-core.workspace = true
 toad-store.workspace = true
+toad-apis.workspace = true
+reqwest.workspace = true
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 url.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

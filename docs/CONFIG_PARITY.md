@@ -218,6 +218,46 @@ The scores below are as audited. Since then:
     - **Still open:**
       - Auto Compare (WP13).
       - The `--crawl-comparison <id> <id>` spelling. `toad compare` covers it.
+- **WP12, API Access and AI/Embeddings:** built. It is tested against mocks of every provider, not against the live services.
+  - **Design.** A new `toad-apis` crate. Settings live in `CrawlConfig.apis`, which holds no secrets.
+    - Keys and tokens are kept in the OS credential store (the `keyring` crate). The CLI reads them from `TOAD_*` environment variables.
+    - Requests are throttled per provider and retried on 429/5xx. Failures are recorded per URL in a "… Error" column and a Request Error filter.
+  - **Timing (deliberate deviation 3):**
+    - Search Console Search Analytics and GA4 are fetched before the crawl. "Crawl New URLs Discovered" adds their URLs as seeds; Orphan URLs means API data with no inlinks.
+    - Per-URL sources run when the crawl ends, before analysis.
+    - Request API Data (Crawl Analysis menu, `toad api <crawl>`) fills in a finished crawl and skips pages that already have each source's data.
+  - **PageSpeed Insights (v5):**
+    - Performance score, Lighthouse lab metrics, CrUX field metrics and a Core Web Vitals Assessment (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1; page-level data only).
+    - A score and savings for each Lighthouse 13 insight and each remaining classic audit, each with its own filter.
+    - Device, max outstanding requests, metric groups and indexable-only options.
+  - **Google:**
+    - OAuth loopback sign-in with PKCE, using the user's own "Desktop app" OAuth client (SF ships its own, which Toad can't). CLI: `toad google-auth`.
+    - Search Console: Search Analytics (date range, device, country, search type, query contains/excludes, trailing-slash/case matching, crawl new URLs).
+    - URL Inspection: verdict, coverage, canonicals and rich results, with a daily limit per property and indexable-only.
+    - GA4 Data API: configurable metrics, channel filter, row limit, host+path matched with the crawl's scheme, crawl new URLs.
+    - Property pickers list the account's properties. Tabs: Search Console (11 filters) and Analytics (6).
+  - **AI:**
+    - Providers: OpenAI, OpenAI-compatible, Anthropic, Gemini and Ollama.
+    - Prompts have a name, provider, model, prompt text (with `{url}`) and content (page text, content area, HTML or URL only), plus a Test button.
+    - Settings: temperature, max output tokens, max characters sent, requests per minute and indexable-only. Results go to the AI tab, one column per prompt.
+  - **Embeddings (Content > Embeddings):**
+    - Provider, model, content and a URL filter regex.
+    - Semantic Similarity (closest page, score and count above the threshold) and Low Relevance (cosine to the site centroid), each with its own threshold and indexable-only option, shown as Content filters and columns.
+  - **Link metrics:**
+    - Ahrefs v3: Domain Rating (cached per host), backlinks, referring domains, and organic traffic and keywords.
+    - Majestic: GetIndexItemInfo, 100 a request, fresh or historic.
+    - Moz v2: url_metrics, 50 a request.
+    - Target can be Exact URL, Subdomain or Root Domain. Root domain is the host without `www.`, as there is no public-suffix list. All shown in the Link Metrics tab.
+  - **CLI:** `--use-pagespeed`, `--use-google-search-console <property>`, `--url-inspection`, `--use-google-analytics-4 <id>`, `--crawl-api-urls`, `--use-ai`, `--use-embeddings`, `--use-ahrefs`, `--use-majestic`, `--use-mozscape`.
+  - **Not done or unverified:**
+    - Field names in the Ahrefs, Moz and Majestic responses follow their public docs. They are [unverified] against live accounts.
+    - SF's per-API extra metric pickers (for example the Ahrefs and Majestic metric lists) are reduced to the core metrics.
+    - Mode > APIs.
+    - Right-click "request for this URL".
+    - The re-request prompt when GA4/GSC settings change.
+    - Local Lighthouse.
+    - AI prompt library and per-prompt advanced overrides.
+    - Embeddings are compared all-pairs: O(n²), fine for tens of thousands of pages, not millions.
 
 ## How to read this
 

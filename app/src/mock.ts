@@ -190,6 +190,18 @@ export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>)
         last_mode: "spider",
         network: { proxy: { enabled: false, kind: "http", host: "", port: 8080, username: "", password: "", no_proxy: [] }, trusted_certificates: [] },
       } as T;
+    case "api_secret_status":
+      return { psi_key: true, google_client_id: true, google_client_secret: true, google_refresh_token: false, openai_key: false } as T;
+    case "set_api_secret":
+    case "google_connect":
+    case "google_disconnect":
+      return undefined as T;
+    case "google_properties":
+      return { gsc: ["sc-domain:example.com", "https://www.example.com/"], ga4: [["123456789", "Example › www.example.com"]], errors: [] } as T;
+    case "test_ai_prompt":
+      return "This page is about toads." as T;
+    case "request_api_data":
+      return [] as T;
     case "compare_screenshots":
       return [null, null] as T;
     case "get_segments_overview":
@@ -344,6 +356,28 @@ const DEFAULT_CONFIG = {
   spelling: { spell_check: false, grammar_check: false, language_mode: "auto" as const, language: "en-US", grammar_server: "", disabled_grammar_rules: [] as string[], ignore_words: [] as string[] },
   custom_search: [], custom_extraction: [], custom_javascript: [],
   crawl_analysis: { auto_analyse: true, link_score: true, content: true },
+  apis: {
+    psi: { enabled: false, device: "mobile" as const, max_outstanding: 4, summary: true, crux: true, lighthouse_metrics: true, opportunities: true, diagnostics: true, indexable_only: false },
+    gsc: {
+      enabled: false, property: "", days: 90, device: "all" as const, country: "", search_type: "web" as const, query_filter: "", query_exclude: false,
+      ignore_trailing_slash: true, case_sensitive: true, crawl_new_urls: false, url_inspection: false, inspection_indexable_only: true, inspection_daily_limit: 2000,
+    },
+    ga4: {
+      enabled: false, property: "", days: 30, metrics: ["sessions", "engagedSessions", "engagementRate", "screenPageViews", "averageSessionDuration", "bounceRate", "keyEvents"],
+      channel: "", ignore_trailing_slash: true, case_sensitive: true, max_rows: 100000, crawl_new_urls: false,
+    },
+    ai: {
+      prompts: [] as import("./config/schema").AiPrompt[], openai_base_url: "https://api.openai.com/v1", compatible_base_url: "", ollama_base_url: "http://localhost:11434",
+      temperature: 0.2, max_output_tokens: 500, max_input_chars: 20000, requests_per_minute: 60, indexable_only: true,
+    },
+    embeddings: {
+      enabled: false, provider: "open_ai" as const, model: "text-embedding-3-small", content: "content_area" as const, include_regex: "", semantic_similarity: true,
+      similarity_threshold: 0.95, similarity_indexable_only: true, low_relevance: true, low_relevance_threshold: 0.4, low_relevance_indexable_only: true,
+    },
+    ahrefs: { enabled: false, target: "url" as const, organic: false },
+    majestic: { enabled: false, target: "url" as const, historic: false },
+    moz: { enabled: false, target: "url" as const },
+  },
   segments: [
     { name: "Blog", color: "#2f9e44", match_all: true, rules: [{ field: "Address", op: "contains" as const, value: "/blog/" }] },
     { name: "Shop", color: "#1971c2", match_all: true, rules: [{ field: "Address", op: "contains" as const, value: "/shop/" }] },

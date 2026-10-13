@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use toad_core::config::CrawlConfig;
 use toad_store::api::{self as store_api, ApiValue};
 use toad_store::Store;
+pub use reqwest;
 pub use throttle::Throttle;
 
 /// Access to the crawl store: a plain `Mutex<Store>` (CLI, tests) or the

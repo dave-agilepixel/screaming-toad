@@ -20,7 +20,7 @@ def interface(name):
     return set(re.findall(r"^\s+(\w+):", body, re.M))
 
 
-for name, obj in [("CrawlConfig", cfg), ("Preferences", cfg["preferences"]), ("ContentArea", cfg["content_area"]), ("Extraction", cfg["extraction"]), ("SpellingConfig", cfg["spelling"]), ("StructuredDataConfig", cfg["structured_data"]), ("RenderingConfig", cfg["rendering"]), ("CrawlAnalysisConfig", cfg["crawl_analysis"])]:
+for name, obj in [("CrawlConfig", cfg), ("Preferences", cfg["preferences"]), ("ContentArea", cfg["content_area"]), ("Extraction", cfg["extraction"]), ("SpellingConfig", cfg["spelling"]), ("StructuredDataConfig", cfg["structured_data"]), ("RenderingConfig", cfg["rendering"]), ("CrawlAnalysisConfig", cfg["crawl_analysis"]), ("ApiConfig", cfg["apis"])] + [(n, cfg["apis"][k]) for n, k in [("PsiConfig", "psi"), ("GscConfig", "gsc"), ("Ga4Config", "ga4"), ("AiConfig", "ai"), ("EmbeddingsConfig", "embeddings"), ("AhrefsConfig", "ahrefs"), ("MajesticConfig", "majestic"), ("MozConfig", "moz")]]:
     ts_keys, rust_keys = interface(name), set(obj)
     if rust_keys - ts_keys:
         problems.append(f"{name}: fields missing from the TypeScript type: {sorted(rust_keys - ts_keys)}")

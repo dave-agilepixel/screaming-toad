@@ -404,3 +404,10 @@ button.danger:not(:disabled) { color: var(--issue); border-color: var(--issue); 
   margin: 0 0 4px;
   font-size: 12px;
 }
+.pill.good-pill {
+  background: var(--good);
+  color: #fff;
+}
+.pill.muted-pill {
+  background: var(--muted);
+}

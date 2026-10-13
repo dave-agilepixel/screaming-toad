@@ -98,6 +98,18 @@ enum Command {
     },
     /// Re-run crawl analysis on a saved crawl.
     Analyse { crawl: PathBuf },
+    /// Request API Data for a saved crawl, with the API Access settings it
+    /// was crawled with (or those in --config). Keys come from TOAD_* variables.
+    Api {
+        crawl: PathBuf,
+        /// Use this profile's API Access settings instead.
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
+    /// Sign in with Google (Search Console, GA4) and print the refresh token
+    /// to set as TOAD_GOOGLE_REFRESH_TOKEN. Needs TOAD_GOOGLE_CLIENT_ID and
+    /// TOAD_GOOGLE_CLIENT_SECRET (a "Desktop app" OAuth client).
+    GoogleAuth,
     /// Write the default configuration to a file, to edit and load with --config.
     Config { out: PathBuf },
     /// Generate an XML sitemap from a saved crawl.
@@ -219,12 +231,86 @@ impl NetworkArgs {
     }
 }
 
+/// API Access for a crawl. Keys and tokens come from environment
+/// variables: TOAD_PSI_KEY, TOAD_GOOGLE_CLIENT_ID, TOAD_GOOGLE_CLIENT_SECRET,
+/// TOAD_GOOGLE_REFRESH_TOKEN, TOAD_OPENAI_KEY, TOAD_ANTHROPIC_KEY,
+/// TOAD_GEMINI_KEY, TOAD_COMPATIBLE_KEY, TOAD_AHREFS_KEY, TOAD_MAJESTIC_KEY,
+/// TOAD_MOZ_KEY (ACCESS_ID:SECRET). Other settings come from --config.
+#[derive(Args, Clone)]
+struct ApiArgs {
+    /// PageSpeed Insights for every crawled page.
+    #[arg(long)]
+    use_pagespeed: bool,
+    /// Search Console Search Analytics for this property (e.g. sc-domain:example.com).
+    #[arg(long, value_name = "PROPERTY")]
+    use_google_search_console: Option<String>,
+    /// Search Console URL Inspection too.
+    #[arg(long)]
+    url_inspection: bool,
+    /// GA4 data for this property ID.
+    #[arg(long, value_name = "PROPERTY_ID")]
+    use_google_analytics_4: Option<String>,
+    /// Crawl URLs only Search Console / GA4 know about (orphans).
+    #[arg(long)]
+    crawl_api_urls: bool,
+    /// Run the AI prompts in the --config profile.
+    #[arg(long)]
+    use_ai: bool,
+    /// Content > Embeddings (settings from --config).
+    #[arg(long)]
+    use_embeddings: bool,
+    #[arg(long)]
+    use_ahrefs: bool,
+    #[arg(long)]
+    use_majestic: bool,
+    #[arg(long)]
+    use_mozscape: bool,
+}
+
+impl ApiArgs {
+    fn apply(&self, cfg: &mut CrawlConfig) {
+        let a = &mut cfg.apis;
+        a.psi.enabled |= self.use_pagespeed;
+        if let Some(p) = &self.use_google_search_console {
+            a.gsc.enabled = true;
+            a.gsc.property = p.clone();
+        }
+        a.gsc.url_inspection |= self.url_inspection;
+        if let Some(p) = &self.use_google_analytics_4 {
+            a.ga4.enabled = true;
+            a.ga4.property = p.clone();
+        }
+        if self.crawl_api_urls {
+            a.gsc.crawl_new_urls = true;
+            a.ga4.crawl_new_urls = true;
+        }
+        if !self.use_ai {
+            // Prompts in a profile only run when asked for on the command line.
+            for p in &mut a.ai.prompts {
+                p.enabled = false;
+            }
+        }
+        a.embeddings.enabled |= self.use_embeddings;
+        a.ahrefs.enabled |= self.use_ahrefs;
+        a.majestic.enabled |= self.use_majestic;
+        a.moz.enabled |= self.use_mozscape;
+    }
+}
+
+fn print_api_errors(errors: &[String]) {
+    for e in errors {
+        eprintln!("API: {e}");
+    }
+}
+
 #[derive(Args)]
 struct CrawlArgs {
     /// Start URL (Spider mode).
     url: Option<String>,
     #[command(flatten)]
     net: NetworkArgs,
+    #[command(flatten)]
+    api: ApiArgs,
     /// File of URLs, one per line (List mode).
     #[arg(long, conflicts_with = "url")]
     list: Option<PathBuf>,
@@ -382,6 +468,42 @@ async fn main() -> anyhow::Result<()> {
             let mut store = Store::open(&crawl)?;
             store.analyse()?;
             println!("Crawl analysis complete.");
+            Ok(())
+        }
+        Command::Api { crawl, config } => {
+            let mut store = Store::open(&crawl)?;
+            let mut cfg = store.config().clone();
+            if let Some(p) = config {
+                cfg.apis = CrawlConfig::load(&p)?.apis;
+                store.set_api_config(cfg.apis.clone())?;
+            }
+            if !cfg.apis.any_enabled() {
+                bail!("no API is switched on in this crawl's configuration; pass --config with API Access settings");
+            }
+            let start = store.meta("start_url")?.and_then(|u| Url::parse(&u).ok());
+            let mut runner = toad_apis::ApiRunner::new(cfg, toad_apis::Secrets::from_env()).with_progress(std::sync::Arc::new(|p: toad_apis::ApiProgress| {
+                eprint!("\r{} {}/{}   ", p.source, p.done, p.total);
+            }));
+            if let Some(s) = start {
+                runner = runner.with_site(s);
+            }
+            let m = std::sync::Mutex::new(store);
+            let errors = runner.request_all(&m).await;
+            eprintln!();
+            print_api_errors(&errors);
+            let mut store = m.into_inner().map_err(|_| anyhow::anyhow!("store lock"))?;
+            store.analyse()?;
+            println!("API data saved to {}.", crawl.display());
+            Ok(())
+        }
+        Command::GoogleAuth => {
+            let id = std::env::var("TOAD_GOOGLE_CLIENT_ID").map_err(|_| anyhow::anyhow!("set TOAD_GOOGLE_CLIENT_ID"))?;
+            let secret = std::env::var("TOAD_GOOGLE_CLIENT_SECRET").map_err(|_| anyhow::anyhow!("set TOAD_GOOGLE_CLIENT_SECRET"))?;
+            let token = toad_apis::google::authorize(&reqwest_client(), &toad_apis::Endpoints::default(), &id, &secret, |url| {
+                println!("Open this page to sign in with Google:\n\n{url}\n");
+            })
+            .await?;
+            println!("Signed in. Set this before crawling:\n\nTOAD_GOOGLE_REFRESH_TOKEN={token}");
             Ok(())
         }
         Command::Config { out } => {
@@ -546,8 +668,24 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     custom_rules(&args, &mut cfg)?;
     cfg.include.extend(args.include.iter().cloned());
     cfg.exclude.extend(args.exclude.iter().cloned());
+    args.api.apply(&mut cfg);
 
     let start = seeds[0].clone();
+    let runner = cfg.apis.any_enabled().then(|| toad_apis::ApiRunner::new(cfg.clone(), toad_apis::Secrets::from_env()).with_site(start.clone()));
+    // Search Console and GA4 before the crawl, so their URLs can be crawled too.
+    let mut seeds = seeds;
+    let bulk = match &runner {
+        Some(r) if cfg.apis.gsc.enabled || cfg.apis.ga4.enabled => {
+            let b = r.fetch_bulk().await;
+            print_api_errors(&b.errors);
+            if !b.new_urls.is_empty() {
+                println!("{} URLs from Search Console / GA4 added to the crawl.", b.new_urls.len());
+            }
+            seeds.extend(b.new_urls.iter().filter(|u| !seeds.contains(u)).cloned().collect::<Vec<_>>());
+            Some(b)
+        }
+        _ => None,
+    };
     let mut store = Store::create(&args.out, &start, &cfg)?;
     store.mark_started(start.host_str().unwrap_or("crawl"), if list_inputs.is_some() { "list" } else { "spider" })?;
     if let Some(inputs) = &list_inputs {
@@ -558,6 +696,16 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<()> {
     let handle = tokio::spawn(crawler.run(seeds, tx, CrawlControl::default()));
     println!("Crawling {start} → {}", args.out.display());
     drive(&mut store, rx, handle).await?;
+    if let Some(r) = &runner {
+        println!("Requesting API data…");
+        let m = std::sync::Mutex::new(store);
+        if let Some(b) = &bulk {
+            r.store_bulk(&m, b)?;
+        }
+        print_api_errors(&r.fetch_per_url(&m).await);
+        store = m.into_inner().map_err(|_| anyhow::anyhow!("store lock"))?;
+        store.analyse()?;
+    }
 
     print_issues(&store, 15)?;
 
@@ -729,6 +877,10 @@ fn print_compare_issues(cmp: &Comparison, limit: usize) -> anyhow::Result<()> {
 
 /// Write a crawl's events to the store, show progress, then record how it
 /// ended and run crawl analysis.
+fn reqwest_client() -> toad_apis::reqwest::Client {
+    toad_apis::reqwest::Client::new()
+}
+
 async fn drive(
     store: &mut Store,
     mut rx: tokio::sync::mpsc::Receiver<CrawlEvent>,

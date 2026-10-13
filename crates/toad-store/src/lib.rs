@@ -95,6 +95,13 @@ impl Store {
         self.set_meta("config", &serde_json::to_string(&self.cfg)?)
     }
 
+    /// API Access settings changed (Request API Data on a finished crawl):
+    /// the API tabs' columns follow them.
+    pub fn set_api_config(&mut self, apis: toad_core::api_config::ApiConfig) -> anyhow::Result<()> {
+        self.cfg.apis = apis;
+        self.set_meta("config", &serde_json::to_string(&self.cfg)?)
+    }
+
     /// The right-hand segment filter (None: all URLs).
     pub fn set_segment_filter(&mut self, segment: Option<String>) {
         self.segment_filter = segment.filter(|s| !s.is_empty());

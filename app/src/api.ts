@@ -180,6 +180,8 @@ export const events = {
   onAnalysing: (cb: () => void): Promise<UnlistenFn> => listen("crawl-analysing", () => cb()),
   onFinished: (cb: () => void): Promise<UnlistenFn> => listen("crawl-finished", () => cb()),
   onAuthRequired: (cb: (r: AuthRequired) => void): Promise<UnlistenFn> => listen<AuthRequired>("auth-required", (e) => cb(e.payload)),
+  onApiProgress: (cb: (p: ApiProgress) => void): Promise<UnlistenFn> => listen<ApiProgress>("api-progress", (e) => cb(e.payload)),
+  onApiMessage: (cb: (m: string) => void): Promise<UnlistenFn> => listen<string>("api-message", (e) => cb(e.payload)),
 };
 
 // ---------------------------------------------------------------- Authentication and network
@@ -234,6 +236,28 @@ export interface AuthRequired {
   realm: string;
   scheme: string;
 }
+
+export interface GoogleProperties {
+  gsc: string[];
+  ga4: [string, string][];
+  errors: string[];
+}
+
+export interface ApiProgress {
+  source: string;
+  done: number;
+  total: number;
+}
+
+export const apiAccess = {
+  secretStatus: () => invoke<Record<string, boolean>>("api_secret_status"),
+  setSecret: (key: string, value: string) => invoke<void>("set_api_secret", { key, value }),
+  googleConnect: () => invoke<void>("google_connect"),
+  googleDisconnect: () => invoke<void>("google_disconnect"),
+  googleProperties: () => invoke<GoogleProperties>("google_properties"),
+  testAiPrompt: (prompt: import("./config/schema").AiPrompt, text: string) => invoke<string>("test_ai_prompt", { prompt, text }),
+  requestApiData: () => invoke<string[]>("request_api_data"),
+};
 
 export const authApi = {
   get: () => invoke<AuthConfig>("get_auth_config"),

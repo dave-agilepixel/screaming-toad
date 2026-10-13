@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod apis;
 mod auth;
 mod compare;
 mod profiles;
@@ -100,6 +101,20 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
     let path = dir.join(format!("{}-{stamp}.toad", host.replace('.', "_")));
 
     let start = seeds[0].clone();
+    let api_runner = cfg.apis.any_enabled().then(|| apis::runner(&app, &cfg, Some(start.clone())));
+    // Search Console and GA4 first, so URLs only they know about are crawled too.
+    let mut bulk = None;
+    let mut seeds = seeds;
+    if let Some(r) = &api_runner {
+        if cfg.apis.gsc.enabled || cfg.apis.ga4.enabled {
+            let b = r.fetch_bulk().await;
+            for e in &b.errors {
+                app.emit("api-message", e).ok();
+            }
+            seeds.extend(b.new_urls.iter().filter(|u| !seeds.contains(u)).cloned().collect::<Vec<_>>());
+            bulk = Some(b);
+        }
+    }
     let store = Store::create(&path, &start, &cfg).map_err(err)?;
     let mode = if list_inputs.is_some() { "list" } else { "spider" };
     store.mark_started(&host, mode).map_err(err)?;
@@ -108,6 +123,9 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
     }
     *state.store.lock().map_err(err)? = Some(store);
     *state.crawl_path.lock().map_err(err)? = Some(path.clone());
+    if let (Some(r), Some(b)) = (&api_runner, &bulk) {
+        r.store_bulk(state.store.as_ref(), b).map_err(err)?;
+    }
 
     let network = auth::crawl_network(&app, &state)?;
     let crawler = Crawler::new(cfg, &start).and_then(|c| c.with_network(network)).map_err(err)?;
@@ -115,7 +133,7 @@ async fn start_crawl(app: AppHandle, state: State<'_, AppState>, req: StartCrawl
     *state.control.lock().map_err(err)? = Some(control.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
     let crawl = tauri::async_runtime::spawn(crawler.run(seeds, tx, control));
-    pump(app, state.store.clone(), rx, crawl);
+    pump(app, state.store.clone(), rx, crawl, api_runner);
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -144,17 +162,25 @@ async fn continue_crawl(app: AppHandle, state: State<'_, AppState>, path: String
     *state.control.lock().map_err(err)? = Some(control.clone());
     let (tx, rx) = tokio::sync::mpsc::channel(1024);
     let crawl = tauri::async_runtime::spawn(crawler.resume(crawled, pending, tx, control));
-    pump(app, state.store.clone(), rx, crawl);
+    let api_runner = cfg_apis_runner(&app, &state, &start)?;
+    pump(app, state.store.clone(), rx, crawl, api_runner);
     Ok(())
 }
 
 /// Write a running crawl's events to the store in batches, emit progress to
 /// the UI, then record how it ended, run crawl analysis and apply retention.
+/// The API runner for a resumed crawl (its own configuration's API Access).
+fn cfg_apis_runner(app: &AppHandle, state: &AppState, start: &Url) -> CmdResult<Option<Arc<toad_apis::ApiRunner>>> {
+    let cfg = state.config.lock().map_err(err)?.clone();
+    Ok(cfg.apis.any_enabled().then(|| apis::runner(app, &cfg, Some(start.clone()))))
+}
+
 fn pump(
     app: AppHandle,
     store_ref: Arc<Mutex<Option<Store>>>,
     mut rx: tokio::sync::mpsc::Receiver<CrawlEvent>,
     crawl: tauri::async_runtime::JoinHandle<anyhow::Result<Progress>>,
+    api_runner: Option<Arc<toad_apis::ApiRunner>>,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut batch: Vec<PageRecord> = Vec::with_capacity(100);
@@ -205,6 +231,12 @@ fn pump(
         flush(&mut batch);
         let _ = crawl.await;
         app.emit("crawl-analysing", ()).ok();
+        // Per-URL API data (PSI, URL Inspection, AI, embeddings, link metrics).
+        if let Some(r) = api_runner {
+            for e in r.fetch_per_url(store_ref.as_ref()).await {
+                app.emit("api-message", e).ok();
+            }
+        }
         if let Ok(mut guard) = store_ref.lock() {
             if let Some(store) = guard.as_mut() {
                 if let Err(e) = store.mark_finished(queued_at_end) {
@@ -659,6 +691,13 @@ fn main() {
             continue_crawl,
             settings::get_app_settings,
             auth::get_auth_config,
+            apis::api_secret_status,
+            apis::set_api_secret,
+            apis::google_connect,
+            apis::google_disconnect,
+            apis::google_properties,
+            apis::test_ai_prompt,
+            apis::request_api_data,
             auth::set_auth_config,
             auth::answer_auth,
             auth::export_auth,

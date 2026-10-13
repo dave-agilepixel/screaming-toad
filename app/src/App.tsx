@@ -28,6 +28,7 @@ import { ListModeDialog } from "./components/ListModeDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { AuthPromptDialog } from "./components/AuthenticationPanel";
 import type { AuthRequired } from "./api";
+import { apiAccess } from "./api";
 
 type Status = "idle" | "crawling" | "paused" | "analysing" | "done";
 type Mode = "spider" | "list" | "compare";
@@ -42,6 +43,16 @@ function crawlLabel(c: CrawlInfo): string {
   const site = c.start_url ? c.start_url.replace(/^https?:\/\//, "").replace(/\/$/, "") : c.name;
   return `${site} / ${when} (${c.urls.toLocaleString()} URLs)`;
 }
+
+const API_NAMES: Record<string, string> = {
+  psi: "PageSpeed",
+  gsc_inspect: "URL Inspection",
+  ai: "AI",
+  embed: "Embeddings",
+  ahrefs: "Ahrefs",
+  majestic: "Majestic",
+  moz: "Moz",
+};
 
 export default function App() {
   const [mode, setMode] = useState<Mode>("spider");
@@ -59,6 +70,8 @@ export default function App() {
   const [configNode, setConfigNode] = useState<string | undefined>(undefined);
   // Crawl Analysis hasn't run on the open crawl (Auto-analyse off, or resumed).
   const [needsAnalysis, setNeedsAnalysis] = useState(false);
+  // API Access progress while requesting API data ("PageSpeed 12/40").
+  const [apiStatus, setApiStatus] = useState<string | null>(null);
   // Configuration > Segments (names and colours) and the global segment filter.
   const [segments, setSegments] = useState<{ name: string; color: string }[]>([]);
   const [segment, setSegment] = useState<string>("");
@@ -119,6 +132,8 @@ export default function App() {
       }),
       events.onAnalysing(() => setStatus("analysing")),
       events.onAuthRequired((r) => setAuthPrompts((q) => [...q, r])),
+      events.onApiProgress((p) => setApiStatus(p.done >= p.total ? null : `${API_NAMES[p.source] ?? p.source} ${p.done}/${p.total}`)),
+      events.onApiMessage((m) => setMessage(m)),
       events.onFinished(() => {
         setStatus("done");
         refresh();
@@ -560,6 +575,11 @@ export default function App() {
               onChange={(e) => {
                 if (e.target.value === "start") {
                   api.runCrawlAnalysis().catch((err) => setMessage(String(err)));
+                } else if (e.target.value === "api") {
+                  apiAccess
+                    .requestApiData()
+                    .then((errs) => setMessage(errs.length ? errs.join("\n") : "API data requested."))
+                    .catch((err) => setMessage(String(err)));
                 } else if (e.target.value === "configure") {
                   setConfigNode("crawl-analysis");
                   setShowConfig(true);
@@ -572,6 +592,9 @@ export default function App() {
                 Start
               </option>
               <option value="configure">Configure…</option>
+              <option value="api" disabled={status !== "done"}>
+                Request API Data
+              </option>
             </select>
             <div className="progress" title={progress ? `${done} crawled, ${progress.queued} queued` : ""}>
               <div className="bar" style={{ width: `${status === "done" ? 100 : pct}%` }} />
@@ -579,7 +602,7 @@ export default function App() {
                 {status === "idle" && "Ready"}
                 {status === "crawling" && `Crawling: ${done.toLocaleString()} URLs`}
                 {status === "paused" && `Paused at ${done.toLocaleString()} URLs`}
-                {status === "analysing" && "Crawl analysis…"}
+                {status === "analysing" && (apiStatus ? `API data: ${apiStatus}` : "Crawl analysis…")}
                 {status === "done" && `Complete: ${done.toLocaleString()} URLs${needsAnalysis ? " · Crawl Analysis Required" : ""}`}
               </span>
             </div>

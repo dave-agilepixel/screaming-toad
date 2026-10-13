@@ -62,6 +62,7 @@ What has been verified so far:
   - Robots matching uses the configured user-agent token, falling back to `*`.
   - The default user-agent is branded "Screaming Toad SEO Spider" (robots token "Screaming Toad").
   - Crawl Analysis > Configure > Auto-analyse at End of Crawl is on by default (Screaming Frog has it off). Link counts and redirect chains are always worked out at the end of a crawl.
+  - API data: Search Console and GA4 are fetched before the crawl (so their orphan URLs can be crawled); per-URL APIs (PSI, URL Inspection, AI, embeddings, link metrics) run when the crawl ends, not while it runs. Google sign-in uses the user's own OAuth client. Keys live in the OS credential store, never in profiles.
 
 ## What to build next (once it's green)
 In this order (spec §9–10):
