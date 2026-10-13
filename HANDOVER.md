@@ -43,7 +43,7 @@ What has been verified so far:
    - **Version drift:** dependency versions in the root `Cargo.toml` (scraper 0.20, rusqlite 0.32, reqwest 0.12). Bump them if newer ones are required.
 4. **Run the tests.** Run `cargo test --workspace --exclude screaming-toad`. The end-to-end test (`crates/toad-store/tests/end_to_end.rs`) serves a small site with known problems and asserts every filter and report. **Fix the code, not the expectations**, unless an expectation is clearly wrong against the spec.
 5. **Run the desktop app.** Run `cd app && npm run tauri dev`, then crawl a real site and compare a few counts against expectations.
-6. **Commit after each green step.** A GitHub Actions workflow is ready in `.github/workflows/ci.yml` if the repo ends up on GitHub.
+6. **Commit after each green step.** GitHub Actions tests and builds installers on every push; see "CI (GitHub Actions)" below.
 
 ## How the code is organised
 - **Filters are SQL.** Every tab and filter is a predicate in `crates/toad-store/src/tabs.rs`. The same definition drives the grid, the Overview, the Issues panel and the exports. A new filter is usually one `f(...)` line.
@@ -82,7 +82,46 @@ In this order (spec §9–10):
 
 `cd app && npm run tauri build` (or `-- --bundles nsis` for just the Windows installer). The build first runs `npm run sidecar`, which compiles the `toad` CLI in release mode and copies it to `app/src-tauri/binaries/toad-<target-triple>.exe`. Tauri bundles it next to the app executable as `toad.exe`; File > Scheduling registers tasks that run it. `tauri dev` does the same with a debug build (`npm run sidecar:dev`). Output: `target/release/bundle/`.
 
-GitHub Actions (`.github/workflows/ci.yml`, job "Installers") builds both installers on every push to the private repo: the Windows NSIS `.exe` and `.msi`, and a universal macOS `.dmg` for Apple Silicon and Intel (`--target universal-apple-darwin`; the sidecar script builds both architectures and joins them with `lipo`). Download them from the run's Artifacts. The Mac build is unsigned, so the first launch needs right-click > Open; signing and notarising need an Apple Developer ID.
+On a PC where Smart App Control blocks `rustc.exe` (os error 4551), nothing compiles locally; use CI below.
+
+## CI (GitHub Actions)
+
+The code lives in a **private** repo, [wrenda-admin/screaming-toad](https://github.com/wrenda-admin/screaming-toad) (remote `origin`, branch `master`). `.github/workflows/ci.yml` runs on every push, on pull requests and on demand (Actions > CI > Run workflow, or `gh workflow run CI`). It has two jobs.
+
+**Test**: windows-latest, ubuntu-latest and macos-latest.
+1. Build the UI (`npm ci && npm run build`); Tauri needs `app/dist`.
+2. Build the debug CLI sidecar (`npm run sidecar:dev`). Tauri's build script fails with "resource path `binaries/toad-<triple>` doesn't exist" without it, even for `cargo check`.
+3. `cargo check --workspace --all-targets`, then `cargo test --workspace --exclude screaming-toad`.
+4. Check the UI config schema matches `CrawlConfig` (`scripts/check_config_schema.py`).
+
+On Linux the job first deletes preinstalled SDKs (.NET, Android, GHC, CodeQL) and the job sets `CARGO_PROFILE_DEV_DEBUG`/`CARGO_PROFILE_TEST_DEBUG` to `line-tables-only`. Full debug info for candle, chromiumoxide and Tauri otherwise fills the runner's disk ("No space left on device", with no test output).
+
+**Installers**: every push except pull requests. Runs alongside the tests rather than after them, so check the Test jobs are green before shipping a build.
+
+| Matrix entry | Runner | Target | Output |
+|---|---|---|---|
+| windows | windows-latest | `x86_64-pc-windows-msvc` | NSIS `-setup.exe` and `.msi` |
+| macos-universal | macos-latest | `universal-apple-darwin` | `.dmg` for Apple Silicon and Intel |
+
+Each runs `npm run tauri -- build --target <target> --bundles <list>` and uploads the files as the artifact `screaming-toad-<name>`, from `target/<target>/release/bundle/`. For the universal Mac build, `scripts/sidecar.mjs` compiles the CLI for `aarch64-apple-darwin` and `x86_64-apple-darwin`, keeps a copy of each (Tauri compiles the app once per architecture and each pass needs its own sidecar), and joins them with `lipo` into `toad-universal-apple-darwin`.
+
+**Getting the installers:** open the run in Actions and download from Artifacts (kept 90 days), or:
+```
+gh run list -L 3
+gh run download <run-id> -n screaming-toad-windows -D installers/windows
+gh run download <run-id> -n screaming-toad-macos-universal -D installers/mac
+```
+`installers/` is git-ignored.
+
+**Typical times:** tests 8–15 minutes; Windows installer about 25 minutes; the Mac installer 25–40 minutes (two architectures, and macOS runners can queue).
+
+**Not set up:**
+- **Code signing.** The Mac build is unsigned: first launch needs right-click > Open. Signing and notarising need an Apple Developer ID ($99/year) and its certificate as repo secrets (`APPLE_CERTIFICATE`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`). The Windows installer is unsigned too, so SmartScreen warns on first run.
+- **Releases.** Builds are only artifacts; nothing is published as a GitHub Release.
+- **Version numbers.** Every build is 0.1.0 (from `tauri.conf.json`); bump it there and in the Cargo manifests before a release.
+- **Linux installers.** The tests run on Linux but no `.deb`/`.AppImage` is built.
+
+Runner notices to watch: actions/checkout@v4 and setup-node@v4 run on deprecated Node 20 (bump to v5 when available), and `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026.
 
 ## Look and feel
 
