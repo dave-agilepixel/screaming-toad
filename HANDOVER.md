@@ -117,9 +117,21 @@ gh run download <run-id> -n screaming-toad-macos-universal -D installers/mac
 
 **Typical times:** tests 8–15 minutes; Windows installer about 25 minutes; the Mac installer 25–40 minutes (two architectures, and macOS runners can queue).
 
+**Windows code signing (Azure Artifact Signing).** Wired into the Installers job but switched off until the repo has these settings (Settings > Secrets and variables > Actions):
+
+| Name | Kind | Value |
+|---|---|---|
+| `AZURE_TENANT_ID` | Secret | Directory (tenant) ID of the App Registration |
+| `AZURE_CLIENT_ID` | Secret | Application (client) ID of the App Registration |
+| `AZURE_CLIENT_SECRET` | Secret | A client secret of the App Registration (note its expiry date) |
+| `ARTIFACT_SIGNING_ENDPOINT` | Variable | The account's endpoint URI, e.g. `https://weu.codesigning.azure.net` |
+| `ARTIFACT_SIGNING_ACCOUNT` | Variable | The Artifact Signing account name |
+| `ARTIFACT_SIGNING_PROFILE` | Variable | The Public Trust certificate profile name |
+
+When all six are present, CI installs `artifact-signing-cli`, writes `app/src-tauri/tauri.sign.conf.json` with a `bundle.windows.signCommand`, builds with `--config` on top of `tauri.conf.json`, and then fails the job unless the installers and `screaming-toad.exe` have valid Authenticode signatures. Without them it logs a notice and builds unsigned. The App Registration needs the **Artifact Signing Certificate Profile Signer** role on the certificate profile. Public Trust certificates are only issued to organisations in the USA, Canada, EU and UK, and to individuals in the USA and Canada; the certificate carries the validated legal name. Signed builds are what Smart App Control and SmartScreen need to let the installer run.
+
 **Not set up:**
-- **Code signing.** The Mac build is unsigned: first launch needs right-click > Open. Signing and notarising need an Apple Developer ID ($99/year) and its certificate as repo secrets (`APPLE_CERTIFICATE`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`). The Windows installer is unsigned too, so SmartScreen warns on first run.
-- **Releases.** Builds are only artifacts; nothing is published as a GitHub Release.
+- **macOS code signing.** The Mac build is unsigned: first launch needs right-click > Open. Signing and notarising need an Apple Developer ID ($99/year) and its certificate as repo secrets (`APPLE_CERTIFICATE`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`).- **Releases.** Builds are only artifacts; nothing is published as a GitHub Release.
 - **Version numbers.** Every build is 0.1.0 (from `tauri.conf.json`); bump it there and in the Cargo manifests before a release.
 - **Linux installers.** The tests run on Linux but no `.deb`/`.AppImage` is built.
 

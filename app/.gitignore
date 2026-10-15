@@ -1,3 +1,5 @@
 
 # Built by scripts/sidecar.mjs
 src-tauri/binaries/
+# Written by CI when Windows signing is configured
+src-tauri/tauri.sign.conf.json

@@ -85,11 +85,55 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: app/package-lock.json
+      # Windows code signing with Azure Artifact Signing. Off until the repo has
+      # the AZURE_* secrets and ARTIFACT_SIGNING_* variables (see HANDOVER.md);
+      # without them the installers are built unsigned, as before.
+      - name: Set up Windows code signing
+        id: signing
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$ENDPOINT" ] || [ -z "$ACCOUNT" ] || [ -z "$PROFILE" ]; then
+            echo "::notice::Windows signing is not configured; building unsigned installers."
+            exit 0
+          fi
+          cargo install artifact-signing-cli --locked
+          cat > app/src-tauri/tauri.sign.conf.json <<EOF
+          {"bundle": {"windows": {"signCommand": "artifact-signing-cli -e $ENDPOINT -a $ACCOUNT -c $PROFILE -d \"Screaming Toad\" %1"}}}
+          EOF
+          echo "config=--config src-tauri/tauri.sign.conf.json" >> "$GITHUB_OUTPUT"
       - name: Build installer
         working-directory: app
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           npm ci
-          npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} ${{ steps.signing.outputs.config }}
+      - name: Check the Windows signatures
+        if: steps.signing.outputs.config != ''
+        shell: pwsh
+        run: |
+          # The installers and the app executable must be signed; the bundled
+          # toad.exe sidecar is reported but not enforced.
+          $sidecar = Get-AuthenticodeSignature "app/src-tauri/binaries/toad-${{ matrix.target }}.exe"
+          "Sidecar toad.exe: $($sidecar.Status)"
+          $files = @(Get-ChildItem "target/${{ matrix.target }}/release/bundle" -Recurse -Include *.exe,*.msi)
+          $files += Get-Item "target/${{ matrix.target }}/release/screaming-toad.exe" -ErrorAction SilentlyContinue
+          $bad = 0
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            "{0,-12} {1}  {2}" -f $s.Status, $f.Name, $s.SignerCertificate.Subject
+            if ($s.Status -ne 'Valid') { $bad++ }
+          }
+          if ($bad) { throw "$bad file(s) are not validly signed" }
       - uses: actions/upload-artifact@v4
         with:
           name: screaming-toad-${{ matrix.name }}
