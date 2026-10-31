@@ -383,9 +383,6 @@ struct CrawlArgs {
     user_agent: Option<String>,
     #[arg(long)]
     ignore_robots: bool,
-    /// Read lazy-loaded images from data-src / data-lazy-src (off by default).
-    #[arg(long)]
-    lazy_images: bool,
     /// Regex; only matching internal URLs are crawled. Repeatable.
     #[arg(long)]
     include: Vec<String>,
@@ -811,7 +808,6 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<CrawlOutcome> {
     if let Some(v) = args.rate { cfg.max_urls_per_sec = Some(v); }
     if let Some(v) = args.user_agent.clone() { cfg.user_agent = v; }
     if args.ignore_robots { cfg.robots_mode = RobotsMode::Ignore; }
-    if args.lazy_images { cfg.extract_lazy_loaded_images = true; }
     if args.all_subdomains { cfg.crawl_all_subdomains = true; }
     if args.sitemaps || !args.sitemap_url.is_empty() { cfg.crawl_linked_sitemaps = true; }
     cfg.sitemap_urls.extend(args.sitemap_url.iter().cloned());

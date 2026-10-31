@@ -299,15 +299,15 @@ The Inlinks (Top 20 URLs) rows in Screaming Frog are the 20 most linked-to pages
 - **Accessibility**: axe-core leaves `target-size` (WCAG 2.2 AA) and its AAA rules (`color-contrast-enhanced`, `identical-links-same-purpose`, `meta-refresh-no-exceptions`) off by default; Toad switches them on, since Screaming Frog reports them.
 - **Content**: Semantically Similar and Low Relevance Content were already built from embeddings; they're now always listed, empty unless API Access > Embeddings is on.
 
-## Known deviations and settings that change counts
+## Known deviations
 
-- **Lazy-loaded images** (Spider > Advanced > Extract Lazy-Loaded Images, `--lazy-images` in the CLI; off by default). Off, Toad reads only an image's `src`, as Screaming Frog does without JavaScript rendering, so a placeholder `data:` URI is skipped. On, it also reads `data-src` / `data-lazy-src` (and `data-srcset` / `data-lazy-srcset` with srcset extraction), which makes URL totals, the Images tab, Missing Alt Text, Images Over 100 kB and the resource-level security header counts run higher than Screaming Frog's. Yorkshire Escapes, 31 Oct 2026, 5 threads:
+- **Lazy-loaded images are crawled.** When an image's `src` is missing or a `data:` placeholder, Toad reads the real URL from `data-src` / `data-lazy-src` (and `data-srcset` / `data-lazy-srcset` when Extract Images From IMG SRCSET Attribute is on). Screaming Frog misses these in text-only mode and only sees them with JavaScript rendering. So by design URL totals, the Images tab, Images: Missing Alt Text, Images: Over 100 kB and the resource-level security header counts (such as Security: Missing HSTS Header) run higher than Screaming Frog's on sites that lazy-load images. Yorkshire Escapes, 31 Oct 2026, 5 threads, default settings:
 
-  | | Off (default) | On |
-  |---|---|---|
-  | URLs crawled | 5,056 | 10,354 |
-  | Security: Missing HSTS Header | 4,173 | 9,424 |
-  | Images: Missing Alt Text | 0 | 1,190 |
-  | Images: Over 100 kB | 3,974 | 4,439 |
+  | | Toad (lazy images crawled) | Without lazy images | Screaming Frog, Aug 2026 |
+  |---|---|---|---|
+  | URLs crawled | 10,354 | 5,056 | 5,426 |
+  | Security: Missing HSTS Header | 9,424 | 4,173 | 4,813 (most URLs had no HSTS then) |
+  | Images: Missing Alt Text | 1,190 | 0 | 66 |
+  | Images: Over 100 kB | 4,439 | 3,974 | 4,021 |
 
-  Screaming Frog's August 2026 crawl found 5,426 URLs. Most of the extra URLs with the setting on are WordPress thumbnails (`…-768x512.jpg`) of gallery photos whose originals are already crawled through lightbox links.
+  Most of the extra URLs (4,874 of 5,298) are WordPress thumbnails (`…-768x512.jpg`) of gallery photos whose originals are already crawled through lightbox links; the gallery thumbnails have `alt=""`, which is why Missing Alt Text rises.

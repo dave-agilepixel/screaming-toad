@@ -401,7 +401,7 @@ const DEFAULT_CONFIG = {
   max_urls_per_subdomain: null as number | null, max_urls_per_depth: null as number | null, path_limits: [] as { pattern: string; max: number }[],
   cookie_storage: "session_only" as const, ignore_paginated_for_duplicates: true, always_follow_redirects: false, always_follow_canonicals: false,
   respect_noindex: false, respect_canonical: false, respect_next_prev: false, respect_hsts: true, respect_self_referencing_meta_refresh: true,
-  extract_images_from_srcset: false, extract_lazy_loaded_images: false, perform_html_validation: true,
+  extract_images_from_srcset: false, perform_html_validation: true,
   ignore_non_indexable_for_issues: true, response_timeout_secs: 20, retries_5xx: 0, assume_pages_are_html: false,
   threads: 5, max_urls_per_sec: null as number | null, robots_mode: "respect" as const,
   show_internal_blocked_by_robots: true, show_external_blocked_by_robots: false, custom_robots: [] as { host: string; enabled: boolean; txt: string }[],

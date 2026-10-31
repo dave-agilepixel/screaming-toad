@@ -330,7 +330,6 @@ export interface CrawlConfig {
   respect_hsts: boolean;
   respect_self_referencing_meta_refresh: boolean;
   extract_images_from_srcset: boolean;
-  extract_lazy_loaded_images: boolean;
   perform_html_validation: boolean;
   response_timeout_secs: number;
   retries_5xx: number;
@@ -716,7 +715,6 @@ export const NODES: Node[] = [
           { kind: "bool", key: "respect_hsts", label: "Respect HSTS Policy", help: "http:// links to a host that sent Strict-Transport-Security are reported as 307 'HSTS Policy'." },
           { kind: "bool", key: "respect_self_referencing_meta_refresh", label: "Respect Self Referencing Meta Refresh", help: "A page that meta-refreshes to itself is Non-Indexable." },
           { kind: "bool", key: "extract_images_from_srcset", label: "Extract Images From IMG SRCSET Attribute", help: "Also <picture><source srcset>." },
-          { kind: "bool", key: "extract_lazy_loaded_images", label: "Extract Lazy-Loaded Images", help: "Read data-src and data-lazy-src (and data-srcset with the setting above) when src is missing or a data: placeholder. Off, lazy-loaded images are only seen with JavaScript rendering, as in Screaming Frog." },
           { kind: "bool", key: "crawl_fragment_identifiers", label: "Crawl Fragment Identifiers" },
           { kind: "bool", key: "perform_html_validation", label: "Perform HTML Validation", help: "The Validation tab." },
           { kind: "bool", key: "assume_pages_are_html", label: "Assume Pages are HTML", help: "Treat responses with no Content-Type as HTML." },
