@@ -10,6 +10,7 @@
 
 use crate::config::{CrawlConfig, CustomJs, CustomJsKind, RenderingConfig};
 use chromiumoxide::browser::{Browser, BrowserConfig};
+use chromiumoxide::cdp::browser_protocol::audits::{EnableParams as AuditsEnableParams, EventIssueAdded};
 use chromiumoxide::cdp::browser_protocol::emulation::{SetDeviceMetricsOverrideParams, SetTouchEmulationEnabledParams};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use chromiumoxide::cdp::js_protocol::runtime::{EventConsoleApiCalled, EventExceptionThrown};
@@ -71,17 +72,62 @@ impl A11yViolation {
 /// axe-core (MPL-2.0, Deque Systems), refreshed by `scripts/fetch_axe.sh`.
 const AXE_JS: &str = include_str!("../data/axe.min.js");
 
+/// axe leaves its WCAG 2.2 rule (target-size) and its AAA rules off by
+/// default; Screaming Frog reports them, so they're switched on here.
+/// Deprecated rules stay off.
 const AXE_RUN: &str = r#"(async () => {
-  const r = await axe.run(document, { resultTypes: ['violations'] });
-  return r.violations.map(v => ({
-    rule: v.id,
-    impact: v.impact || '',
-    tags: v.tags,
-    help: v.help,
-    help_url: v.helpUrl,
-    nodes: v.nodes.slice(0, 100).map(n => ({ target: n.target.flat(Infinity).join(' '), html: (n.html || '').slice(0, 1000) })),
-  }));
+  const on = { enabled: true };
+  const r = await axe.run(document, {
+    resultTypes: ['violations'],
+    rules: { 'target-size': on, 'color-contrast-enhanced': on, 'identical-links-same-purpose': on, 'meta-refresh-no-exceptions': on },
+  });
+  return {
+    violations: r.violations.map(v => ({
+      rule: v.id,
+      impact: v.impact || '',
+      tags: v.tags,
+      help: v.help,
+      help_url: v.helpUrl,
+      nodes: v.nodes.slice(0, 100).map(n => ({ target: n.target.flat(Infinity).join(' '), html: (n.html || '').slice(0, 1000) })),
+    })),
+    passes: r.passes.map(p => p.id),
+  };
 })()"#;
+
+#[derive(Deserialize)]
+struct AxeOutcome {
+    violations: Vec<A11yViolation>,
+    passes: Vec<String>,
+}
+
+/// Lighthouse's accessibility audit weights (the axe rules it scores).
+const LIGHTHOUSE_WEIGHTS: &[(&str, u32)] = &[
+    ("accesskeys", 7), ("aria-allowed-attr", 10), ("aria-allowed-role", 1), ("aria-command-name", 7),
+    ("aria-conditional-attr", 7), ("aria-deprecated-role", 1), ("aria-dialog-name", 7), ("aria-hidden-body", 10),
+    ("aria-hidden-focus", 7), ("aria-input-field-name", 7), ("aria-meter-name", 7), ("aria-progressbar-name", 7),
+    ("aria-prohibited-attr", 7), ("aria-required-attr", 10), ("aria-required-children", 10), ("aria-required-parent", 10),
+    ("aria-roles", 7), ("aria-text", 7), ("aria-toggle-field-name", 7), ("aria-tooltip-name", 7),
+    ("aria-treeitem-name", 7), ("aria-valid-attr", 10), ("aria-valid-attr-value", 10), ("button-name", 10),
+    ("bypass", 7), ("color-contrast", 7), ("definition-list", 7), ("dlitem", 7), ("document-title", 7),
+    ("duplicate-id-aria", 10), ("form-field-multiple-labels", 3), ("frame-title", 7), ("heading-order", 3),
+    ("html-has-lang", 7), ("html-lang-valid", 7), ("html-xml-lang-mismatch", 3), ("image-alt", 10),
+    ("image-redundant-alt", 1), ("input-button-name", 10), ("input-image-alt", 10), ("label", 7),
+    ("link-in-text-block", 7), ("link-name", 7), ("list", 7), ("listitem", 7), ("meta-refresh", 10),
+    ("meta-viewport", 10), ("object-alt", 7), ("select-name", 7), ("skip-link", 3), ("tabindex", 7),
+    ("table-duplicate-name", 1), ("target-size", 7), ("td-headers-attr", 7), ("th-has-data-cells", 7),
+    ("valid-lang", 7), ("video-caption", 10), ("landmark-one-main", 3), ("table-fake-caption", 7), ("td-has-header", 10),
+];
+
+/// Accessibility score 0-100 as Lighthouse works it out: the weighted share
+/// of its scored axe rules that the page passes. None when no scored rule
+/// applied to the page.
+pub fn accessibility_score(passes: &[String], violations: &[A11yViolation]) -> Option<f64> {
+    let weight = |id: &str| LIGHTHOUSE_WEIGHTS.iter().find(|(r, _)| *r == id).map_or(0, |(_, w)| *w);
+    let failed: u32 = violations.iter().map(|v| weight(&v.rule)).sum();
+    let passed: u32 = passes.iter().filter(|p| !violations.iter().any(|v| &v.rule == *p)).map(|p| weight(p)).sum();
+    let total = passed + failed;
+    (total > 0).then(|| (100.0 * passed as f64 / total as f64).round())
+}
 
 /// One Custom JavaScript snippet's output on a page, in configuration order.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -166,6 +212,14 @@ pub struct Rendered {
     pub transferred_bytes: u64,
     /// axe-core violations, when Accessibility is on.
     pub accessibility: Option<Vec<A11yViolation>>,
+    /// Lighthouse-style accessibility score, when Accessibility is on.
+    pub accessibility_score: Option<f64>,
+    /// The page's URL once rendered: different when JavaScript navigated away.
+    pub final_url: Option<String>,
+    /// Laid out wider than the viewport.
+    pub content_too_wide: Option<bool>,
+    /// Share of visible text set below 12px.
+    pub small_text_pct: Option<f64>,
     /// Custom JavaScript results, one per configured snippet.
     pub custom_js: Vec<CustomJsResult>,
     /// URLs passed to seoSpider.saveUrls, to be crawled.
@@ -236,6 +290,22 @@ pub struct Renderer {
 /// Flattens shadow roots (Flatten Shadow DOM) and same-origin iframes
 /// (Flatten iframes) into the light DOM, then reports transfer size.
 const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
+  // Mobile checks, on the page as laid out (before flattening adds to it):
+  // wider than the viewport, and the share of visible text under 12px.
+  const tooWide = document.documentElement.scrollWidth > window.innerWidth + 1;
+  let small = 0, total = 0, seen = 0;
+  if (document.body) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode() && seen++ < 20000) {
+      const t = walker.currentNode, el = t.parentElement, n = t.textContent.trim().length;
+      if (!n || !el || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(el.tagName) || !el.getClientRects().length) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      total += n;
+      if (parseFloat(cs.fontSize) < 12) small += n;
+    }
+  }
+  const smallTextPct = total ? Math.round(small * 1000 / total) / 10 : null;
   if (flattenShadow) {
     const walk = (root) => {
       root.querySelectorAll('*').forEach(el => {
@@ -284,7 +354,7 @@ const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
       try { backgrounds.add(new URL(m[1], document.baseURI).href); } catch (e) {}
     }
   }
-  return { bytes, urls, images, backgrounds: [...backgrounds] };
+  return { bytes, urls, images, backgrounds: [...backgrounds], too_wide: tooWide, small_text_pct: smallTextPct };
 })"#;
 
 impl Renderer {
@@ -436,6 +506,19 @@ impl Renderer {
                     }
                 }
             }));
+            // Chrome Issues (the DevTools Issues panel): mixed content,
+            // cookies, CSP, deprecations and so on.
+            let mut issues = page.event_listener::<EventIssueAdded>().await?;
+            page.execute(AuditsEnableParams::default()).await?;
+            let sink = console.clone();
+            listeners.push(tokio::spawn(async move {
+                while let Some(ev) = issues.next().await {
+                    let code = serde_json::to_value(&ev.issue.code).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| format!("{:?}", ev.issue.code));
+                    if let Ok(mut c) = sink.lock() {
+                        c.push(ConsoleMessage { level: "issue".into(), message: code, source: "issue".into() });
+                    }
+                }
+            }));
             let mut errors = page.event_listener::<EventExceptionThrown>().await?;
             let sink = console.clone();
             listeners.push(tokio::spawn(async move {
@@ -456,12 +539,13 @@ impl Renderer {
         }
         let (custom_js, saved_urls) = self.run_custom_js(page, content_type).await;
         // Accessibility runs on the live DOM, before flattening changes it.
-        let accessibility = if r.accessibility {
+        let (accessibility, accessibility_score) = if r.accessibility {
             page.evaluate_expression(AXE_JS).await?;
-            let v: Vec<A11yViolation> = page.evaluate_expression(AXE_RUN).await?.into_value()?;
-            Some(v)
+            let axe: AxeOutcome = page.evaluate_expression(AXE_RUN).await?.into_value()?;
+            let score = accessibility_score(&axe.passes, &axe.violations);
+            (Some(axe.violations), score)
         } else {
-            None
+            (None, None)
         };
         #[derive(Deserialize, Default)]
         struct Snapshot {
@@ -471,6 +555,10 @@ impl Renderer {
             images: Vec<RenderedImage>,
             #[serde(default)]
             backgrounds: Vec<String>,
+            #[serde(default)]
+            too_wide: Option<bool>,
+            #[serde(default)]
+            small_text_pct: Option<f64>,
         }
         let snap: Snapshot = page
             .evaluate(format!("{SNAPSHOT_JS}({}, {})", r.flatten_shadow_dom, r.flatten_iframes))
@@ -479,6 +567,7 @@ impl Renderer {
             .and_then(|v| v.into_value().ok())
             .unwrap_or_default();
         let html = page.content().await?;
+        let final_url = page.url().await.ok().flatten();
 
         let screenshot = if r.screenshots {
             if r.resize_to_content && r.resize_time_secs > 0.0 {
@@ -493,7 +582,7 @@ impl Renderer {
             l.abort();
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
-        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, custom_js, saved_urls, images: snap.images, backgrounds: snap.backgrounds })
+        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, accessibility_score, custom_js, saved_urls, images: snap.images, backgrounds: snap.backgrounds, final_url, content_too_wide: snap.too_wide, small_text_pct: snap.small_text_pct })
     }
 
     pub async fn close(mut self) {
@@ -602,6 +691,18 @@ pub fn carbon_rating(grams: f64) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lighthouse_accessibility_score() {
+        let v = |rule: &str| A11yViolation { rule: rule.into(), impact: "critical".into(), tags: vec![], help: String::new(), help_url: String::new(), nodes: vec![] };
+        let passes = |ids: &[&str]| ids.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // image-alt (10) failed, html-has-lang (7) and heading-order (3) passed: 10/20.
+        assert_eq!(accessibility_score(&passes(&["html-has-lang", "heading-order"]), &[v("image-alt")]), Some(50.0));
+        assert_eq!(accessibility_score(&passes(&["image-alt"]), &[]), Some(100.0));
+        // Rules Lighthouse doesn't score are left out; nothing scored is None.
+        assert_eq!(accessibility_score(&passes(&["region"]), &[v("duplicate-id")]), None);
+        assert_eq!(accessibility_score(&passes(&["image-alt", "region"]), &[v("region")]), Some(100.0));
+    }
 
     #[test]
     fn carbon_model() {

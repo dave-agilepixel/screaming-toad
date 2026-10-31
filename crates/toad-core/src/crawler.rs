@@ -323,8 +323,26 @@ impl Crawler {
                             Some(q) => format!("{}?{q}", u.path()),
                             None => u.path().to_string(),
                         };
-                        if matches!(robots.check(&self.cfg.robots_user_agent, &path), Verdict::Blocked(_)) {
+                        if let Verdict::Blocked(line) = robots.check(&self.cfg.robots_user_agent, &path) {
+                            let u = normalize(u, &self.cfg);
                             info.blocked_resources.push(u.to_string());
+                            // Response Codes > Blocked Resource: the resource is
+                            // reported as a URL in its own right, once.
+                            if seen.insert(u.to_string()) {
+                                let mut blocked = PageRecord {
+                                    url: u.to_string(),
+                                    depth: item.depth + 1,
+                                    is_internal: self.scope.is_internal(&u),
+                                    status: "Blocked by Robots.txt".into(),
+                                    blocked_by_robots_line: Some(line),
+                                    ..Default::default()
+                                };
+                                blocked.compute_indexability();
+                                progress.discovered += 1;
+                                if tx.send(CrawlEvent::Page(Box::new(blocked))).await.is_err() {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -748,6 +766,16 @@ async fn process(
             r.redirect_url = Some(normalize(loc, cfg).to_string());
             r.redirect_type = Some("HTTP Redirect".into());
         }
+    } else if let Some(target) = r.header("refresh").and_then(crate::extract::refresh_target).and_then(|t| item.url.join(&t).ok()) {
+        // A Refresh response header (not the meta tag): Redirection (HTTP Refresh).
+        let target = normalize(target, cfg).to_string();
+        if target != r.url {
+            r.redirect_url = Some(target);
+            r.redirect_type = Some("HTTP Refresh Redirect".into());
+        }
+    }
+    if r.status_code == 200 && !res.body.is_empty() {
+        r.bad_content_type = bad_content_type(&r.content_type, &res.body);
     }
 
     let ct = r.content_type.to_ascii_lowercase();
@@ -808,6 +836,14 @@ async fn process(
         if let Some(renderer) = renderer {
             let (rendered_page, info) = render_page(renderer, cfg, rules, &item.url, &r.content_type, page).await;
             page = rendered_page;
+            // JavaScript navigated away: Redirection (JavaScript).
+            if let Some(target) = info.js_redirect.as_deref().and_then(|t| Url::parse(t).ok()) {
+                let target = normalize(target, cfg).to_string();
+                if target != r.url && r.redirect_url.is_none() {
+                    r.redirect_url = Some(target);
+                    r.redirect_type = Some("JavaScript Redirect".into());
+                }
+            }
             r.rendered = Some(info);
         }
         if language.enabled() {
@@ -908,6 +944,27 @@ mod tests {
         assert!(followed(true));
         assert!(!followed(false), "Crawl > Meta Refresh off must not follow refresh targets");
     }
+
+    #[test]
+    fn bad_content_types() {
+        let html = b"<!DOCTYPE html><html><head><title>Not found</title>";
+        let png = b"\x89PNG\r\n\x1a\n....";
+        // Matching or unknown content is fine.
+        assert!(!bad_content_type("text/html; charset=utf-8", html));
+        assert!(!bad_content_type("image/png", png));
+        assert!(!bad_content_type("image/webp", png), "image subtypes aren't compared");
+        assert!(!bad_content_type("", html));
+        assert!(!bad_content_type("application/octet-stream", png));
+        // An error page served as an image, or an image as a page.
+        assert!(bad_content_type("image/jpeg", html));
+        assert!(bad_content_type("application/javascript", b"  <html><body>Oops</body></html>"));
+        assert!(bad_content_type("text/html", png));
+        assert!(bad_content_type("text/plain", b"%PDF-1.7 ..."));
+        // Not a valid MIME type.
+        assert!(bad_content_type("html", html));
+        assert!(bad_content_type("text/ html", html));
+        assert!(bad_content_type("web/page", html));
+    }
 }
 
 #[cfg(test)]
@@ -940,6 +997,42 @@ mod hsts_tests {
 }
 
 
+/// Two URLs are the same page if they differ only in the fragment.
+fn same_page(a: &Url, b: &Url) -> bool {
+    let (mut a, mut b) = (a.clone(), b.clone());
+    a.set_fragment(None);
+    b.set_fragment(None);
+    a == b
+}
+
+/// Bad Content Type: the Content-Type header isn't a valid MIME type, or
+/// names a different kind of file from the one the body starts like (an
+/// HTML page served as an image, an image served as text/html, and so on).
+fn bad_content_type(content_type: &str, body: &[u8]) -> bool {
+    let mime = content_type.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    if mime.is_empty() {
+        return false;
+    }
+    let Some((top, sub)) = mime.split_once('/') else { return true };
+    let token = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"!#$&-^_.+".contains(&b));
+    let known = ["text", "image", "audio", "video", "application", "font", "multipart", "model", "message"];
+    if !token(top) || !token(sub) || !known.contains(&top) {
+        return true;
+    }
+    let head = &body[..body.len().min(512)];
+    let start: Vec<u8> = head.iter().skip_while(|b| b.is_ascii_whitespace() || **b == 0xEF || **b == 0xBB || **b == 0xBF).take(16).map(u8::to_ascii_lowercase).collect();
+    let html = [&b"<!doctype html"[..], b"<html", b"<head", b"<body"].iter().any(|p| start.starts_with(p));
+    let image = head.starts_with(b"\x89PNG") || head.starts_with(&[0xFF, 0xD8, 0xFF]) || head.starts_with(b"GIF8")
+        || (head.starts_with(b"RIFF") && head.get(8..12) == Some(b"WEBP"));
+    let pdf = head.starts_with(b"%PDF");
+    let declared_html = mime == "text/html" || mime == "application/xhtml+xml";
+    let declared_binary = matches!(top, "image" | "font" | "audio" | "video") || mime == "application/pdf";
+    let declared_code = mime.contains("javascript") || mime == "text/css" || mime == "application/json";
+    (html && (declared_binary || declared_code)) || ((image || pdf) && (declared_html || declared_code || top == "text"))
+        || (image && mime == "application/pdf")
+        || (pdf && top == "image")
+}
+
 /// Render a page and extract from the rendered HTML. Links from both the
 /// original and the rendered HTML are kept, with their Link Origin. If
 /// rendering fails the original HTML's data is used and the error noted.
@@ -964,6 +1057,11 @@ async fn render_page(
     match renderer.render(url, content_type).await {
         Ok(out) => {
             let mut page = extract(&out.html, url, cfg, rules);
+            // Source-only checks: the browser's serialised DOM is always tidy.
+            page.body_before_html = raw.body_before_html;
+            page.head_not_first = raw.head_not_first;
+            page.invalid_head_elements = raw.invalid_head_elements.clone();
+            page.unsized_images = raw.unsized_images.clone();
             let key = |l: &Link| (l.kind, l.to.clone());
             let raw_keys: HashSet<(LinkKind, String)> = raw.links.iter().map(key).collect();
             let rendered_keys: HashSet<(LinkKind, String)> = page.links.iter().map(key).collect();
@@ -979,6 +1077,10 @@ async fn render_page(
             info.requests = out.requests;
             info.transferred_bytes = out.transferred_bytes;
             info.accessibility = out.accessibility;
+            info.accessibility_score = out.accessibility_score;
+            info.js_redirect = out.final_url.filter(|f| Url::parse(f).ok().is_some_and(|f| !same_page(&f, url)));
+            info.content_too_wide = out.content_too_wide;
+            info.small_text_pct = out.small_text_pct;
             info.custom_js = out.custom_js;
             info.images = out.images;
             // CSS background images: crawled as images, marked by rel.

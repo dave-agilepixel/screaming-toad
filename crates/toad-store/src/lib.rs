@@ -3,9 +3,11 @@
 
 mod analysis;
 pub mod api;
+pub mod axe_rules;
 pub mod compare;
 pub mod crawls;
 pub mod export;
+pub mod fixes;
 mod query;
 pub mod segments;
 mod reports;
@@ -17,7 +19,7 @@ pub mod viz;
 pub use crawls::{CrawlEntry, CrawlStatus};
 pub use compare::{ChangeElement, CompareConfig, CompareState, Comparison, LinkState, UrlMapping};
 pub use query::{write_csv, IssueRow, OverviewRow, RowQuery, Table};
-pub use reports::{ReportDef, ReportKind};
+pub use reports::{is_report, report_defs, ReportDef, ReportKind};
 pub use sitemap_gen::{ChangeFreq, ImageSitemapOptions, LastMod, SitemapOptions};
 pub use tabs::{FilterDef, IssueType, Priority, TabDef};
 
@@ -172,7 +174,7 @@ impl Store {
                     ])?;
                 }
             }
-            if let (Some(target), Some("HTTP Redirect" | "HSTS Policy")) = (&rec.redirect_url, rec.redirect_type.as_deref()) {
+            if let (Some(target), Some("HTTP Redirect" | "HSTS Policy" | "HTTP Refresh Redirect" | "JavaScript Redirect")) = (&rec.redirect_url, rec.redirect_type.as_deref()) {
                 link_stmt.execute(params![
                     source_id, target, internal(target), LinkKind::Redirect.as_str(),
                     "", Option::<String>::None, true, "", "", "Absolute", "", "", Option::<String>::None, Option::<String>::None,
@@ -220,6 +222,16 @@ impl Store {
                     for i in &page.language_issues {
                         stmt.execute(params![source_id, i.kind, i.text, i.suggestion, i.rule, i.message, i.language])?;
                     }
+                }
+            }
+            if let Some(page) = &rec.page {
+                let mut unsized_stmt = tx.prepare_cached("INSERT INTO unsized_images (url_id, src) VALUES (?1, ?2)")?;
+                for src in &page.unsized_images {
+                    unsized_stmt.execute(params![source_id, src])?;
+                }
+                let mut bookmark_stmt = tx.prepare_cached("INSERT INTO bookmarks (url_id, target, fragment) VALUES (?1, ?2, ?3)")?;
+                for (target, fragment) in &page.bookmarks {
+                    bookmark_stmt.execute(params![source_id, target, fragment])?;
                 }
             }
             if self.cfg.extraction.cookies {
@@ -293,7 +305,7 @@ impl Store {
             if let Some(c) = &rec.http_canonical {
                 link_stmt.execute(params![
                     source_id, c, internal(c), LinkKind::HttpCanonical.as_str(),
-                    "", Option::<String>::None, true, "", "", "Absolute", "", "Head", Option::<String>::None,
+                    "", Option::<String>::None, true, "", "", "Absolute", "", "Head", Option::<String>::None, Option::<String>::None,
                 ])?;
             }
         }
@@ -775,6 +787,20 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("lorem_ipsum", flag(page.is_some_and(|p| p.lorem_ipsum))),
         ("ajax_fragment_meta", flag(page.is_some_and(|p| p.ajax_fragment_meta))),
         ("a11y_checked", flag(rendered.is_some_and(|r| r.accessibility.is_some()))),
+        ("a11y_score", real(rendered.and_then(|r| r.accessibility_score))),
+        ("bad_content_type", flag(rec.bad_content_type)),
+        ("body_before_html", flag(page.is_some_and(|p| p.body_before_html))),
+        ("head_not_first", flag(page.is_some_and(|p| p.head_not_first))),
+        ("invalid_head_elements", opt(page.map(|p| p.invalid_head_elements.join(", ")).filter(|s| !s.is_empty()).as_deref())),
+        // Newline-wrapped, so a bookmark can be matched with instr().
+        ("anchor_ids", opt(page.filter(|p| !p.anchor_ids.is_empty()).map(|p| format!("\n{}\n", p.anchor_ids.join("\n"))).as_deref())),
+        ("content_too_wide", rendered.and_then(|r| r.content_too_wide).map(flag).unwrap_or(Value::Null)),
+        ("small_text_pct", real(rendered.and_then(|r| r.small_text_pct))),
+        ("chrome_issues", if rendered.is_some() && cfg.rendering.js_error_reporting {
+            int(rendered.map_or(0, |r| r.console.iter().filter(|m| m.level == "issue").count() as i64))
+        } else {
+            Value::Null
+        }),
         ("head_tags", page.map(|p| int(p.head_tags)).unwrap_or(Value::Null)),
         ("body_tags", page.map(|p| int(p.body_tags)).unwrap_or(Value::Null)),
         ("hsts", opt(rec.header("strict-transport-security"))),

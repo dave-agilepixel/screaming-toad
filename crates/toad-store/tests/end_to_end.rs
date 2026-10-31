@@ -172,7 +172,7 @@ async fn crawl_finds_known_issues() {
     assert!(home_score > 50.0, "home page should have the top Link Score, got {home_score}");
 
     let issues = store.issues().unwrap();
-    assert!(issues.iter().any(|i| i.filter == "Internal Client Error (4XX)"));
+    assert!(issues.iter().any(|i| i.filter == "Internal Client Error (4xx)"));
 
     // Structured data: the home page's Product has no offers, review or rating.
     assert_eq!(count("Structured Data", "Contains Structured Data"), 1);

@@ -35,6 +35,13 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
     for el in root.descendants().filter_map(ElementRef::wrap) {
         let v = el.value();
         let name = v.name();
+        // Bookmark targets: any id, and the old <a name>.
+        for target in [v.attr("id"), if name == "a" { v.attr("name") } else { None }].into_iter().flatten() {
+            let target = target.trim();
+            if !target.is_empty() {
+                p.anchor_ids.push(target.to_string());
+            }
+        }
         match name {
             "title" => {
                 if el.ancestors().any(|a| matches!(a.value(), Node::Element(e) if e.name() == "svg")) {
@@ -148,6 +155,10 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                         }
                     }
                     if let Some(mut link) = make_link(LinkKind::Hyperlink, href, &el, &base, cfg) {
+                        if let Some(fragment) = bookmark_fragment(href) {
+                            let target = link.to.split('#').next().unwrap_or(&link.to).to_string();
+                            p.bookmarks.push((target, fragment));
+                        }
                         link.anchor = clean_text(&el);
                         if link.anchor.is_empty() {
                             link.alt = el
@@ -162,14 +173,17 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
             }
             "img" => {
                 let alt = v.attr("alt").map(|a| a.trim().to_string());
-                if let Some(src) = v.attr("src") {
+                if let Some(src) = image_src(&el) {
                     if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                         link.alt = alt.clone();
+                        if v.attr("width").is_none() || v.attr("height").is_none() {
+                            p.unsized_images.push(link.to.clone());
+                        }
                         p.links.push(link);
                     }
                 }
                 if cfg.extract_images_from_srcset {
-                    for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                    for src in srcset_urls(image_srcset(&el)) {
                         if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                             link.alt = alt.clone();
                             p.links.push(link);
@@ -192,7 +206,7 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                 }
             }
             "source" if cfg.extract_images_from_srcset && el.parent().and_then(ElementRef::wrap).is_some_and(|m| m.value().name() == "picture") => {
-                for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                for src in srcset_urls(image_srcset(&el)) {
                     if let Some(link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                         p.links.push(link);
                     }
@@ -241,11 +255,9 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         }
     }
 
-    p.h1_non_sequential = heading_levels.first().is_some_and(|&l| l != 1);
-    p.h2_non_sequential = heading_levels
-        .iter()
-        .position(|&l| l == 2)
-        .is_some_and(|i| i == 0 || heading_levels[..i].iter().all(|&l| l > 2));
+    let (h1_non_sequential, h2_non_sequential) = heading_order(&heading_levels);
+    p.h1_non_sequential = h1_non_sequential;
+    p.h2_non_sequential = h2_non_sequential;
 
     // Content area text: word count, readability, duplicates.
     let mut content = String::new();
@@ -304,6 +316,11 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         p.page_text = collapse_ws(&all_text);
     }
 
+    let raw = raw_structure(html);
+    p.body_before_html = raw.body_before_html;
+    p.head_not_first = raw.head_not_first;
+    p.invalid_head_elements = raw.invalid_head_elements;
+
     let (head_re, body_re) = tag_regexes();
     p.head_tags = head_re.find_iter(html).count() as u32;
     p.body_tags = body_re.find_iter(html).count() as u32;
@@ -327,6 +344,130 @@ pub fn text_metrics(p: &mut PageData, content: &str) {
         p.flesch_reading_ease = Some((score.clamp(0.0, 100.0) * 10.0).round() / 10.0);
     }
     p.lorem_ipsum = content.to_ascii_lowercase().contains("lorem ipsum");
+}
+
+/// The fragment of an href that points at a bookmark on a page: not empty,
+/// "top" (which always scrolls to the top), a hashbang or SPA route, a text
+/// fragment, or a key=value state string.
+fn bookmark_fragment(href: &str) -> Option<String> {
+    let (_, fragment) = href.trim().split_once('#')?;
+    let fragment = percent_decoded(fragment);
+    let skip = fragment.is_empty()
+        || fragment.eq_ignore_ascii_case("top")
+        || fragment.starts_with(['!', '/', ':'])
+        || fragment.contains('=');
+    (!skip).then_some(fragment)
+}
+
+/// `%20` and friends decoded (ids are matched as written).
+fn percent_decoded(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        match (b[i], b.get(i + 1).copied().and_then(hex), b.get(i + 2).copied().and_then(hex)) {
+            (b'%', Some(h), Some(l)) => {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+            }
+            (c, ..) => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Elements Google accepts in the `<head>`; anything else ends it early.
+const HEAD_ELEMENTS: [&str; 8] = ["title", "meta", "link", "script", "style", "base", "noscript", "template"];
+
+#[derive(Debug, Default, PartialEq)]
+struct RawStructure {
+    body_before_html: bool,
+    head_not_first: bool,
+    invalid_head_elements: Vec<String>,
+}
+
+/// Validation checks on the source as written (the parser repairs these, so
+/// they can't be seen in the parsed document): the order of the html, head
+/// and body tags, and elements in the head that don't belong there.
+fn raw_structure(html: &str) -> RawStructure {
+    // (closing, lowercase name) of every tag, skipping comments, doctypes
+    // and the contents of raw-text elements.
+    let mut tags: Vec<(bool, String)> = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut i = 0;
+    while let Some(off) = lower[i..].find('<') {
+        let at = i + off;
+        let rest = &lower[at..];
+        if rest.starts_with("<!--") {
+            i = rest.find("-->").map_or(lower.len(), |e| at + e + 3);
+            continue;
+        }
+        let closing = rest.starts_with("</");
+        let start = at + if closing { 2 } else { 1 };
+        let len = bytes[start..].iter().take_while(|b| b.is_ascii_alphanumeric() || **b == b'-' || **b == b':').count();
+        if len == 0 || !bytes[start].is_ascii_alphabetic() {
+            i = at + 1;
+            continue;
+        }
+        let name = &lower[start..start + len];
+        // The end of the tag, past any quoted attribute values.
+        let mut j = start + len;
+        let mut quote = None;
+        while j < bytes.len() {
+            match (quote, bytes[j]) {
+                (None, b'>') => break,
+                (None, q @ (b'"' | b'\'')) => quote = Some(q),
+                (Some(q), c) if c == q => quote = None,
+                _ => {}
+            }
+            j += 1;
+        }
+        tags.push((closing, name.to_string()));
+        i = (j + 1).min(lower.len());
+        if !closing && matches!(name, "script" | "style" | "textarea" | "title" | "noscript" | "template" | "xmp") {
+            i = lower[i..].find(&format!("</{name}")).map_or(lower.len(), |e| i + e);
+        }
+    }
+    let first = |n: &str| tags.iter().position(|(c, t)| !c && t == n);
+    let mut out = RawStructure::default();
+    if let (Some(h), Some(b)) = (first("html"), first("body")) {
+        out.body_before_html = b < h;
+    }
+    if let (Some(h), Some(head)) = (first("html"), first("head")) {
+        out.head_not_first = tags[h + 1..].iter().find(|(c, _)| !c).is_some_and(|(_, t)| t != "head") && head > h;
+    }
+    if let Some(head) = first("head") {
+        for (closing, t) in &tags[head + 1..] {
+            if t == "body" || (*closing && t == "head") {
+                break;
+            }
+            if !closing && !HEAD_ELEMENTS.contains(&t.as_str()) && !out.invalid_head_elements.contains(t) {
+                out.invalid_head_elements.push(t.clone());
+            }
+        }
+    }
+    out
+}
+
+/// H1 and H2 Non-Sequential from the heading levels in document order.
+/// H1: the page has an H1, but it isn't the first heading. H2: the page has
+/// an H2, but the heading level after the H1 isn't 2: an H2 comes before
+/// any H1, or the H1 is followed by an H3-H6 before the first H2.
+fn heading_order(levels: &[u8]) -> (bool, bool) {
+    let h1 = levels.iter().position(|&l| l == 1);
+    let h2 = levels.iter().position(|&l| l == 2);
+    let h1_non_sequential = h1.is_some_and(|i| i > 0);
+    let h2_non_sequential = match (h1, h2) {
+        (_, None) => false,
+        (None, Some(_)) => true,
+        (Some(i), Some(j)) => j < i || levels[i + 1..j].iter().any(|&l| l > 2),
+    };
+    (h1_non_sequential, h2_non_sequential)
 }
 
 fn tag_regexes() -> &'static (Regex, Regex) {
@@ -365,6 +506,30 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
         hreflang: None,
         origin: String::new(),
     })
+}
+
+/// Lazy-load plugins (LiteSpeed, WP Rocket, lazysizes) keep the real image
+/// in data-src or data-lazy-src and put a placeholder (often a data: URI) in src.
+const LAZY_SRC: [&str; 2] = ["data-src", "data-lazy-src"];
+const LAZY_SRCSET: [&str; 2] = ["data-srcset", "data-lazy-srcset"];
+
+/// An image's real src: src, unless it is missing or a data: placeholder
+/// and a lazy-load attribute holds a URL.
+fn image_src<'a>(el: &ElementRef<'a>) -> Option<&'a str> {
+    let v = el.value();
+    let src = v.attr("src").filter(|s| !s.trim().is_empty());
+    let placeholder = src.is_none_or(|s| s.trim_start().get(..5).is_some_and(|p| p.eq_ignore_ascii_case("data:")));
+    let lazy = LAZY_SRC.iter().find_map(|a| v.attr(a)).filter(|s| !s.trim().is_empty());
+    if placeholder { lazy.or(src) } else { src }
+}
+
+/// An image's srcset, falling back to the lazy-load attributes.
+fn image_srcset<'a>(el: &ElementRef<'a>) -> &'a str {
+    let v = el.value();
+    v.attr("srcset")
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| LAZY_SRCSET.iter().find_map(|a| v.attr(a)))
+        .unwrap_or("")
 }
 
 /// The URLs in a srcset attribute ("a.jpg 1x, b.jpg 2x" or "a.jpg 480w, ...").
@@ -459,7 +624,7 @@ fn collect_text(el: ElementRef, area: &ContentArea, included: bool, out: &mut St
 }
 
 /// `5; url=/next` → `/next`.
-fn refresh_target(content: &str) -> Option<String> {
+pub(crate) fn refresh_target(content: &str) -> Option<String> {
     let lower = content.to_ascii_lowercase();
     let i = lower.find("url=")?;
     let target = content[i + 4..].trim().trim_matches(|c| c == '\'' || c == '"');
@@ -606,6 +771,85 @@ mod tests {
         assert_eq!(img.alt, None);
         assert!(!p.links.iter().any(|l| l.href.starts_with("mailto")));
         assert_eq!(p.head_tags, 1);
+    }
+
+    #[test]
+    fn lazy_loaded_images_use_the_real_url() {
+        let html = r#"<html><body>
+            <img src="data:image/svg+xml;base64,PHN2Zz4=" data-src="/real.webp" alt="">
+            <img src="data:image/gif;base64,R0lGOD" data-lazy-src="/wp.jpg" data-lazy-srcset="/wp-2x.jpg 2x" alt="WP Rocket">
+            <img data-src="/no-src.png">
+            <img src="/plain.png" data-src="/ignored.png" alt="Plain">
+            <nav><img src="data:image/svg+xml,x" data-src="/logo.png" data-srcset="/logo-2x.png 2x"></nav>
+          </body></html>"#;
+        let url = Url::parse("https://x.com/").unwrap();
+        let p = extract(html, &url, &CrawlConfig { extract_images_from_srcset: true, ..CrawlConfig::default() }, &CustomRules::default());
+        let img = |to: &str| p.links.iter().find(|l| l.kind == LinkKind::Image && l.to == format!("https://x.com{to}"));
+        assert_eq!(img("/real.webp").unwrap().alt.as_deref(), Some(""), "empty alt kept: Missing Alt Text");
+        assert_eq!(img("/wp.jpg").unwrap().alt.as_deref(), Some("WP Rocket"));
+        assert!(img("/wp-2x.jpg").is_some(), "data-lazy-srcset");
+        assert_eq!(img("/no-src.png").unwrap().alt, None, "no alt attribute: Missing Alt Attribute");
+        assert!(img("/plain.png").is_some() && img("/ignored.png").is_none(), "a real src wins");
+        assert_eq!(img("/logo.png").unwrap().position, "Navigation");
+        assert!(img("/logo-2x.png").is_some(), "data-srcset");
+        assert!(!p.links.iter().any(|l| l.to.starts_with("data:")));
+    }
+
+    #[test]
+    fn heading_order_matches_screaming_frog() {
+        // (levels, H1 Non-Sequential, H2 Non-Sequential)
+        let cases: [(&[u8], bool, bool); 9] = [
+            (&[1, 2, 3, 2], false, false),
+            (&[1, 3, 2], false, true),   // H3 between the H1 and the first H2
+            (&[1, 4, 4, 2], false, true),
+            (&[2, 1, 2], true, true),    // H2 before the H1
+            (&[3, 1, 2], true, false),   // H1 not first, but H2 follows it
+            (&[2, 3], false, true),      // H2 with no H1
+            (&[1, 3, 4], false, false),  // no H2: H2 Missing, not Non-Sequential
+            (&[3, 4], false, false),     // no H1: H1 Missing, not Non-Sequential
+            (&[1, 1, 2], false, false),
+        ];
+        for (levels, h1, h2) in cases {
+            assert_eq!(heading_order(levels), (h1, h2), "{levels:?}");
+        }
+        let url = Url::parse("https://x.com/").unwrap();
+        let p = extract("<html><body><h1>A</h1><h3>B</h3><h2>C</h2></body></html>", &url, &CrawlConfig::default(), &CustomRules::default());
+        assert!(!p.h1_non_sequential && p.h2_non_sequential);
+    }
+
+    #[test]
+    fn raw_source_validation() {
+        let ok = raw_structure("<!doctype html><!-- <body> --><html lang=en><head><title>T</title><meta charset=utf-8><script>if (a<b) document.write('<div>')</script><noscript><img src=x></noscript></head><body><div>x</div></body></html>");
+        assert_eq!(ok, RawStructure::default());
+        let bad = raw_structure("<body><html><div>early</div><head><title>T</title><div class='a>b'>x</div><span>y</span><div>z</div></head></html>");
+        assert!(bad.body_before_html && bad.head_not_first);
+        assert_eq!(bad.invalid_head_elements, vec!["div", "span"]);
+        // The head ends at the body tag even if it is never closed.
+        let unclosed = raw_structure("<html><head><title>T</title><body><div>x</div></body></html>");
+        assert!(unclosed.invalid_head_elements.is_empty() && !unclosed.head_not_first);
+        // No head at all is Missing <head> Tag, not Not First.
+        assert!(!raw_structure("<html><body></body></html>").head_not_first);
+
+        let url = Url::parse("https://x.com/").unwrap();
+        let p = extract("<html><head><title>T</title><p>Oops</p></head><body></body></html>", &url, &CrawlConfig::default(), &CustomRules::default());
+        assert_eq!(p.invalid_head_elements, vec!["p"]);
+    }
+
+    #[test]
+    fn bookmarks_ids_and_unsized_images() {
+        let html = r##"<html><body><h2 id="rates">Rates</h2><a name="old-style"></a>
+            <a href="#rates">Rates</a><a href="/other#Book%20now">Book</a><a href="#top">Top</a><a href="#">Nothing</a>
+            <a href="/app#/route">SPA</a><a href="/p#!x">Bang</a><a href="/p#page=2">State</a>
+            <img src="/a.png" width="10" height="10"><img src="/b.png" width="10"><img src="/c.png">
+            <img src="data:image/svg+xml,x" data-src="/d.png"></body></html>"##;
+        let url = Url::parse("https://x.com/page").unwrap();
+        let p = extract(html, &url, &CrawlConfig::default(), &CustomRules::default());
+        assert_eq!(p.anchor_ids, vec!["rates", "old-style"]);
+        assert_eq!(
+            p.bookmarks,
+            vec![("https://x.com/page".to_string(), "rates".to_string()), ("https://x.com/other".to_string(), "Book now".to_string())]
+        );
+        assert_eq!(p.unsized_images, vec!["https://x.com/b.png", "https://x.com/c.png", "https://x.com/d.png"]);
     }
 
     #[test]

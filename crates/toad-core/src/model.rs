@@ -149,6 +149,24 @@ pub struct PageData {
     /// MinHash signature of the content area (empty unless near duplicates are on).
     pub minhash: Vec<u32>,
     pub structured_data: Option<crate::structured::StructuredData>,
+    /// Images whose `<img>` lacks a width or height attribute (resolved URLs).
+    #[serde(default)]
+    pub unsized_images: Vec<String>,
+    /// Raw source checks: a `<body>` tag before `<html>`, and an element
+    /// other than `<head>` first inside `<html>`.
+    #[serde(default)]
+    pub body_before_html: bool,
+    #[serde(default)]
+    pub head_not_first: bool,
+    /// Elements in the source `<head>` that aren't allowed there.
+    #[serde(default)]
+    pub invalid_head_elements: Vec<String>,
+    /// Bookmark targets on the page: element ids and `<a name>`s.
+    #[serde(default)]
+    pub anchor_ids: Vec<String>,
+    /// Links to a fragment: (target URL without the fragment, fragment).
+    #[serde(default)]
+    pub bookmarks: Vec<(String, String)>,
 }
 
 /// The original (pre-JavaScript) HTML's key elements, for the JavaScript tab.
@@ -185,6 +203,17 @@ pub struct RenderInfo {
     pub images: Vec<crate::render::RenderedImage>,
     /// axe-core violations (Accessibility); None when not checked.
     pub accessibility: Option<Vec<crate::render::A11yViolation>>,
+    /// Lighthouse-style accessibility score 0-100 (Accessibility).
+    pub accessibility_score: Option<f64>,
+    /// Where JavaScript sent the page, when it navigated away.
+    #[serde(default)]
+    pub js_redirect: Option<String>,
+    /// The page is wider than the viewport (Mobile: Content Not Sized Correctly).
+    #[serde(default)]
+    pub content_too_wide: Option<bool>,
+    /// Share of visible text set below 12px (Mobile: Illegible Font Size).
+    #[serde(default)]
+    pub small_text_pct: Option<f64>,
     /// Rendering failed; the original HTML was used instead.
     pub error: Option<String>,
 }
@@ -216,6 +245,9 @@ pub struct PageRecord {
     pub robots_report_line: Option<String>,
     pub error: Option<String>,
     pub page: Option<PageData>,
+    /// The Content-Type header is invalid or doesn't match the body.
+    #[serde(default)]
+    pub bad_content_type: bool,
     /// For XML sitemap files: the number of `<loc>` entries.
     pub sitemap_url_count: Option<u64>,
     pub indexable: bool,
