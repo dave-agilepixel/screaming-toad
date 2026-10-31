@@ -293,7 +293,7 @@ impl Store {
             if let Some(c) = &rec.http_canonical {
                 link_stmt.execute(params![
                     source_id, c, internal(c), LinkKind::HttpCanonical.as_str(),
-                    "", Option::<String>::None, true, "", "", "Absolute", "", "Head", Option::<String>::None,
+                    "", Option::<String>::None, true, "", "", "Absolute", "", "Head", Option::<String>::None, Option::<String>::None,
                 ])?;
             }
         }
