@@ -79,7 +79,7 @@ To build it yourself, see [Building from source](#building-from-source).
 - **Custom Extraction:** XPath 1.0, CSS selectors or regex. It can return text, inner HTML, whole elements, attributes or function values.
 - **Custom JavaScript:** your own snippets run on rendered pages. They can extract data, report errors, save text, or queue new URLs for crawling.
 
-### 31 tabs, 300+ filters
+### 32 tabs, 450+ filters
 
 Each filter is labelled as an Issue, Warning or Opportunity, with High/Medium/Low priority. Each tab has an Overview count and appears in the Issues panel.
 
@@ -88,7 +88,7 @@ Each filter is labelled as an Issue, Warning or Opportunity, with High/Medium/Lo
 | **Site** | Internal, External, Security, Response Codes, URL |
 | **On-page** | Page Titles, Meta Description, Meta Keywords, H1, H2, Content, Images |
 | **Indexing** | Canonicals, Pagination, Directives, Hreflang, Sitemaps |
-| **Technical** | JavaScript, Accessibility, Links, Validation, Structured Data |
+| **Technical** | JavaScript, Accessibility, Mobile, Links, Validation, Structured Data |
 | **Custom** | Custom Search, Custom Extraction, Custom JavaScript |
 | **Data sources** | PageSpeed, Search Console, Analytics, Link Metrics, AI |
 
