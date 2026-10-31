@@ -6,6 +6,7 @@ pub mod api;
 pub mod compare;
 pub mod crawls;
 pub mod export;
+pub mod fixes;
 mod query;
 pub mod segments;
 mod reports;
@@ -17,7 +18,7 @@ pub mod viz;
 pub use crawls::{CrawlEntry, CrawlStatus};
 pub use compare::{ChangeElement, CompareConfig, CompareState, Comparison, LinkState, UrlMapping};
 pub use query::{write_csv, IssueRow, OverviewRow, RowQuery, Table};
-pub use reports::{ReportDef, ReportKind};
+pub use reports::{is_report, report_defs, ReportDef, ReportKind};
 pub use sitemap_gen::{ChangeFreq, ImageSitemapOptions, LastMod, SitemapOptions};
 pub use tabs::{FilterDef, IssueType, Priority, TabDef};
 

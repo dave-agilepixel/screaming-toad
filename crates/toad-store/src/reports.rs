@@ -164,6 +164,45 @@ const REDIRECT_CHAINS: &str = "Redirect Chains";
 const RICH_RESULTS: &str = "Google Rich Results Features Summary";
 const SEGMENTS: &str = "Segments Overview";
 const CRAWL_OVERVIEW: &str = "Crawl Overview";
+const ISSUES_OVERVIEW: &str = "Issues Overview";
+
+/// Every report and bulk export, in menu order.
+pub fn report_defs() -> Vec<ReportDef> {
+    let mut out = vec![
+        ReportDef {
+            name: CRAWL_OVERVIEW,
+            kind: ReportKind::Report,
+            description: "Every tab and filter with its URL count and share of the tab: the right-hand Overview as a report.",
+        },
+        ReportDef {
+            name: ISSUES_OVERVIEW,
+            kind: ReportKind::Report,
+            description: "Every issue, warning and opportunity found, with its priority, URL count, share of the tab, description and how to fix it.",
+        },
+        ReportDef {
+            name: REDIRECT_CHAINS,
+            kind: ReportKind::Report,
+            description: "Redirects with two or more hops, or loops, with every hop listed.",
+        },
+        ReportDef {
+            name: RICH_RESULTS,
+            kind: ReportKind::Report,
+            description: "Each Google rich result type found, with the pages that have it and how many have errors or warnings.",
+        },
+        ReportDef {
+            name: SEGMENTS,
+            kind: ReportKind::Report,
+            description: "Each segment with its URLs, indexability and how many URLs have issues, warnings and opportunities (needs Configuration > Segments).",
+        },
+    ];
+    out.extend(SQL_REPORTS.iter().map(|(name, kind, description, _)| ReportDef { name: *name, kind: *kind, description: *description }));
+    out
+}
+
+/// Whether `name` is a report or bulk export (ignoring case).
+pub fn is_report(name: &str) -> bool {
+    report_defs().iter().any(|r| r.name.eq_ignore_ascii_case(name.trim()))
+}
 
 impl Store {
     /// Reports > Crawl Overview: Tab | Filter | URLs | % of Tab.
@@ -184,36 +223,52 @@ impl Store {
         Ok(Table { columns: ["Tab", "Filter", "URLs", "% of Tab"].iter().map(|s| s.to_string()).collect(), total: out.len() as u64, rows: out })
     }
 
+    /// Reports > Issues Overview, with Screaming Frog's columns: Issue Name
+    /// ("Tab: Filter"), Issue Type, Issue Priority, URLs, % of Total (of the
+    /// tab, to three places), Description, How To Fix.
+    pub fn issues_overview(&self) -> anyhow::Result<Table> {
+        let mut totals = HashMap::new();
+        for t in self.tabs() {
+            totals.insert(t.name, self.count_where(&t.base)?);
+        }
+        let rows: Vec<Vec<String>> = self
+            .issues()?
+            .into_iter()
+            .map(|i| {
+                let total = totals.get(i.tab.as_str()).copied().unwrap_or(0);
+                let pct = if total > 0 { format!("{:.3}", i.urls as f64 * 100.0 / total as f64) } else { String::new() };
+                vec![
+                    format!("{}: {}", i.tab, i.filter),
+                    format!("{:?}", i.issue_type),
+                    format!("{:?}", i.priority),
+                    i.urls.to_string(),
+                    pct,
+                    i.description,
+                    crate::fixes::how_to_fix(&i.tab, &i.filter).to_string(),
+                ]
+            })
+            .collect();
+        Ok(Table {
+            columns: ["Issue Name", "Issue Type", "Issue Priority", "URLs", "% of Total", "Description", "How To Fix"].iter().map(|s| s.to_string()).collect(),
+            total: rows.len() as u64,
+            rows,
+        })
+    }
+
     pub fn reports(&self) -> Vec<ReportDef> {
-        let mut out = vec![ReportDef {
-            name: REDIRECT_CHAINS,
-            kind: ReportKind::Report,
-            description: "Redirects with two or more hops, or loops, with every hop listed.",
-        }, ReportDef {
-            name: RICH_RESULTS,
-            kind: ReportKind::Report,
-            description: "Each Google rich result type found, with the pages that have it and how many have errors or warnings.",
-        }];
-        out.insert(0, ReportDef {
-            name: CRAWL_OVERVIEW,
-            kind: ReportKind::Report,
-            description: "Every tab and filter with its URL count and share of the tab: the right-hand Overview as a report.",
-        });
-        out.push(ReportDef {
-            name: SEGMENTS,
-            kind: ReportKind::Report,
-            description: "Each segment with its URLs, indexability and how many URLs have issues, warnings and opportunities (needs Configuration > Segments).",
-        });
-        out.extend(SQL_REPORTS.iter().map(|(name, kind, description, _)| ReportDef { name: *name, kind: *kind, description: *description }));
-        out
+        report_defs()
     }
 
     pub fn report(&self, name: &str) -> anyhow::Result<Table> {
+        let name = name.trim();
         if name.eq_ignore_ascii_case(RICH_RESULTS) {
             return self.rich_results_summary();
         }
         if name.eq_ignore_ascii_case(CRAWL_OVERVIEW) {
             return self.crawl_overview();
+        }
+        if name.eq_ignore_ascii_case(ISSUES_OVERVIEW) {
+            return self.issues_overview();
         }
         if name.eq_ignore_ascii_case(SEGMENTS) {
             return self.segments_overview();

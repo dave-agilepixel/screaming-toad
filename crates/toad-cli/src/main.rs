@@ -906,7 +906,11 @@ async fn crawl(args: CrawlArgs) -> anyhow::Result<CrawlOutcome> {
 
     let mut written: Vec<PathBuf> = Vec::new();
     if !multi.items.is_empty() {
-        for f in store.multi_export(&multi, &args.output_folder)? {
+        let outcome = store.multi_export(&multi, &args.output_folder)?;
+        for (title, reason) in &outcome.skipped {
+            eprintln!("Warning: skipped export '{title}': {reason}");
+        }
+        for f in outcome.written {
             println!("Exported {}", f.display());
             written.push(f);
         }
@@ -983,6 +987,11 @@ fn multi_export_spec(args: &CrawlArgs) -> anyhow::Result<toad_store::export::Mul
         m.items.push(ExportItem::tab(tab.trim(), filter.trim()));
     }
     for name in list(&args.bulk_export).into_iter().chain(list(&args.save_report)) {
+        // Warn now, before the crawl, and carry on with the rest.
+        if !toad_store::is_report(&name) {
+            eprintln!("Warning: no report or bulk export named '{name}' (see `toad report <crawl> --list`); skipping it.");
+            continue;
+        }
         m.items.push(ExportItem::report(&name));
     }
     if let Some(f) = &args.export_format {
