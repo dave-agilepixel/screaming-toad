@@ -154,6 +154,9 @@ fn schema_org_validate(item: &SdItem, case_sensitive: bool, issues: &mut Vec<SdI
     }
     let item_type = item.types.first().cloned().unwrap_or_default();
     for p in &item.properties {
+        if is_action_annotation(p, case_sensitive) {
+            continue;
+        }
         match resolve(p, &v.properties, &v.property_case, case_sensitive) {
             Some(canonical) => {
                 if canonical != p {
@@ -173,6 +176,17 @@ fn schema_org_validate(item: &SdItem, case_sensitive: bool, issues: &mut Vec<SdI
             None => issues.push(issue(&item_type, Severity::Error, p, &format!("'{p}' is not a schema.org property."), SCHEMA_ORG)),
         }
     }
+}
+
+/// Action input/output annotations (`query-input`, `name-output`): an
+/// existing property name plus `-input` or `-output`. Schema.org's Actions
+/// spec and Google's sitelinks search box use them on potentialAction, but
+/// they aren't vocabulary properties in their own right.
+fn is_action_annotation(p: &str, case_sensitive: bool) -> bool {
+    let v = vocabulary();
+    p.strip_suffix("-input")
+        .or_else(|| p.strip_suffix("-output"))
+        .is_some_and(|base| resolve(base, &v.properties, &v.property_case, case_sensitive).is_some())
 }
 
 fn issue(item_type: &str, severity: Severity, property: &str, message: &str, source: &str) -> SdIssue {
@@ -387,6 +401,19 @@ mod tests {
         // Case-sensitive: wrong case is an error.
         let strict = extract(&Html::parse_document(html), &StructuredDataConfig { case_sensitive: true, ..all_on() });
         assert!(strict.issues.iter().any(|i| i.severity == Severity::Error && i.message.contains("'product' is not a schema.org type")));
+    }
+
+    #[test]
+    fn search_action_query_input_is_valid() {
+        // Yoast / Rank Math sitelinks search box.
+        let html = r#"<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","url":"https://x.com/","name":"X",
+            "potentialAction":[{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://x.com/?s={search_term_string}"},
+            "query-input":{"@type":"PropertyValueSpecification","valueRequired":true,"valueName":"search_term_string"}}]}]}</script>
+            <script type="application/ld+json">{"@context":"https://schema.org","@type":"SearchAction","query-input":"required name=q","name-output":"x","bogus-input":"y"}</script>"#;
+        let sd = extract(&Html::parse_document(html), &all_on());
+        let errors: Vec<&str> = sd.issues.iter().filter(|i| i.severity == Severity::Error).map(|i| i.message.as_str()).collect();
+        assert!(!errors.iter().any(|m| m.contains("query-input") || m.contains("name-output")), "{errors:?}");
+        assert!(errors.iter().any(|m| m.contains("'bogus-input' is not a schema.org property")), "only real properties take -input: {errors:?}");
     }
 
     #[test]

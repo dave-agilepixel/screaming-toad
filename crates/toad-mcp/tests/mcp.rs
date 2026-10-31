@@ -77,6 +77,7 @@ async fn mcp_tools_and_http() {
     let tools = server.handle(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).unwrap();
     let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"query_urls") && names.contains(&"crawl_issues") && names.contains(&"compare_crawls"));
+    assert!(names.contains(&"crawl") && names.contains(&"crawl_progress") && names.contains(&"export"));
     let unknown = server.handle(&json!({"jsonrpc": "2.0", "id": 3, "method": "resources/list"})).unwrap();
     assert_eq!(unknown["error"]["code"], -32601);
 
@@ -84,7 +85,7 @@ async fn mcp_tools_and_http() {
     let (list, _) = call(&server, "list_crawls", json!({}));
     assert!(list.contains("MCP test") && list.contains("site.toad"), "{list}");
     let (issues, _) = call(&server, "crawl_issues", json!({"crawl": crawl}));
-    assert!(issues.contains("Internal Client Error (4XX)"), "{issues}");
+    assert!(issues.contains("Internal Client Error (4xx)"), "{issues}");
     let (rows, err) = call(&server, "query_urls", json!({"crawl": "site.toad", "tab": "Response Codes", "filter": "Internal Client Error (4XX)"}));
     assert!(!err && rows.contains(&format!("{origin}/gone")), "{rows}");
     let (details, _) = call(&server, "url_details", json!({"crawl": crawl, "url": format!("{origin}/a")}));
@@ -97,6 +98,18 @@ async fn mcp_tools_and_http() {
     assert!(is_err && bad.contains("unknown tab"), "{bad}");
     let (same, _) = call(&server, "compare_crawls", json!({"current": crawl, "previous": crawl}));
     assert!(same.contains("same file"), "{same}");
+
+    // Export a filter and a report to files.
+    let csv = dir.join("out").join("4xx.csv");
+    let (wrote, err) = call(&server, "export", json!({"crawl": crawl, "tab": "Response Codes", "filter": "Internal Client Error (4XX)", "out": csv}));
+    assert!(!err && wrote.contains("Wrote 1 rows"), "{wrote}");
+    assert!(std::fs::read_to_string(&csv).unwrap().contains(&format!("{origin}/gone")));
+    let xlsx = dir.join("issues.xlsx");
+    let (wrote, err) = call(&server, "export", json!({"crawl": crawl, "report": "Issues Overview", "out": xlsx}));
+    assert!(!err && wrote.contains("Wrote"), "{wrote}");
+    assert!(std::fs::read(&xlsx).unwrap().starts_with(b"PK"));
+    let (missing, is_err) = call(&server, "crawl_progress", json!({"crawl": "never-started.toad"}));
+    assert!(is_err && missing.contains("no crawl file"), "{missing}");
 
     // Streamable HTTP.
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

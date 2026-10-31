@@ -68,6 +68,13 @@ pub struct MultiExport {
     pub skip_empty: bool,
 }
 
+/// What a Multi Export wrote, and the items it skipped (title, reason).
+#[derive(Debug, Clone, Default)]
+pub struct ExportOutcome {
+    pub written: Vec<PathBuf>,
+    pub skipped: Vec<(String, String)>,
+}
+
 /// A saved Multi Export selection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExportPreset {
@@ -132,12 +139,21 @@ impl Store {
         }
     }
 
-    /// Run a Multi Export into `dir`. Returns the files written.
-    pub fn multi_export(&self, spec: &MultiExport, dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    /// Run a Multi Export into `dir`. An item that can't be built (an
+    /// unknown report, tab or filter) is skipped, so one bad name doesn't
+    /// lose the rest.
+    pub fn multi_export(&self, spec: &MultiExport, dir: &Path) -> anyhow::Result<ExportOutcome> {
         std::fs::create_dir_all(dir)?;
         let mut tables = Vec::new();
+        let mut skipped = Vec::new();
         for item in &spec.items {
-            let t = self.export_table(item)?;
+            let t = match self.export_table(item) {
+                Ok(t) => t,
+                Err(e) => {
+                    skipped.push((item.title(), format!("{e:#}")));
+                    continue;
+                }
+            };
             if spec.skip_empty && t.rows.is_empty() {
                 continue;
             }
@@ -161,7 +177,7 @@ impl Store {
                 }
             }
         }
-        Ok(written)
+        Ok(ExportOutcome { written, skipped })
     }
 }
 

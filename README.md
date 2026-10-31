@@ -79,7 +79,7 @@ To build it yourself, see [Building from source](#building-from-source).
 - **Custom Extraction:** XPath 1.0, CSS selectors or regex. It can return text, inner HTML, whole elements, attributes or function values.
 - **Custom JavaScript:** your own snippets run on rendered pages. They can extract data, report errors, save text, or queue new URLs for crawling.
 
-### 31 tabs, 300+ filters
+### 32 tabs, 450+ filters
 
 Each filter is labelled as an Issue, Warning or Opportunity, with High/Medium/Low priority. Each tab has an Overview count and appears in the Issues panel.
 
@@ -88,7 +88,7 @@ Each filter is labelled as an Issue, Warning or Opportunity, with High/Medium/Lo
 | **Site** | Internal, External, Security, Response Codes, URL |
 | **On-page** | Page Titles, Meta Description, Meta Keywords, H1, H2, Content, Images |
 | **Indexing** | Canonicals, Pagination, Directives, Hreflang, Sitemaps |
-| **Technical** | JavaScript, Accessibility, Links, Validation, Structured Data |
+| **Technical** | JavaScript, Accessibility, Mobile, Links, Validation, Structured Data |
 | **Custom** | Custom Search, Custom Extraction, Custom JavaScript |
 | **Data sources** | PageSpeed, Search Console, Analytics, Link Metrics, AI |
 
@@ -190,11 +190,14 @@ Schedule crawls once, daily, weekly or monthly using your operating system's own
 
 ### MCP server for AI assistants
 
-Screaming Toad includes a read-only [Model Context Protocol](https://modelcontextprotocol.io) server. Claude, Cursor and other AI assistants can use it to browse and question your saved crawls. It runs over STDIO (`toad mcp`) or local HTTP (`127.0.0.1:11435`) and offers 12 tools, including:
+Screaming Toad includes a [Model Context Protocol](https://modelcontextprotocol.io) server. Claude, Cursor and other AI assistants can use it to run crawls and to browse and question your saved crawls. It runs over STDIO (`toad mcp`) or local HTTP (`127.0.0.1:11435`) and offers 14 tools, including:
+- starting a crawl (with a configuration profile) and following its progress;
 - listing crawls, tabs and issues;
 - querying URLs by tab, filter or segment;
 - URL details, inlinks and outlinks;
-- running reports and comparing crawls.
+- running reports, exporting tabs and reports to CSV or XLSX, and comparing crawls.
+
+Crawls run in a separate `toad crawl` process: the MCP server's own binary under `toad mcp`, the `toad` next to the desktop app, or the path in `TOAD_BIN`.
 
 ### The desktop app
 
@@ -215,6 +218,7 @@ toad issues example.toad
 toad overview example.toad
 toad export example.toad --tab "Page Titles" --filter Duplicate --out titles.csv
 toad report example.toad "Redirect Chains" --out redirect_chains.csv
+toad report example.toad "Issues Overview" --out issues_overview.csv
 toad compare new.toad old.toad --map "staging\.example\.com=>www.example.com"
 toad sitemap example.toad --out-dir sitemaps --lastmod server
 toad resume example.toad --max-urls 50000

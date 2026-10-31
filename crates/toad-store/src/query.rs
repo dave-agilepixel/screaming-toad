@@ -78,7 +78,7 @@ impl Store {
         self.count_where(&predicate)
     }
 
-    fn count_where(&self, predicate: &str) -> anyhow::Result<u64> {
+    pub(crate) fn count_where(&self, predicate: &str) -> anyhow::Result<u64> {
         let sql = format!("SELECT COUNT(*) FROM urls u WHERE {predicate}");
         let n: i64 = self.conn.query_row(&sql, [], |r| r.get(0)).with_context(|| sql.clone())?;
         Ok(n as u64)
