@@ -59,10 +59,10 @@ async fn serve(listener: TcpListener) {
     }
 }
 
-async fn crawl(origin: &str) -> Store {
+async fn crawl(origin: &str, lazy: bool) -> Store {
     let start = Url::parse(&format!("{origin}/")).unwrap();
-    let cfg = CrawlConfig { threads: 2, ..CrawlConfig::default() };
-    let db = std::env::temp_dir().join(format!("toad-parity-{}.toad", std::process::id()));
+    let cfg = CrawlConfig { threads: 2, extract_lazy_loaded_images: lazy, ..CrawlConfig::default() };
+    let db = std::env::temp_dir().join(format!("toad-parity-{lazy}-{}.toad", std::process::id()));
     let _ = std::fs::remove_file(&db);
     let mut store = Store::create(&db, &start, &cfg).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
@@ -93,16 +93,21 @@ async fn parity_fixes() {
     let origin = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
     tokio::spawn(serve(listener));
     let u = |p: &str| format!("{origin}{p}");
-    let store = crawl(&origin).await;
+    let store = crawl(&origin, false).await;
 
     // The HTTP canonical is stored (and no longer aborts the batch insert).
     assert_eq!(addresses(&store, "Canonicals", "Canonicalised"), vec![u("/pdf-like")]);
     let inlinks = store.inlinks(&u("/")).unwrap();
     assert!(inlinks.rows.iter().any(|r| r[0] == "HTTP Canonical"), "{:?}", inlinks.rows);
 
-    // Lazy-loaded images are crawled from data-src; the empty alt counts.
-    assert_eq!(addresses(&store, "Images", "All").len(), 2);
-    assert_eq!(addresses(&store, "Images", "Missing Alt Text"), vec![u("/real.webp")]);
+    // Lazy-loaded images are left alone by default, as in Screaming Frog
+    // without rendering; with Extract Lazy-Loaded Images they're crawled
+    // from data-src and the empty alt counts.
+    assert_eq!(addresses(&store, "Images", "All").len(), 0);
+    let lazy = crawl(&origin, true).await;
+    assert_eq!(addresses(&lazy, "Images", "All").len(), 2);
+    assert_eq!(addresses(&lazy, "Images", "Missing Alt Text"), vec![u("/real.webp")]);
+    assert_eq!(lazy.url_count().unwrap(), store.url_count().unwrap() + 2);
 
     // query-input on a SearchAction is not a schema.org error.
     assert_eq!(store.count("Structured Data", "Validation Errors").unwrap(), 0);
@@ -142,7 +147,7 @@ async fn parity_fixes() {
     same("H2", "Non-Sequential", "non-sequential");
     same("Accessibility", "WCAG 2.0 A Violation", "WCAG 2.0 A Violations");
     assert!(store.count("URL", "Contains Spaces Everywhere").is_err(), "no fuzzy matching beyond that");
-    assert_eq!(store.count("Response Codes", "Internal All").unwrap(), 8, "six pages and two images");
+    assert_eq!(store.count("Response Codes", "Internal All").unwrap(), 6, "six pages; the lazy images aren't crawled by default");
     assert_eq!(store.count("Response Codes", "External All").unwrap(), 0);
 
     // Pagination URL Not in Anchor Tag: page 2 is linked, but not from /series.

@@ -167,6 +167,11 @@ pub struct CrawlConfig {
     /// A page that meta-refreshes to itself is Non-Indexable.
     pub respect_self_referencing_meta_refresh: bool,
     pub extract_images_from_srcset: bool,
+    /// Read lazy-loaded images from data-src / data-lazy-src (and, with
+    /// srcset extraction, data-srcset / data-lazy-srcset) when src is
+    /// missing or a data: placeholder. Off by default, as Screaming Frog
+    /// only sees lazy-loaded images when it renders JavaScript.
+    pub extract_lazy_loaded_images: bool,
     pub perform_html_validation: bool,
     pub response_timeout_secs: u64,
     pub retries_5xx: u32,
@@ -328,6 +333,7 @@ impl Default for CrawlConfig {
             respect_hsts: true,
             respect_self_referencing_meta_refresh: true,
             extract_images_from_srcset: false,
+            extract_lazy_loaded_images: false,
             perform_html_validation: true,
             response_timeout_secs: 20,
             retries_5xx: 0,
