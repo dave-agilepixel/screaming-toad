@@ -534,7 +534,8 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         },
         TabDef {
             name: "Security",
-            // HTML pages, plus every internal URL for Bad Content Type.
+            // Every internal URL that returned 200: the security headers and
+            // Bad Content Type apply to all of them, the page checks to HTML.
             base: "u.is_internal = 1 AND u.status_code = 200".into(),
             extra_columns: vec![],
             columns: vec!["Address", "Content Type", "Status Code", "Status", "Indexability", "Indexability Status"],
@@ -547,11 +548,11 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Form on HTTP URL", "u.is_html = 1 AND u.form_on_http = 1".into(), Some((Issue, High)), "A form sits on an HTTP page."),
                 f("Unsafe Cross-Origin Links", "u.is_html = 1 AND ".to_string() + &has_link("l.internal = 0 AND l.target_attr = '_blank' AND lower(l.rel) NOT LIKE '%noopener%' AND lower(l.rel) NOT LIKE '%noreferrer%'"), Some((Warning, Low)), "External links opening in a new tab without rel=\"noopener\" or \"noreferrer\"."),
                 f("Protocol-Relative Resource Links", "u.is_html = 1 AND ".to_string() + &has_link("l.path_type = 'Protocol-Relative' AND l.kind IN ('Image','CSS','JavaScript','Iframe')"), Some((Warning, Low)), "Resources loaded with protocol-relative (//) URLs."),
-                f("Missing HSTS Header", "u.is_html = 1 AND u.address LIKE 'https://%' AND u.hsts IS NULL".into(), Some((Warning, Low)), "No Strict-Transport-Security header."),
-                f("Missing Content-Security-Policy Header", "u.is_html = 1 AND u.csp IS NULL".into(), Some((Warning, Low)), "No Content-Security-Policy header."),
-                f("Missing X-Content-Type-Options Header", "u.is_html = 1 AND (u.x_content_type_options IS NULL OR lower(u.x_content_type_options) <> 'nosniff')".into(), Some((Warning, Low)), "X-Content-Type-Options is not 'nosniff'."),
-                f("Missing X-Frame-Options Header", "u.is_html = 1 AND (u.x_frame_options IS NULL OR upper(u.x_frame_options) NOT IN ('DENY','SAMEORIGIN'))".into(), Some((Warning, Low)), "X-Frame-Options is not DENY or SAMEORIGIN."),
-                f("Missing Secure Referrer-Policy Header", "u.is_html = 1 AND (u.referrer_policy IS NULL OR lower(u.referrer_policy) NOT IN ('no-referrer','strict-origin','strict-origin-when-cross-origin','same-origin'))".into(), Some((Warning, Low)), "No secure Referrer-Policy header."),
+                f("Missing HSTS Header", "u.address LIKE 'https://%' AND u.hsts IS NULL".into(), Some((Warning, Low)), "No Strict-Transport-Security header."),
+                f("Missing Content-Security-Policy Header", "u.csp IS NULL".into(), Some((Warning, Low)), "No Content-Security-Policy header."),
+                f("Missing X-Content-Type-Options Header", "(u.x_content_type_options IS NULL OR lower(u.x_content_type_options) <> 'nosniff')".into(), Some((Warning, Low)), "X-Content-Type-Options is not 'nosniff'."),
+                f("Missing X-Frame-Options Header", "(u.x_frame_options IS NULL OR upper(u.x_frame_options) NOT IN ('DENY','SAMEORIGIN'))".into(), Some((Warning, Low)), "X-Frame-Options is not DENY or SAMEORIGIN."),
+                f("Missing Secure Referrer-Policy Header", "(u.referrer_policy IS NULL OR lower(u.referrer_policy) NOT IN ('no-referrer','strict-origin','strict-origin-when-cross-origin','same-origin'))".into(), Some((Warning, Low)), "No secure Referrer-Policy header."),
                 f("Bad Content Type", "u.bad_content_type = 1".into(), Some((Warning, Low)), "The Content-Type header isn't a valid MIME type, or doesn't match the file (an HTML page served as an image, an image served as text/html)."),
             ],
         },

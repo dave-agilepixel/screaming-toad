@@ -118,6 +118,10 @@ async fn missing_checks() {
     // Security: an HTML page served as image/png, and an invalid MIME type.
     assert_eq!(addresses(&store, "Security", "Bad Content Type"), vec![u("/badtype"), u("/fake.png")]);
     assert_eq!(store.count("Security", "All").unwrap(), 7, "All is still the HTML pages");
+    // Security headers are checked on every internal URL, images included,
+    // as Screaming Frog does; the site sends none.
+    let no_xfo = addresses(&store, "Security", "Missing X-Frame-Options Header");
+    assert!(no_xfo.contains(&u("/pic.png")) && no_xfo.contains(&u("/")), "{no_xfo:?}");
 
     // URL: #missing on the page itself and #nowhere on /refresh; #here and #top are fine.
     assert_eq!(addresses(&store, "URL", "Broken Bookmark"), vec![u("/bookmarks"), u("/refresh")]);
