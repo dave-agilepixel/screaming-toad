@@ -298,3 +298,16 @@ The Inlinks (Top 20 URLs) rows in Screaming Frog are the 20 most linked-to pages
 - **Bad Content Type**: the header isn't a valid MIME type, or names a different kind of file from the body (HTML served as an image, script or stylesheet; an image or PDF served as text). Image subtypes aren't compared.
 - **Accessibility**: axe-core leaves `target-size` (WCAG 2.2 AA) and its AAA rules (`color-contrast-enhanced`, `identical-links-same-purpose`, `meta-refresh-no-exceptions`) off by default; Toad switches them on, since Screaming Frog reports them.
 - **Content**: Semantically Similar and Low Relevance Content were already built from embeddings; they're now always listed, empty unless API Access > Embeddings is on.
+
+## Known deviations and settings that change counts
+
+- **Lazy-loaded images** (Spider > Advanced > Extract Lazy-Loaded Images, `--lazy-images` in the CLI; off by default). Off, Toad reads only an image's `src`, as Screaming Frog does without JavaScript rendering, so a placeholder `data:` URI is skipped. On, it also reads `data-src` / `data-lazy-src` (and `data-srcset` / `data-lazy-srcset` with srcset extraction), which makes URL totals, the Images tab, Missing Alt Text, Images Over 100 kB and the resource-level security header counts run higher than Screaming Frog's. Yorkshire Escapes, 31 Oct 2026, 5 threads:
+
+  | | Off (default) | On |
+  |---|---|---|
+  | URLs crawled | 5,056 | 10,354 |
+  | Security: Missing HSTS Header | 4,173 | 9,424 |
+  | Images: Missing Alt Text | 0 | 1,190 |
+  | Images: Over 100 kB | 3,974 | 4,439 |
+
+  Screaming Frog's August 2026 crawl found 5,426 URLs. Most of the extra URLs with the setting on are WordPress thumbnails (`…-768x512.jpg`) of gallery photos whose originals are already crawled through lightbox links.
