@@ -71,8 +71,15 @@ impl A11yViolation {
 /// axe-core (MPL-2.0, Deque Systems), refreshed by `scripts/fetch_axe.sh`.
 const AXE_JS: &str = include_str!("../data/axe.min.js");
 
+/// axe leaves its WCAG 2.2 rule (target-size) and its AAA rules off by
+/// default; Screaming Frog reports them, so they're switched on here.
+/// Deprecated rules stay off.
 const AXE_RUN: &str = r#"(async () => {
-  const r = await axe.run(document, { resultTypes: ['violations'] });
+  const on = { enabled: true };
+  const r = await axe.run(document, {
+    resultTypes: ['violations'],
+    rules: { 'target-size': on, 'color-contrast-enhanced': on, 'identical-links-same-purpose': on, 'meta-refresh-no-exceptions': on },
+  });
   return {
     violations: r.violations.map(v => ({
       rule: v.id,
