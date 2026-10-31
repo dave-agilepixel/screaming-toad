@@ -392,7 +392,7 @@ struct CrawlArgs {
     /// Crawl every subdomain of the start domain.
     #[arg(long)]
     all_subdomains: bool,
-    /// Exports after the crawl, e.g. "Internal:All,Response Codes:Internal Client Error (4XX)".
+    /// Exports after the crawl, e.g. "Internal:All,Response Codes:Internal Client Error (4xx)".
     #[arg(long)]
     export_tabs: Option<String>,
     /// Bulk exports after the crawl, e.g. "All Inlinks,All Anchor Text" (see `toad report <crawl> --list`).

@@ -85,7 +85,7 @@ async fn mcp_tools_and_http() {
     let (list, _) = call(&server, "list_crawls", json!({}));
     assert!(list.contains("MCP test") && list.contains("site.toad"), "{list}");
     let (issues, _) = call(&server, "crawl_issues", json!({"crawl": crawl}));
-    assert!(issues.contains("Internal Client Error (4XX)"), "{issues}");
+    assert!(issues.contains("Internal Client Error (4xx)"), "{issues}");
     let (rows, err) = call(&server, "query_urls", json!({"crawl": "site.toad", "tab": "Response Codes", "filter": "Internal Client Error (4XX)"}));
     assert!(!err && rows.contains(&format!("{origin}/gone")), "{rows}");
     let (details, _) = call(&server, "url_details", json!({"crawl": crawl, "url": format!("{origin}/a")}));

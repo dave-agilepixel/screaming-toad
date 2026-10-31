@@ -466,17 +466,21 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         "EXISTS (SELECT 1 FROM rendered_images ri WHERE ri.src = u.address AND ri.display_w > 0 AND ri.display_h > 0 \
          AND ri.natural_w * ri.natural_h > 1.5 * (ri.display_w * {scale}) * (ri.display_h * {scale}))"
     );
-    let mut response_filters = vec![all()];
+    let mut response_filters = vec![
+        all(),
+        f("Internal All", "u.is_internal = 1".into(), None, "Every internal URL."),
+        f("External All", "u.is_internal = 0".into(), None, "Every external URL."),
+    ];
     let codes: [(&str, &str, (IssueType, Priority), &str); 9] = [
         ("Blocked by Robots.txt", "u.blocked_robots_line IS NOT NULL", (Warning, High), "Blocked by robots.txt."),
         ("No Response", "u.status_code = 0 AND u.blocked_robots_line IS NULL", (Issue, High), "No response: malformed URL, timeout, refusal or connection error."),
-        ("Success (2XX)", "u.status_code BETWEEN 200 AND 299", (Warning, Low), "Successful responses."),
-        ("Redirection (3XX)", "u.status_code BETWEEN 300 AND 399", (Warning, Low), "Server-side redirects."),
+        ("Success (2xx)", "u.status_code BETWEEN 200 AND 299", (Warning, Low), "Successful responses."),
+        ("Redirection (3xx)", "u.status_code BETWEEN 300 AND 399", (Warning, Low), "Server-side redirects."),
         ("Redirection (Meta Refresh)", "u.redirect_type = 'Meta Refresh Redirect'", (Warning, Low), "Meta refresh redirects."),
         ("Redirect Chain", "u.redirect_chain_length > 1", (Warning, Medium), "Redirects that take more than one hop to reach the final URL."),
         ("Redirect Loop", "u.redirect_loop = 1", (Issue, High), "Redirect chains that return to a URL already in the chain."),
-        ("Client Error (4XX)", "u.status_code BETWEEN 400 AND 499", (Issue, High), "Client errors such as 404 and 410."),
-        ("Server Error (5XX)", "u.status_code >= 500", (Issue, High), "Server errors such as 500 and 503."),
+        ("Client Error (4xx)", "u.status_code BETWEEN 400 AND 499", (Issue, High), "Client errors such as 404 and 410."),
+        ("Server Error (5xx)", "u.status_code >= 500", (Issue, High), "Server errors such as 500 and 503."),
     ];
     for (name, sql, issue, desc) in codes {
         let is_success = name.starts_with("Success");
@@ -550,7 +554,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Uppercase", "u.url_uppercase = 1".into(), Some((Warning, Low)), "URL contains uppercase characters."),
                 f("Multiple Slashes", "u.url_multiple_slashes = 1".into(), Some((Issue, Low)), "Consecutive slashes in the path."),
                 f("Repetitive Path", "u.url_repetitive_path = 1".into(), Some((Warning, Low)), "A path segment repeats."),
-                f("Contains A Space", "u.url_space = 1".into(), Some((Issue, Low)), "URL contains a space."),
+                f("Contains Space", "u.url_space = 1".into(), Some((Issue, Low)), "URL contains a space."),
                 f("Internal Search", "u.url_internal_search = 1".into(), Some((Warning, Low)), "URL looks like an internal search results page."),
                 f("Parameters", "u.query_params > 0".into(), Some((Warning, Low)), "URL contains query parameters."),
                 f("GA Tracking Parameters", "u.url_ga_params = 1".into(), Some((Warning, Low)), "URL contains utm_, _ga or _gl parameters."),
@@ -616,7 +620,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f(&format!("Over {} Characters", p.h1_max_chars), format!("u.h1_1_length > {}{ix}", p.h1_max_chars), Some((Opportunity, Low)), "H1 is longer than the preference."),
                 f("Multiple", format!("u.h1_count > 1{ix}"), Some((Warning, Medium)), "More than one H1."),
                 f("Alt Text in H1", format!("u.h1_alt_text = 1{ix}"), Some((Warning, Low)), "An image's alt text forms part of the H1."),
-                f("Non-sequential", format!("u.h1_non_sequential = 1{ix}"), Some((Warning, Low)), "The H1 is not the first heading on the page."),
+                f("Non-Sequential", format!("u.h1_non_sequential = 1{ix}"), Some((Warning, Low)), "The H1 is not the first heading on the page."),
             ],
         },
         TabDef {
@@ -630,7 +634,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Duplicate", dup("h2_1"), Some((Opportunity, Low)), "The same first H2 on more than one page."),
                 f(&format!("Over {} Characters", p.h2_max_chars), format!("u.h2_1_length > {}{ix}", p.h2_max_chars), Some((Opportunity, Low)), "H2 is longer than the preference."),
                 f("Multiple", format!("u.h2_count > 1{ix}"), Some((Warning, Low)), "More than one H2."),
-                f("Non-sequential", format!("u.h2_non_sequential = 1{ix}"), Some((Warning, Low)), "The heading after the H1 isn't an H2: an H2 comes before the H1, or an H3-H6 sits between the H1 and the first H2."),
+                f("Non-Sequential", format!("u.h2_non_sequential = 1{ix}"), Some((Warning, Low)), "The heading after the H1 isn't an H2: an H2 comes before the H1, or an H3-H6 sits between the H1 and the first H2."),
             ],
         },
         TabDef {
@@ -642,7 +646,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 all(),
                 f("Exact Duplicates", dup_scoped("hash", dup_ix), Some((Issue, High)), "Pages with identical HTML (matching MD5 hash)."),
                 f("Near Duplicates", "u.near_duplicate_count > 0".into(), Some((Warning, Medium)), "Content-area text at least as similar as the near-duplicate threshold (MinHash). Needs Near Duplicates enabled and crawl analysis."),
-                f(&format!("Low Content Pages (under {} words)", p.low_content_words), format!("u.word_count < {}{ix}", p.low_content_words), Some((Opportunity, Medium)), "Little text in the content area."),
+                f("Low Content Pages", format!("u.word_count < {}{ix}", p.low_content_words), Some((Opportunity, Medium)), &format!("Under {} words in the content area.", p.low_content_words)),
                 f("Soft 404 Pages", {
                     let phrases: Vec<String> = p.soft_404_phrases.iter().map(|ph| {
                         let ph = ph.replace('\'', "''").to_lowercase();
@@ -655,7 +659,6 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Spelling Errors", if cfg.spelling.spell_check { "u.spelling_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible spelling mistakes (Content > Spelling & Grammar)."),
                 f("Grammar Errors", if cfg.spelling.grammar_check { "u.grammar_errors > 0".into() } else { "0 = 1".into() }, Some((Issue, Medium)), "Pages with possible grammar mistakes (needs a LanguageTool server)."),
                 f("Lorem Ipsum Placeholder", "u.lorem_ipsum = 1".into(), Some((Warning, High)), "Page contains lorem ipsum placeholder text."),
-                f("High Carbon Rating", format!("u.carbon_rating = 'F'{ix}"), Some((Opportunity, Low)), "Carbon Rating F: over 0.359 g CO2 per page view (Sustainable Web Design model). With JavaScript rendering this counts every resource the page loads."),
             ],
         },
         TabDef {
@@ -665,7 +668,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             columns: vec!["Address", "Content Type", "Status Code", "Status", "Size (bytes)", "Real Dimensions (W x H)", "Display Dimensions (W x H)", "Inlinks"],
             filters: vec![
                 all(),
-                f(&format!("Over {} KB", p.image_max_kb), format!("u.size > {}", p.image_max_kb as u64 * 1024), Some((Opportunity, Medium)), "Large images slow pages down."),
+                f(&format!("Over {} kB", p.image_max_kb), format!("u.size > {}", p.image_max_kb as u64 * 1024), Some((Opportunity, Medium)), "Large images slow pages down."),
                 f("Missing Alt Text", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt = '')".into(), Some((Issue, Low)), "Images with an empty alt attribute."),
                 f("Missing Alt Attribute", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt IS NULL AND coalesce(l.rel, '') <> 'background-image')".into(), Some((Issue, Low)), "Images with no alt attribute at all."),
                 f("Background Images", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.rel = 'background-image')".into(), None, "Images used as CSS backgrounds (found by JavaScript rendering). They have no alt text and aren't indexed as page images."),
@@ -705,10 +708,11 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Contains Pagination", "(u.rel_next IS NOT NULL OR u.rel_prev IS NOT NULL)".into(), None, "Has rel=next or rel=prev."),
                 f("First Page", "u.rel_next IS NOT NULL AND u.rel_prev IS NULL".into(), None, "Has next only."),
                 f("Paginated 2+ Pages", "u.rel_prev IS NOT NULL".into(), None, "Has prev."),
-                f("Non-200 Pagination URL", has_link("l.kind IN ('Rel Next','Rel Prev') AND EXISTS (SELECT 1 FROM urls t WHERE t.id = l.target_id AND t.status_code <> 200)"), Some((Issue, High)), "A pagination URL does not return 200."),
+                f("Non-200 Pagination URLs", has_link("l.kind IN ('Rel Next','Rel Prev') AND EXISTS (SELECT 1 FROM urls t WHERE t.id = l.target_id AND t.status_code <> 200)"), Some((Issue, High)), "A pagination URL does not return 200."),
                 f("Non-Indexable", "(u.rel_next IS NOT NULL OR u.rel_prev IS NOT NULL) AND u.indexable = 0".into(), Some((Warning, High)), "Paginated page is non-indexable."),
                 f("Multiple Pagination URLs", "(u.rel_next_count > 1 OR u.rel_prev_count > 1)".into(), Some((Issue, Low)), "More than one next or prev."),
-                f("Unlinked Pagination URL", has_link("l.kind IN ('Rel Next','Rel Prev') AND NOT EXISTS (SELECT 1 FROM links h WHERE h.target = l.target AND h.kind = 'Hyperlink')"), Some((Issue, Medium)), "A pagination URL is not linked with an ordinary hyperlink anywhere."),
+                f("Unlinked Pagination URLs", has_link("l.kind IN ('Rel Next','Rel Prev') AND NOT EXISTS (SELECT 1 FROM links h WHERE h.target = l.target AND h.kind = 'Hyperlink')"), Some((Issue, Medium)), "A pagination URL is not linked with an ordinary hyperlink anywhere."),
+                f("Pagination URL Not in Anchor Tag", has_link("l.kind IN ('Rel Next','Rel Prev') AND NOT EXISTS (SELECT 1 FROM links h WHERE h.source_id = u.id AND h.target = l.target AND h.kind = 'Hyperlink')"), Some((Warning, Medium)), "The page's rel=next or rel=prev URL isn't also linked from an <a href> on the page, so it may not be crawled."),
                 f("Pagination Loop", "(u.rel_next = u.address OR u.rel_prev = u.address OR (u.rel_next IS NOT NULL AND u.rel_next = u.rel_prev))".into(), Some((Issue, Low)), "rel=next or rel=prev points back at the page itself, or both point at the same URL."),
                 f("Sequence Error", "u.rel_next IS NOT NULL AND EXISTS (SELECT 1 FROM urls t WHERE t.address = u.rel_next AND t.status_code = 200 AND t.is_html = 1 AND coalesce(t.rel_prev, '') <> u.address)".into(), Some((Issue, Low)), "The next page's rel=prev does not point back to this page."),
             ],
@@ -800,8 +804,9 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Multiple <head> Tags", "u.is_html = 1 AND u.head_tags > 1".into(), Some((Issue, High)), "More than one head element."),
                 f("Missing <body> Tag", "u.is_html = 1 AND u.body_tags = 0".into(), Some((Issue, High)), "No body element in the source."),
                 f("Multiple <body> Tags", "u.is_html = 1 AND u.body_tags > 1".into(), Some((Issue, High)), "More than one body element."),
-                f(&format!("HTML Document Over {} MB", p.html_max_mb), format!("u.is_html = 1 AND u.size > {}", p.html_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "HTML larger than the preference."),
-                f(&format!("Resource Over {} MB", p.resource_max_mb), format!("u.is_html = 0 AND u.size > {}", p.resource_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "A CSS, JavaScript, image or other file larger than the preference."),
+                f(&format!("HTML Document Over {}MB", p.html_max_mb), format!("u.is_html = 1 AND u.size > {}", p.html_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "HTML larger than the preference."),
+                f(&format!("Resource Over {}MB", p.resource_max_mb), format!("u.is_html = 0 AND u.size > {}", p.resource_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "A CSS, JavaScript, image or other file larger than the preference."),
+                f("High Carbon Rating", format!("u.is_html = 1 AND u.carbon_rating = 'F'{ix}"), Some((Opportunity, Low)), "Carbon Rating F: over 0.359 g CO2 per page view (Sustainable Web Design model). With JavaScript rendering this counts every resource the page loads."),
             ],
         },
         TabDef {
@@ -817,7 +822,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Non-Indexable URLs in Sitemap", format!("{in_sitemap} AND u.indexable = 0"), Some((Issue, Medium)), "Sitemaps should list only indexable, canonical URLs."),
                 f("URLs In Multiple Sitemaps", "(SELECT COUNT(DISTINCT s.sitemap) FROM sitemap_entries s WHERE s.url = u.address) > 1".into(), Some((Warning, Low)), "Listed in more than one sitemap."),
                 f("XML Sitemap With Over 50k URLs", "u.sitemap_url_count > 50000".into(), Some((Issue, High)), "Sitemaps may list at most 50,000 URLs."),
-                f("XML Sitemap With Over 50MB", "u.sitemap_url_count IS NOT NULL AND u.size > 52428800".into(), Some((Issue, High)), "Sitemaps may be at most 50 MB uncompressed."),
+                f("XML Sitemap over 50MB", "u.sitemap_url_count IS NOT NULL AND u.size > 52428800".into(), Some((Issue, High)), "Sitemaps may be at most 50 MB uncompressed."),
             ],
         },
         TabDef {

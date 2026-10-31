@@ -20,7 +20,8 @@ fn respond(path: &str) -> (u16, String, String) {
     match path {
         "/" => (200, String::new(), page(
             "Home page of the parity test site",
-            r#"<h1>Home</h1><h2>Section</h2><a href="/pdf-like">Header canonical</a> <a href="/lazy">Lazy</a> <a href="/skip">Skip</a>"#,
+            r#"<h1>Home</h1><h2>Section</h2><a href="/pdf-like">Header canonical</a> <a href="/lazy">Lazy</a> <a href="/skip">Skip</a>
+               <a href="/series">Series</a> <a href="/series-2">Page 2</a>"#,
             SEARCH_ACTION,
         )),
         // A canonical only in the Link header used to abort the crawl.
@@ -33,6 +34,9 @@ fn respond(path: &str) -> (u16, String, String) {
             "",
         )),
         "/skip" => (200, String::new(), page("H1 followed by an H3 before the H2", "<h1>Skip</h1><h3>Too deep</h3><h2>Late</h2>", "")),
+        // rel=next with no <a href> to page 2 on the page itself.
+        "/series" => (200, String::new(), page("First page of a paginated series", "<h1>Series</h1><h2>One</h2>", r#"<link rel="next" href="/series-2">"#)),
+        "/series-2" => (200, String::new(), page("Second page of a paginated series", r#"<h1>Series</h1><h2>Two</h2><a href="/series">Previous</a>"#, r#"<link rel="prev" href="/series">"#)),
         "/real.webp" | "/described.webp" => (200, String::new(), "WEBP".into()),
         _ => (404, String::new(), page("Not found", "", "")),
     }
@@ -111,8 +115,37 @@ async fn parity_fixes() {
     // Issues Overview: Screaming Frog's columns, a row per issue.
     let report = store.report("issues overview").unwrap();
     assert_eq!(report.columns, ["Issue Name", "Issue Type", "Issue Priority", "URLs", "% of Total", "Description", "How To Fix"]);
-    let h2 = report.rows.iter().find(|r| r[0] == "H2: Non-sequential").expect("H2 row");
-    assert_eq!((h2[1].as_str(), h2[2].as_str(), h2[3].as_str(), h2[4].as_str()), ("Warning", "Low", "1", "25.000"));
+    let h2 = report.rows.iter().find(|r| r[0] == "H2: Non-Sequential").expect("H2 row");
+    assert_eq!((h2[1].as_str(), h2[2].as_str(), h2[3].as_str(), h2[4].as_str()), ("Warning", "Low", "1", "16.667"));
     assert!(!h2[5].is_empty() && !h2[6].is_empty(), "{h2:?}");
     assert!(report.rows.iter().all(|r| !r[6].is_empty()), "every issue has a fix: {:?}", report.rows.iter().filter(|r| r[6].is_empty()).collect::<Vec<_>>());
+
+    // Crawl Overview ends with Screaming Frog's depth and top inlinks sections.
+    let overview = store.report("Crawl Overview").unwrap();
+    let section = |tab: &str| overview.rows.iter().filter(|r| r[0] == tab).map(|r| (r[1].clone(), r[2].clone(), r[3].clone())).collect::<Vec<_>>();
+    let depth = section("Depth (Clicks from Start URL)");
+    assert_eq!(depth.len(), 11);
+    assert_eq!(depth[0], ("0".into(), "1".into(), "16.7%".into()));
+    assert_eq!(depth[1], ("1".into(), "5".into(), "83.3%".into()));
+    assert_eq!(depth[10].0, "10+");
+    let top = section("Inlinks (Top 20 URLs)");
+    assert_eq!(top.len(), 5, "every page but home, which nothing links to: {top:?}");
+    assert_eq!(top[0], (u("/series"), "2".into(), "33.3%".into()), "linked from home and page 2");
+
+    // Screaming Frog's names, and Toad's older ones, resolve to the same filter.
+    let same = |tab: &str, a: &str, b: &str| assert_eq!(store.count(tab, a).unwrap(), store.count(tab, b).unwrap(), "{tab}: {a} / {b}");
+    same("Content", "Low Content Pages", "Low Content Pages (under 200 words)");
+    assert_eq!(store.count("Content", "Low Content Pages").unwrap(), 5, "every indexable page (/pdf-like is canonicalised)");
+    same("URL", "Contains Space", "Contains A Space");
+    same("Validation", "Resource Over 2MB", "Resource Over 2 MB");
+    same("Response Codes", "Internal Client Error (4xx)", "Internal Client Error (4XX)");
+    same("H2", "Non-Sequential", "non-sequential");
+    same("Accessibility", "WCAG 2.0 A Violation", "WCAG 2.0 A Violations");
+    assert!(store.count("URL", "Contains Spaces Everywhere").is_err(), "no fuzzy matching beyond that");
+    assert_eq!(store.count("Response Codes", "Internal All").unwrap(), 8, "six pages and two images");
+    assert_eq!(store.count("Response Codes", "External All").unwrap(), 0);
+
+    // Pagination URL Not in Anchor Tag: page 2 is linked, but not from /series.
+    assert_eq!(addresses(&store, "Pagination", "Pagination URL Not in Anchor Tag"), vec![u("/series")]);
+    assert_eq!(store.count("Pagination", "Unlinked Pagination URLs").unwrap(), 0);
 }

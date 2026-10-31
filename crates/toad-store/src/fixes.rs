@@ -74,7 +74,7 @@ fn url(f: &str) -> &'static str {
         "uppercase" => "Standardise on lowercase URLs and redirect mixed-case variants to the lowercase version.",
         "multiple slashes" => "Remove the repeated slashes from the link and redirect the malformed address to the clean one.",
         "repetitive path" => "Check for a faulty relative link or rewrite rule that keeps repeating a folder, and correct it.",
-        "contains a space" => "Replace spaces with hyphens in the path and redirect the old address, since spaces appear as %20.",
+        "contains space" | "contains a space" => "Replace spaces with hyphens in the path and redirect the old address, since spaces appear as %20.",
         "internal search" => "Keep internal search result pages out of the index with noindex or robots.txt, and avoid linking to them.",
         "parameters" => "Avoid crawlable parameter URLs where possible. Canonicalise them to the clean version or stop search engines crawling them.",
         "ga tracking parameters" => "Remove analytics tracking parameters from internal links and canonicalise to the clean URL.",
@@ -144,7 +144,6 @@ fn content(f: &str) -> &'static str {
         "spelling errors" => "Correct the misspelt words, then recrawl to confirm the page is clean.",
         "grammar errors" => "Edit the flagged sentences for grammar, then recrawl to confirm the page is clean.",
         "lorem ipsum placeholder" => "Replace the placeholder text with real copy before the page is published or indexed.",
-        "high carbon rating" => "Reduce page weight by compressing images, trimming scripts and caching assets, to cut the emissions per view.",
         "semantically similar" => "Review the closely matching pages for overlapping topics, then merge, differentiate or canonicalise them.",
         "low relevance content" => "Check whether the page fits the site's focus. Rework it to match the topic, or consider removing it.",
         _ if f.starts_with("low content pages") => "Expand the page with useful, original content, or noindex or remove it if it has no standalone value.",
@@ -182,10 +181,11 @@ fn canonicals(f: &str) -> &'static str {
 
 fn pagination(f: &str) -> &'static str {
     match f {
-        "non-200 pagination url" => "Point rel next and prev at pages that return 200, and fix or remove links to broken pages in the series.",
+        "non-200 pagination urls" | "non-200 pagination url" => "Point rel next and prev at pages that return 200, and fix or remove links to broken pages in the series.",
         "non-indexable" => "Make paginated pages indexable and avoid noindex or canonicals that point away from the series.",
         "multiple pagination urls" => "Declare a single next and a single previous URL per page.",
-        "unlinked pagination url" => "Add normal crawlable links to the next and previous pages so they can be found.",
+        "pagination url not in anchor tag" => "Link the next and previous pages with ordinary <a href> links on the page as well as rel next and prev.",
+        "unlinked pagination urls" | "unlinked pagination url" => "Add normal crawlable links to the next and previous pages so they can be found.",
         "pagination loop" => "Correct the markup so the sequence moves forward without returning to an earlier page.",
         "sequence error" => "Check that each page's next and previous URLs match the pages around it in the series.",
         _ => "",
@@ -284,6 +284,7 @@ fn validation(f: &str) -> &'static str {
         "multiple <head> tags" => "Keep a single head element. Check for stray markup that closes it early.",
         "missing <body> tag" => "Add a body element around the page content.",
         "multiple <body> tags" => "Keep a single body element and fix any markup that ends it too soon.",
+        "high carbon rating" => "Reduce page weight by compressing images, trimming scripts and caching assets, to cut the emissions per view.",
         _ if f.starts_with("html document over ") => "Reduce the HTML size by removing inline bloat and unused markup, and paginating or lazy-loading long content.",
         _ if f.starts_with("resource over ") => "Compress or split the oversized resource so it loads faster and stays within crawl limits.",
         _ => "",
@@ -297,7 +298,7 @@ fn sitemaps(f: &str) -> &'static str {
         "non-indexable urls in sitemap" => "Remove noindexed, redirected and error URLs from the sitemap, leaving only indexable pages.",
         "urls in multiple sitemaps" => "List each URL in one sitemap only, to keep the files simple to maintain.",
         "xml sitemap with over 50k urls" => "Split the sitemap into several files and reference them from a sitemap index.",
-        "xml sitemap with over 50mb" => "Break the file into smaller sitemaps, or compress them, so each stays under the size limit.",
+        "xml sitemap over 50mb" | "xml sitemap with over 50mb" => "Break the file into smaller sitemaps, or compress them, so each stays under the size limit.",
         _ => "",
     }
 }
@@ -318,7 +319,7 @@ fn pagespeed(f: &str) -> &'static str {
     match f {
         "failed core web vitals assessment" => "Improve whichever of LCP, INP or CLS is poor for real users. Use the PageSpeed detail to find the cause.",
         "performance score below 50" => "Work through the highest-impact Lighthouse opportunities for the page, such as images, scripts and render-blocking resources.",
-        "request error" => "Check the PageSpeed API key, quota and that the URL is reachable, then re-run the request.",
+        "request errors" | "request error" => "Check the PageSpeed API key, quota and that the URL is reachable, then re-run the request.",
         "render blocking requests" => "Defer or inline critical CSS and scripts so they do not hold up the first paint.",
         "document request latency" => "Reduce server response time with caching, a faster host or a CDN, and avoid redirects on the document request.",
         "improve image delivery" => "Compress images, use modern formats and serve sizes matched to the display.",
@@ -356,10 +357,10 @@ fn search_console(f: &str) -> &'static str {
         "orphan urls" => "Add internal links to pages that earn impressions, or redirect or remove them if they are no longer wanted.",
         "url is not on google" => "Find out why the URL is excluded using the inspection result, then fix the cause and request indexing.",
         "indexable url not indexed" => "Improve the page's content and internal links, make sure it is in the sitemap, then request indexing.",
-        "url is on google, but has issues" => "Open the URL inspection details and fix the enhancement problems reported, such as rich results markup.",
+        "url is on google but has issues" | "url is on google, but has issues" => "Open the URL inspection details and fix the enhancement problems reported, such as rich results markup.",
         "user-declared canonical not selected" => "Make the page's content and signals support the canonical you declared, or update the canonical to the URL Google prefers.",
         "rich result invalid" => "Correct the structured data errors that the URL Inspection reports so the rich result becomes valid.",
-        "request error" => "Check the Search Console connection, property access and API quota, then retry the request.",
+        "request errors" | "request error" => "Check the Search Console connection, property access and API quota, then retry the request.",
         _ => "",
     }
 }
@@ -415,5 +416,19 @@ mod tests {
     fn unknown_is_empty() {
         assert_eq!(how_to_fix("Page Titles", "No Such Filter"), "");
         assert_eq!(how_to_fix("No Such Tab", "Missing"), "");
+    }
+
+    /// Every issue filter, under its current name, has a fix.
+    #[test]
+    fn every_issue_filter_has_a_fix() {
+        let mut cfg = toad_core::CrawlConfig::default();
+        cfg.apis.embeddings.enabled = true;
+        let missing: Vec<String> = crate::tabs::tabs(&cfg)
+            .iter()
+            .flat_map(|t| t.filters.iter().filter(|f| f.issue.is_some()).map(move |f| (t.name, f.name.clone())))
+            .filter(|(t, f)| how_to_fix(t, f).is_empty())
+            .map(|(t, f)| format!("{t}: {f}"))
+            .collect();
+        assert!(missing.is_empty(), "no fix for {missing:#?}");
     }
 }

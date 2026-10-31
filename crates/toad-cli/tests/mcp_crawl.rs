@@ -56,14 +56,14 @@ fn crawl_progress_export() {
         std::thread::sleep(Duration::from_millis(200));
     };
     assert!(progress.contains("Status: Complete") && progress.contains("URLs: 3"), "{progress}");
-    assert!(progress.contains("Response Codes: Internal Client Error (4XX)"), "{progress}");
+    assert!(progress.contains("Response Codes: Internal Client Error (4xx)"), "{progress}");
 
     let out = dir.join("issues.csv");
     let (wrote, err) = call(&server, "export", json!({"crawl": "site.toad", "report": "Issues Overview", "out": out}));
     assert!(!err, "{wrote}");
     let csv = std::fs::read_to_string(&out).unwrap();
     assert!(csv.starts_with("Issue Name,Issue Type,Issue Priority,URLs,% of Total,Description,How To Fix"), "{csv}");
-    assert!(csv.contains("Response Codes: Internal Client Error (4XX),Issue,High,1,"), "{csv}");
+    assert!(csv.contains("Response Codes: Internal Client Error (4xx),Issue,High,1,"), "{csv}");
 }
 
 /// An unknown --save-report name is skipped with a warning; the other

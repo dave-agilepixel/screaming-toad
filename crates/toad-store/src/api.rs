@@ -274,7 +274,7 @@ pub fn api_tabs(cfg: &CrawlConfig, html: &str, start_url_sql: &str) -> Vec<TabDe
         f("Passed Core Web Vitals Assessment", format!("{} = 'Passed'", val(PSI, "cwv_assessment")), None, "Real-user LCP, INP and CLS are all good."),
         f("No CrUX Data", format!("{} = 'No Data'", val(PSI, "cwv_assessment")), None, "Too little real-user traffic for Chrome UX Report data."),
         f("Performance Score Below 50", format!("{} < 50", num(PSI, "performance_score")), Some((Warning, Medium)), "Lighthouse lab performance score under 50 (poor)."),
-        f("Request Error", errored(PSI), Some((Warning, Low)), "PageSpeed Insights couldn't analyse the page."),
+        f("Request Errors", errored(PSI), Some((Warning, Low)), "PageSpeed Insights couldn't analyse the page."),
     ];
     for (id, name) in PSI_AUDITS {
         psi_filters.push(f(
@@ -318,9 +318,9 @@ pub fn api_tabs(cfg: &CrawlConfig, html: &str, start_url_sql: &str) -> Vec<TabDe
             f("No Search Analytics Data", format!("NOT {}", has(GSC)), None, "Pages with no impressions in Search Console in the date range."),
             f("Non-Indexable with Search Analytics Data", format!("u.indexable = 0 AND {}", has(GSC)), Some((Issue, High)), "Non-indexable pages that still appear in search results."),
             f("Orphan URLs", orphan(GSC), Some((Warning, High)), "Pages in Search Console that no crawled page links to (needs Crawl New URLs Discovered in Search Console)."),
-            f("URL Is Not on Google", format!("{verdict} IN ('FAIL', 'NEUTRAL')"), Some((Issue, High)), "URL Inspection: Google hasn't indexed this URL."),
+            f("URL is Not on Google", format!("{verdict} IN ('FAIL', 'NEUTRAL')"), Some((Issue, High)), "URL Inspection: Google hasn't indexed this URL."),
             f("Indexable URL Not Indexed", format!("u.indexable = 1 AND {verdict} IN ('FAIL', 'NEUTRAL')"), Some((Issue, High)), "Indexable pages Google hasn't indexed."),
-            f("URL Is on Google, But Has Issues", format!("{verdict} = 'PARTIAL'"), Some((Warning, Medium)), "Indexed, with problems in enhancements such as rich results."),
+            f("URL is on Google But Has Issues", format!("{verdict} = 'PARTIAL'"), Some((Warning, Medium)), "Indexed, with problems in enhancements such as rich results."),
             f(
                 "User-Declared Canonical Not Selected",
                 format!("{} IS NOT NULL AND {} IS NOT NULL AND {} <> {}", val(INSPECT, "user_canonical"), val(INSPECT, "google_canonical"), val(INSPECT, "user_canonical"), val(INSPECT, "google_canonical")),
@@ -328,7 +328,7 @@ pub fn api_tabs(cfg: &CrawlConfig, html: &str, start_url_sql: &str) -> Vec<TabDe
                 "Google chose a different canonical from the one the page declares.",
             ),
             f("Rich Result Invalid", format!("{} = 'FAIL'", val(INSPECT, "rich_results")), Some((Issue, Medium)), "URL Inspection reports invalid rich result markup."),
-            f("Request Error", format!("{} OR {}", errored(GSC), errored(INSPECT)), Some((Warning, Low)), "A Search Console request failed."),
+            f("Request Errors", format!("{} OR {}", errored(GSC), errored(INSPECT)), Some((Warning, Low)), "A Search Console request failed."),
         ],
     });
 
@@ -379,7 +379,7 @@ pub fn api_tabs(cfg: &CrawlConfig, html: &str, start_url_sql: &str) -> Vec<TabDe
             f("Ahrefs", has(AHREFS), None, "Pages with Ahrefs data."),
             f("Majestic", has(MAJESTIC), None, "Pages with Majestic data."),
             f("Moz", has(MOZ), None, "Pages with Moz data."),
-            f("Request Error", format!("{} OR {} OR {}", errored(AHREFS), errored(MAJESTIC), errored(MOZ)), Some((Warning, Low)), "A link metrics request failed."),
+            f("Request Errors", format!("{} OR {} OR {}", errored(AHREFS), errored(MAJESTIC), errored(MOZ)), Some((Warning, Low)), "A link metrics request failed."),
         ],
     });
 
@@ -391,7 +391,7 @@ pub fn api_tabs(cfg: &CrawlConfig, html: &str, start_url_sql: &str) -> Vec<TabDe
     for p in &prompts {
         ai_filters.push(f(&p.name, format!("{} IS NOT NULL", val(AI, &p.name)), None, &format!("Pages with a response to '{}'.", p.name)));
     }
-    ai_filters.push(f("Request Error", errored(AI), Some((Warning, Low)), "An AI request failed."));
+    ai_filters.push(f("Request Errors", errored(AI), Some((Warning, Low)), "An AI request failed."));
     tabs.push(TabDef { name: "AI", base: html.into(), columns: vec!["Address", "Indexability"], extra_columns: ai_cols, filters: ai_filters });
 
     tabs

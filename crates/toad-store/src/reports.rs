@@ -212,14 +212,28 @@ impl Store {
         for r in rows.iter().filter(|r| r.filter == "All") {
             totals.insert(r.tab.clone(), r.urls);
         }
-        let out: Vec<Vec<String>> = rows
+        let pct = |n: u64, total: u64| if total > 0 { format!("{:.1}%", n as f64 * 100.0 / total as f64) } else { String::new() };
+        let mut out: Vec<Vec<String>> = rows
             .iter()
             .map(|r| {
                 let total = totals.get(&r.tab).copied().unwrap_or(0);
-                let pct = if total > 0 { format!("{:.1}%", r.urls as f64 * 100.0 / total as f64) } else { String::new() };
-                vec![r.tab.clone(), r.filter.clone(), r.urls.to_string(), pct]
+                vec![r.tab.clone(), r.filter.clone(), r.urls.to_string(), pct(r.urls, total)]
             })
             .collect();
+        // Screaming Frog's last two sections, over internal HTML pages that
+        // returned 200: pages per crawl depth, and the most linked-to pages.
+        const PAGES: &str = "u.is_internal = 1 AND u.is_html = 1 AND u.status_code = 200";
+        let pages = self.count_where(PAGES)?;
+        const DEPTH: &str = "Depth (Clicks from Start URL)";
+        for d in 0..=10 {
+            let n = self.count_where(&format!("{PAGES} AND u.depth {}", if d == 10 { ">= 10".to_string() } else { format!("= {d}") }))?;
+            out.push(vec![DEPTH.into(), if d == 10 { "10+".into() } else { d.to_string() }, n.to_string(), pct(n, pages)]);
+        }
+        let top = self.query_strings(&format!("SELECT u.address, u.unique_inlinks FROM urls u WHERE {PAGES} AND u.unique_inlinks > 0 ORDER BY u.unique_inlinks DESC, u.crawl_order LIMIT 20"), &[])?;
+        for r in top {
+            let n: u64 = r[1].parse().unwrap_or(0);
+            out.push(vec!["Inlinks (Top 20 URLs)".into(), r[0].clone(), n.to_string(), pct(n, pages)]);
+        }
         Ok(Table { columns: ["Tab", "Filter", "URLs", "% of Tab"].iter().map(|s| s.to_string()).collect(), total: out.len() as u64, rows: out })
     }
 

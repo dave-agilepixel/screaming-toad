@@ -99,7 +99,7 @@ pub fn tools() -> Vec<Value> {
         tool("crawl_issues", "Issues, warnings and opportunities with URL counts, most important first.", json!({"crawl": crawl_prop()}), &["crawl"]),
         tool(
             "query_urls",
-            "Rows of a tab and filter (like the main grid): e.g. tab 'Response Codes', filter 'Internal Client Error (4XX)'.",
+            "Rows of a tab and filter (like the main grid): e.g. tab 'Response Codes', filter 'Internal Client Error (4xx)'.",
             json!({
                 "crawl": crawl_prop(),
                 "tab": {"type": "string"},
