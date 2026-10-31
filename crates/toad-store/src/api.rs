@@ -403,20 +403,20 @@ pub fn embedding_filters(cfg: &CrawlConfig) -> (Vec<FilterDef>, Vec<(String, Str
     use Priority::*;
     let e = &cfg.apis.embeddings;
     let mut filters = Vec::new();
-    if e.semantic_similarity {
+    {
         let ix = if e.similarity_indexable_only { " AND u.indexable = 1" } else { "" };
         filters.push(f(
             "Semantically Similar",
-            format!("{} >= {}{ix}", num(EMBED, "closest_similarity"), e.similarity_threshold),
+            if e.enabled && e.semantic_similarity { format!("{} >= {}{ix}", num(EMBED, "closest_similarity"), e.similarity_threshold) } else { "0 = 1".into() },
             Some((Warning, Medium)),
             "Pages whose embeddings are at least as similar as the Semantic Similarity threshold to another page: possible duplicate topics.",
         ));
     }
-    if e.low_relevance {
+    {
         let ix = if e.low_relevance_indexable_only { " AND u.indexable = 1" } else { "" };
         filters.push(f(
             "Low Relevance Content",
-            format!("{} < {}{ix}", num(EMBED, "relevance"), e.low_relevance_threshold),
+            if e.enabled && e.low_relevance { format!("{} < {}{ix}", num(EMBED, "relevance"), e.low_relevance_threshold) } else { "0 = 1".into() },
             Some((Opportunity, Low)),
             "Pages whose embedding is far from the site's average topic.",
         ));

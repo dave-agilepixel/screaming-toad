@@ -139,8 +139,8 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 | Filter | Status |
 |---|---|
 | Low Content Pages | Phase 2: renamed |
-| Low Relevance Content | Phase 3 |
-| Semantically Similar | Phase 3 |
+| Low Relevance Content | Phase 3: added |
+| Semantically Similar | Phase 3: added |
 
 ## Depth (Clicks from Start URL)
 
@@ -162,15 +162,15 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 
 | Filter | Status |
 |---|---|
-| Fonts | Phase 3 |
-| Plugins | Phase 3 |
-| XML | Phase 3 |
+| Fonts | Phase 3: added |
+| Plugins | Phase 3: added |
+| XML | Phase 3: added |
 
 ## Images
 
 | Filter | Status |
 |---|---|
-| Missing Size Attributes | Phase 3 |
+| Missing Size Attributes | Phase 3: added |
 
 ## Inlinks (Top 20 URLs)
 
@@ -192,27 +192,27 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 
 | Filter | Status |
 |---|---|
-| Fonts | Phase 3 |
-| Plugins | Phase 3 |
-| XML | Phase 3 |
+| Fonts | Phase 3: added |
+| Plugins | Phase 3: added |
+| XML | Phase 3: added |
 
 ## JavaScript
 
 | Filter | Status |
 |---|---|
-| Pages with Chrome Issues | Phase 3 |
-| Pages with JavaScript Warnings | Phase 3 |
+| Pages with Chrome Issues | Phase 3: added |
+| Pages with JavaScript Warnings | Phase 3: added |
 
 ## Mobile
 
 | Filter | Status |
 |---|---|
-| Contains Unsupported Plugins | Phase 3 |
-| Content Not Sized Correctly | Phase 3 |
-| Illegible Font Size | Phase 3 |
-| Mobile Alternate Link | Phase 3 |
-| Target Size | Phase 3 |
-| Viewport Not Set | Phase 3 |
+| Contains Unsupported Plugins | Phase 3: added |
+| Content Not Sized Correctly | Phase 3: added |
+| Illegible Font Size | Phase 3: added |
+| Mobile Alternate Link | Phase 3: added |
+| Target Size | Phase 3: added |
+| Viewport Not Set | Phase 3: added |
 
 ## PageSpeed
 
@@ -232,17 +232,17 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 
 | Filter | Status |
 |---|---|
-| Blocked Resource | Phase 3 |
+| Blocked Resource | Phase 3: added |
 | External All | Phase 2: added |
-| External Blocked Resource | Phase 3 |
-| External Redirection (HTTP Refresh) | Phase 3 |
-| External Redirection (JavaScript) | Phase 3 |
+| External Blocked Resource | Phase 3: added |
+| External Redirection (HTTP Refresh) | Phase 3: added |
+| External Redirection (JavaScript) | Phase 3: added |
 | Internal All | Phase 2: added |
-| Internal Blocked Resource | Phase 3 |
-| Internal Redirection (HTTP Refresh) | Phase 3 |
-| Internal Redirection (JavaScript) | Phase 3 |
-| Redirection (HTTP Refresh) | Phase 3 |
-| Redirection (JavaScript) | Phase 3 |
+| Internal Blocked Resource | Phase 3: added |
+| Internal Redirection (HTTP Refresh) | Phase 3: added |
+| Internal Redirection (JavaScript) | Phase 3: added |
+| Redirection (HTTP Refresh) | Phase 3: added |
+| Redirection (JavaScript) | Phase 3: added |
 
 ## Search Console
 
@@ -256,7 +256,7 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 
 | Filter | Status |
 |---|---|
-| Bad Content Type | Phase 3 |
+| Bad Content Type | Phase 3: added |
 
 ## Sitemaps
 
@@ -268,24 +268,33 @@ Filter names are Screaming Frog's. Toad matches filter names loosely in the CLI,
 
 | Filter | Status |
 |---|---|
-| Rich Result Feature Detected | Phase 3 |
+| Rich Result Feature Detected | Phase 3: added |
 
 ## URL
 
 | Filter | Status |
 |---|---|
-| Broken Bookmark | Phase 3 |
+| Broken Bookmark | Phase 3: added |
 | Contains Space | Phase 2: renamed |
 
 ## Validation
 
 | Filter | Status |
 |---|---|
-| &lt;body&gt; Element Preceding &lt;html&gt; | Phase 3 |
-| &lt;head&gt; Not First In &lt;html&gt; Element | Phase 3 |
+| &lt;body&gt; Element Preceding &lt;html&gt; | Phase 3: added |
+| &lt;head&gt; Not First In &lt;html&gt; Element | Phase 3: added |
 | HTML Document Over 2MB | Phase 2: renamed |
 | High Carbon Rating | Phase 2: renamed |
-| Invalid HTML Elements in &lt;head&gt; | Phase 3 |
+| Invalid HTML Elements in &lt;head&gt; | Phase 3: added |
 | Resource Over 2MB | Phase 2: renamed |
 
 The Inlinks (Top 20 URLs) rows in Screaming Frog are the 20 most linked-to pages of the crawled site (here, client URLs), so they are left out of this list.
+## How the phase 3 checks work
+
+- **Needs JavaScript rendering** (Configuration > Spider > Rendering: JavaScript): Redirection (JavaScript), Blocked Resource (also needs robots.txt respected), Pages with JavaScript Warnings and Pages with Chrome Issues (both also need Enable JavaScript Error Reporting), and Mobile's Content Not Sized Correctly, Illegible Font Size and Target Size (Target Size also needs Extraction > Accessibility).
+- **Mobile tab**: Screaming Frog fills this tab from PageSpeed Insights (Lighthouse). Toad works the checks out itself so they need no API key: Viewport Not Set from the source, Content Not Sized Correctly when the rendered page is wider than the viewport, Illegible Font Size when more than 40% of the visible text is under 12px (Lighthouse's old rule), Target Size from axe-core's target-size rule, Contains Unsupported Plugins from `<embed>`/`<object>`, and Mobile Alternate Link from `rel="alternate" media` links (needs Spider > Crawl > Mobile Alternate: Store, off by default as in Screaming Frog).
+- **Validation**: the three source checks read the HTML as served, since the parser (and the browser) repair it.
+- **Broken Bookmark** lists the target pages; Reports > Broken Bookmarks lists each source link. Fragments that are empty, `#top`, hashbangs, SPA routes (`#/…`), text fragments and `key=value` state are ignored.
+- **Bad Content Type**: the header isn't a valid MIME type, or names a different kind of file from the body (HTML served as an image, script or stylesheet; an image or PDF served as text). Image subtypes aren't compared.
+- **Accessibility**: axe-core leaves `target-size` (WCAG 2.2 AA) and its AAA rules (`color-contrast-enhanced`, `identical-links-same-purpose`, `meta-refresh-no-exceptions`) off by default; Toad switches them on, since Screaming Frog reports them.
+- **Content**: Semantically Similar and Low Relevance Content were already built from embeddings; they're now always listed, empty unless API Access > Embeddings is on.

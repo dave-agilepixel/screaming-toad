@@ -109,6 +109,11 @@ const SQL_REPORTS: &[(&str, ReportKind, &str, &str)] = &[
       FROM urls u JOIN urls t ON t.address = coalesce(u.canonical_1, u.http_canonical)
       WHERE coalesce(u.canonical_1, u.http_canonical) <> u.address AND t.indexable = 0
       ORDER BY u.crawl_order"),
+    ("Broken Bookmarks", ReportKind::Report, "Links to a #fragment that matches no id or named anchor on the target page.",
+     "SELECT s.address AS \"Source\", b.target || '#' || b.fragment AS \"Destination\", b.fragment AS \"Fragment\"
+      FROM bookmarks b JOIN urls s ON s.id = b.url_id JOIN urls t ON t.address = b.target
+      WHERE t.status_code = 200 AND t.is_html = 1 AND instr(coalesce(t.anchor_ids, ''), char(10) || b.fragment || char(10)) = 0
+      ORDER BY s.crawl_order, b.rowid"),
     ("Insecure Content", ReportKind::Report, "HTTPS pages loading resources or linking over HTTP.",
      "SELECT s.address AS \"Source\", l.target AS \"Insecure URL\", l.kind AS \"Type\", l.link_path AS \"Link Path\"
       FROM links l JOIN urls s ON s.id = l.source_id

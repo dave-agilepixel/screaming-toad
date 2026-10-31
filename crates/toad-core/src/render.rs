@@ -10,6 +10,7 @@
 
 use crate::config::{CrawlConfig, CustomJs, CustomJsKind, RenderingConfig};
 use chromiumoxide::browser::{Browser, BrowserConfig};
+use chromiumoxide::cdp::browser_protocol::audits::{EnableParams as AuditsEnableParams, EventIssueAdded};
 use chromiumoxide::cdp::browser_protocol::emulation::{SetDeviceMetricsOverrideParams, SetTouchEmulationEnabledParams};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use chromiumoxide::cdp::js_protocol::runtime::{EventConsoleApiCalled, EventExceptionThrown};
@@ -213,6 +214,12 @@ pub struct Rendered {
     pub accessibility: Option<Vec<A11yViolation>>,
     /// Lighthouse-style accessibility score, when Accessibility is on.
     pub accessibility_score: Option<f64>,
+    /// The page's URL once rendered: different when JavaScript navigated away.
+    pub final_url: Option<String>,
+    /// Laid out wider than the viewport.
+    pub content_too_wide: Option<bool>,
+    /// Share of visible text set below 12px.
+    pub small_text_pct: Option<f64>,
     /// Custom JavaScript results, one per configured snippet.
     pub custom_js: Vec<CustomJsResult>,
     /// URLs passed to seoSpider.saveUrls, to be crawled.
@@ -283,6 +290,22 @@ pub struct Renderer {
 /// Flattens shadow roots (Flatten Shadow DOM) and same-origin iframes
 /// (Flatten iframes) into the light DOM, then reports transfer size.
 const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
+  // Mobile checks, on the page as laid out (before flattening adds to it):
+  // wider than the viewport, and the share of visible text under 12px.
+  const tooWide = document.documentElement.scrollWidth > window.innerWidth + 1;
+  let small = 0, total = 0, seen = 0;
+  if (document.body) {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode() && seen++ < 20000) {
+      const t = walker.currentNode, el = t.parentElement, n = t.textContent.trim().length;
+      if (!n || !el || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(el.tagName) || !el.getClientRects().length) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      total += n;
+      if (parseFloat(cs.fontSize) < 12) small += n;
+    }
+  }
+  const smallTextPct = total ? Math.round(small * 1000 / total) / 10 : null;
   if (flattenShadow) {
     const walk = (root) => {
       root.querySelectorAll('*').forEach(el => {
@@ -331,7 +354,7 @@ const SNAPSHOT_JS: &str = r#"(function(flattenShadow, flattenFrames) {
       try { backgrounds.add(new URL(m[1], document.baseURI).href); } catch (e) {}
     }
   }
-  return { bytes, urls, images, backgrounds: [...backgrounds] };
+  return { bytes, urls, images, backgrounds: [...backgrounds], too_wide: tooWide, small_text_pct: smallTextPct };
 })"#;
 
 impl Renderer {
@@ -483,6 +506,19 @@ impl Renderer {
                     }
                 }
             }));
+            // Chrome Issues (the DevTools Issues panel): mixed content,
+            // cookies, CSP, deprecations and so on.
+            let mut issues = page.event_listener::<EventIssueAdded>().await?;
+            page.execute(AuditsEnableParams::default()).await?;
+            let sink = console.clone();
+            listeners.push(tokio::spawn(async move {
+                while let Some(ev) = issues.next().await {
+                    let code = serde_json::to_value(&ev.issue.code).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| format!("{:?}", ev.issue.code));
+                    if let Ok(mut c) = sink.lock() {
+                        c.push(ConsoleMessage { level: "issue".into(), message: code, source: "issue".into() });
+                    }
+                }
+            }));
             let mut errors = page.event_listener::<EventExceptionThrown>().await?;
             let sink = console.clone();
             listeners.push(tokio::spawn(async move {
@@ -519,6 +555,10 @@ impl Renderer {
             images: Vec<RenderedImage>,
             #[serde(default)]
             backgrounds: Vec<String>,
+            #[serde(default)]
+            too_wide: Option<bool>,
+            #[serde(default)]
+            small_text_pct: Option<f64>,
         }
         let snap: Snapshot = page
             .evaluate(format!("{SNAPSHOT_JS}({}, {})", r.flatten_shadow_dom, r.flatten_iframes))
@@ -527,6 +567,7 @@ impl Renderer {
             .and_then(|v| v.into_value().ok())
             .unwrap_or_default();
         let html = page.content().await?;
+        let final_url = page.url().await.ok().flatten();
 
         let screenshot = if r.screenshots {
             if r.resize_to_content && r.resize_time_secs > 0.0 {
@@ -541,7 +582,7 @@ impl Renderer {
             l.abort();
         }
         let console = console.lock().map(|c| c.clone()).unwrap_or_default();
-        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, accessibility_score, custom_js, saved_urls, images: snap.images, backgrounds: snap.backgrounds })
+        Ok(Rendered { html, console, screenshot, requests: snap.urls, transferred_bytes: snap.bytes.max(0.0) as u64, accessibility, accessibility_score, custom_js, saved_urls, images: snap.images, backgrounds: snap.backgrounds, final_url, content_too_wide: snap.too_wide, small_text_pct: snap.small_text_pct })
     }
 
     pub async fn close(mut self) {

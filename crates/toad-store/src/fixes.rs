@@ -26,6 +26,7 @@ pub fn how_to_fix(tab: &str, filter: &str) -> &'static str {
         "validation" => validation(f),
         "sitemaps" => sitemaps(f),
         "structured data" => structured_data(f),
+        "mobile" => mobile(f),
         "pagespeed" => pagespeed(f),
         "search console" => search_console(f),
         "analytics" => analytics(f),
@@ -42,6 +43,9 @@ fn response_codes(f: &str) -> &'static str {
         "no response" => "Check the URL for typos, DNS or SSL faults and server timeouts. Fix or remove links that point at addresses which never answer.",
         "redirection (3xx)" => "Update internal links to point straight at the final destination URL rather than relying on the redirect.",
         "redirection (meta refresh)" => "Replace the meta refresh with a server-side 301 redirect, and update internal links to the final URL.",
+        "redirection (http refresh)" => "Replace the Refresh header with a server-side 301 redirect, and update internal links to the final URL.",
+        "redirection (javascript)" => "Redirect on the server with a 301 instead of in JavaScript, and update internal links to the final URL.",
+        "blocked resource" => "Allow the resource in robots.txt if pages need it to render, so search engines see them as users do.",
         "redirect chain" => "Redirect the first URL directly to the final destination in a single hop, and update internal links to match.",
         "redirect loop" => "Break the cycle so the redirect rules end at a page that returns a 200 response.",
         "client error (4xx)" => "Restore the missing page, or 301 redirect it to the closest relevant URL. Update or remove any links pointing at it.",
@@ -53,6 +57,7 @@ fn response_codes(f: &str) -> &'static str {
 fn security(f: &str) -> &'static str {
     match f {
         "http urls" => "Serve the page over HTTPS and 301 redirect the HTTP version to it. Update internal links, canonicals and sitemaps to use HTTPS.",
+        "bad content type" => "Send the Content-Type header that matches the file (text/html for pages, image/webp for WebP images and so on), and fix any URL that returns an error page instead of the file.",
         "mixed content" => "Load every image, script and stylesheet on HTTPS pages over HTTPS, so browsers do not block or warn about them.",
         "form url insecure" => "Change the form action to an HTTPS address so submitted data is encrypted in transit.",
         "form on http url" => "Move the page containing the form to HTTPS before visitors enter any details.",
@@ -71,6 +76,7 @@ fn url(f: &str) -> &'static str {
     match f {
         "non ascii characters" => "Use plain ASCII letters, digits and hyphens in URLs, or percent-encode unavoidable characters consistently, then redirect the old address.",
         "underscores" => "Use hyphens to separate words in URLs, and 301 redirect the old address to the new one.",
+        "broken bookmark" => "Point the link's #fragment at an id that exists on the page, or add the missing id to the section it should jump to.",
         "uppercase" => "Standardise on lowercase URLs and redirect mixed-case variants to the lowercase version.",
         "multiple slashes" => "Remove the repeated slashes from the link and redirect the malformed address to the clean one.",
         "repetitive path" => "Check for a faulty relative link or rewrite rule that keeps repeating a folder, and correct it.",
@@ -155,6 +161,7 @@ fn images(f: &str) -> &'static str {
     match f {
         "missing alt text" => "Add alt text describing meaningful images. Decorative ones should have an empty alt attribute on purpose.",
         "missing alt attribute" => "Add an alt attribute to every image, with descriptive text or an empty value for decorative images.",
+        "missing size attributes" => "Give each <img> width and height attributes matching its aspect ratio, so the browser reserves the space before it loads.",
         "incorrectly sized images" => "Serve images close to the dimensions they are shown at, using responsive srcset sizes.",
         _ if f.starts_with("over ") && f.ends_with(" kb") => "Compress the image, use a modern format such as WebP or AVIF, and resize it to its display size.",
         _ if f.starts_with("alt text over ") && f.ends_with(" characters") => "Shorten the alt text to a brief description of what the image shows.",
@@ -225,9 +232,23 @@ fn hreflang(f: &str) -> &'static str {
     }
 }
 
+fn mobile(f: &str) -> &'static str {
+    match f {
+        "viewport not set" => "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> to the head.",
+        "target size" => "Make buttons and links at least 24 by 24 CSS pixels, or space them so their tap areas don't overlap.",
+        "content not sized correctly" => "Find the element wider than the screen (often a fixed-width image, table or embed) and make it fit with max-width: 100% or responsive layout.",
+        "illegible font size" => "Set body text to at least 16px and keep small print at 12px or above on mobile.",
+        "contains unsupported plugins" => "Replace Flash and other plugin content in embed or object elements with HTML5 video, images or scripts.",
+        "mobile alternate link" => "Consider a single responsive URL instead of a separate mobile site. If you keep one, make sure it links back with a canonical.",
+        _ => "",
+    }
+}
+
 fn javascript(f: &str) -> &'static str {
     match f {
         "pages with blocked resources" => "Allow the blocked scripts, styles and images in robots.txt so search engines can render the page fully.",
+        "pages with javascript warnings" => "Review the console warnings in the page's console log and fix the scripts that raise them before they turn into errors.",
+        "pages with chrome issues" => "Open the page's console log for the Chrome issue codes and fix them, for example mixed content, cookie attributes or Content-Security-Policy problems.",
         "contains javascript links" => "Use standard anchor tags with href attributes for important links, so they work without script.",
         "contains javascript content" => "Put key content in the initial HTML, or use server-side rendering, so it doesn't rely on script execution.",
         "noindex only in original html" => "Make the original HTML and rendered page agree on indexing. Search engines may see noindex before script removes it.",
@@ -284,6 +305,9 @@ fn validation(f: &str) -> &'static str {
         "multiple <head> tags" => "Keep a single head element. Check for stray markup that closes it early.",
         "missing <body> tag" => "Add a body element around the page content.",
         "multiple <body> tags" => "Keep a single body element and fix any markup that ends it too soon.",
+        "<head> not first in <html> element" => "Make the head the first element inside html, moving anything before it into the head or body.",
+        "<body> element preceding <html>" => "Fix the template so the document opens with the html tag, followed by the head and then the body.",
+        "invalid html elements in <head>" => "Move elements other than title, meta, link, script, style, base, noscript and template out of the head, since the head ends at the first one.",
         "high carbon rating" => "Reduce page weight by compressing images, trimming scripts and caching assets, to cut the emissions per view.",
         _ if f.starts_with("html document over ") => "Reduce the HTML size by removing inline bloat and unused markup, and paginating or lazy-loading long content.",
         _ if f.starts_with("resource over ") => "Compress or split the oversized resource so it loads faster and stays within crawl limits.",

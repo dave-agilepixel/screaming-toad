@@ -193,6 +193,11 @@ const COLUMNS: &[(&str, &str)] = &[
     ("JS Warnings", "u.js_warnings"),
     ("Blocked Resources", "u.blocked_resources"),
     ("Render Error", "u.render_error"),
+    ("Chrome Issues", "u.chrome_issues"),
+    ("Invalid <head> Elements", "u.invalid_head_elements"),
+    ("Viewport", "CASE WHEN u.has_viewport = 1 THEN 'Set' ELSE 'Not Set' END"),
+    ("Wider Than Viewport", "CASE u.content_too_wide WHEN 1 THEN 'true' WHEN 0 THEN 'false' END"),
+    ("Text Under 12px %", "u.small_text_pct"),
     ("CO2 (mg)", "u.co2_mg"),
     ("All Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id) END"),
     ("Best Practice Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'Best Practice') END"),
@@ -318,7 +323,7 @@ fn javascript_tab(html: &str, ix: &str) -> TabDef {
             "Address", "Status Code", "Status", "Indexability", "Indexability Status", "HTML Word Count", "Rendered HTML Word Count",
             "Word Count Change", "JS Word Count %", "HTML Title", "Rendered HTML Title", "HTML Meta Description",
             "Rendered HTML Meta Description", "HTML H1", "Rendered HTML H1", "HTML Meta Robots", "Rendered HTML Meta Robots",
-            "HTML Canonical", "Rendered HTML Canonical", "Unique JS Outlinks", "JS Errors", "JS Warnings", "Blocked Resources", "Render Error",
+            "HTML Canonical", "Rendered HTML Canonical", "Unique JS Outlinks", "JS Errors", "JS Warnings", "Chrome Issues", "Blocked Resources", "Render Error",
         ],
         filters: vec![
             f("All", "1 = 1".into(), None, "Every HTML page."),
@@ -338,6 +343,8 @@ fn javascript_tab(html: &str, ix: &str) -> TabDef {
             f("Uses Old AJAX Crawling Scheme URLs", "(u.address LIKE '%#!%' OR u.address LIKE '%_escaped_fragment_=%')".into(), Some((Issue, High)), "Hashbang (#!) or _escaped_fragment_ URLs from Google's deprecated AJAX crawling scheme."),
             f("Uses Old AJAX Crawling Scheme Meta Fragment Tag", "u.ajax_fragment_meta = 1".into(), Some((Warning, High)), "<meta name=\"fragment\" content=\"!\"> from Google's deprecated AJAX crawling scheme."),
             f("Pages with JavaScript Errors", format!("{r} AND u.js_errors > 0"), Some((Issue, High)), "Errors in the Chrome console while rendering (needs Enable JavaScript Error Reporting)."),
+            f("Pages with JavaScript Warnings", format!("{r} AND u.js_warnings > 0"), Some((Warning, Low)), "Warnings in the Chrome console while rendering (needs Enable JavaScript Error Reporting)."),
+            f("Pages with Chrome Issues", format!("{r} AND u.chrome_issues > 0"), Some((Warning, Low)), "Problems Chrome reports in its DevTools Issues panel while rendering, such as mixed content, cookie, CSP and deprecation issues (needs Enable JavaScript Error Reporting)."),
         ],
     }
 }
@@ -406,6 +413,11 @@ fn accessibility_tab(html: &str) -> TabDef {
     }
 }
 
+/// Content types for the Fonts, Plugins and XML filters.
+const FONTS: &str = "u.content_type LIKE 'font/%' OR u.content_type LIKE '%font%' OR u.content_type LIKE '%opentype%'";
+const PLUGINS: &str = "u.content_type LIKE '%shockwave%' OR u.content_type LIKE '%x-java%' OR u.content_type LIKE '%silverlight%'";
+const XML: &str = "u.content_type LIKE '%xml%' AND u.content_type NOT LIKE '%xhtml%' AND u.content_type NOT LIKE 'image/%'";
+
 fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     let prefs = &cfg.preferences;
     let ignore_non_indexable = cfg.ignore_non_indexable_for_issues;
@@ -449,9 +461,12 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             f("Images", "u.content_type LIKE 'image/%'".into(), None, "Images."),
             f("PDF", "u.content_type LIKE '%pdf%'".into(), None, "PDF documents."),
             f("Media", "(u.content_type LIKE 'audio/%' OR u.content_type LIKE 'video/%')".into(), None, "Audio and video files."),
+            f("Fonts", format!("({FONTS})"), None, "Web fonts."),
+            f("Plugins", format!("({PLUGINS})"), None, "Flash, Java and Silverlight files."),
+            f("XML", format!("({XML})"), None, "XML files, such as sitemaps and feeds."),
             f(
                 "Other",
-                "u.is_html = 0 AND u.content_type <> '' AND u.content_type NOT LIKE '%javascript%' AND u.content_type NOT LIKE '%css%' AND u.content_type NOT LIKE 'image/%' AND u.content_type NOT LIKE '%pdf%' AND u.content_type NOT LIKE 'audio/%' AND u.content_type NOT LIKE 'video/%'".into(),
+                format!("u.is_html = 0 AND u.content_type <> '' AND u.content_type NOT LIKE '%javascript%' AND u.content_type NOT LIKE '%css%' AND u.content_type NOT LIKE 'image/%' AND u.content_type NOT LIKE '%pdf%' AND u.content_type NOT LIKE 'audio/%' AND u.content_type NOT LIKE 'video/%' AND NOT ({FONTS}) AND NOT ({PLUGINS}) AND NOT ({XML})"),
                 None,
                 "Any other content type.",
             ),
@@ -471,12 +486,15 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         f("Internal All", "u.is_internal = 1".into(), None, "Every internal URL."),
         f("External All", "u.is_internal = 0".into(), None, "Every external URL."),
     ];
-    let codes: [(&str, &str, (IssueType, Priority), &str); 9] = [
+    let codes: [(&str, &str, (IssueType, Priority), &str); 12] = [
         ("Blocked by Robots.txt", "u.blocked_robots_line IS NOT NULL", (Warning, High), "Blocked by robots.txt."),
         ("No Response", "u.status_code = 0 AND u.blocked_robots_line IS NULL", (Issue, High), "No response: malformed URL, timeout, refusal or connection error."),
         ("Success (2xx)", "u.status_code BETWEEN 200 AND 299", (Warning, Low), "Successful responses."),
         ("Redirection (3xx)", "u.status_code BETWEEN 300 AND 399", (Warning, Low), "Server-side redirects."),
         ("Redirection (Meta Refresh)", "u.redirect_type = 'Meta Refresh Redirect'", (Warning, Low), "Meta refresh redirects."),
+        ("Redirection (HTTP Refresh)", "u.redirect_type = 'HTTP Refresh Redirect'", (Warning, Low), "A Refresh response header sends the browser to another URL."),
+        ("Redirection (JavaScript)", "u.redirect_type = 'JavaScript Redirect'", (Warning, Low), "JavaScript sends the browser to another URL (found by JavaScript rendering)."),
+        ("Blocked Resource", "u.blocked_robots_line IS NOT NULL AND EXISTS (SELECT 1 FROM blocked_resources b WHERE b.resource = u.address)", (Warning, High), "A resource a rendered page loads, blocked by robots.txt, so search engines may not render the page as users see it."),
         ("Redirect Chain", "u.redirect_chain_length > 1", (Warning, Medium), "Redirects that take more than one hop to reach the final URL."),
         ("Redirect Loop", "u.redirect_loop = 1", (Issue, High), "Redirect chains that return to a URL already in the chain."),
         ("Client Error (4xx)", "u.status_code BETWEEN 400 AND 499", (Issue, High), "Client errors such as 404 and 410."),
@@ -516,23 +534,25 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         },
         TabDef {
             name: "Security",
-            base: html.into(),
+            // HTML pages, plus every internal URL for Bad Content Type.
+            base: "u.is_internal = 1 AND u.status_code = 200".into(),
             extra_columns: vec![],
             columns: vec!["Address", "Content Type", "Status Code", "Status", "Indexability", "Indexability Status"],
             filters: vec![
-                all(),
-                f("HTTP URLs", "u.address LIKE 'http://%'".into(), Some((Issue, High)), "Pages served over insecure HTTP."),
-                f("HTTPS URLs", "u.address LIKE 'https://%'".into(), None, "Pages served over HTTPS."),
-                f("Mixed Content", format!("u.address LIKE 'https://%' AND {}", has_link("l.kind IN ('Image','CSS','JavaScript','Iframe') AND l.target LIKE 'http://%'")), Some((Issue, High)), "HTTPS pages loading resources over HTTP."),
-                f("Form URL Insecure", "u.form_action_insecure = 1".into(), Some((Issue, High)), "A form posts to an HTTP URL."),
-                f("Form on HTTP URL", "u.form_on_http = 1".into(), Some((Issue, High)), "A form sits on an HTTP page."),
-                f("Unsafe Cross-Origin Links", has_link("l.internal = 0 AND l.target_attr = '_blank' AND lower(l.rel) NOT LIKE '%noopener%' AND lower(l.rel) NOT LIKE '%noreferrer%'"), Some((Warning, Low)), "External links opening in a new tab without rel=\"noopener\" or \"noreferrer\"."),
-                f("Protocol-Relative Resource Links", has_link("l.path_type = 'Protocol-Relative' AND l.kind IN ('Image','CSS','JavaScript','Iframe')"), Some((Warning, Low)), "Resources loaded with protocol-relative (//) URLs."),
-                f("Missing HSTS Header", "u.address LIKE 'https://%' AND u.hsts IS NULL".into(), Some((Warning, Low)), "No Strict-Transport-Security header."),
-                f("Missing Content-Security-Policy Header", "u.csp IS NULL".into(), Some((Warning, Low)), "No Content-Security-Policy header."),
-                f("Missing X-Content-Type-Options Header", "(u.x_content_type_options IS NULL OR lower(u.x_content_type_options) <> 'nosniff')".into(), Some((Warning, Low)), "X-Content-Type-Options is not 'nosniff'."),
-                f("Missing X-Frame-Options Header", "(u.x_frame_options IS NULL OR upper(u.x_frame_options) NOT IN ('DENY','SAMEORIGIN'))".into(), Some((Warning, Low)), "X-Frame-Options is not DENY or SAMEORIGIN."),
-                f("Missing Secure Referrer-Policy Header", "(u.referrer_policy IS NULL OR lower(u.referrer_policy) NOT IN ('no-referrer','strict-origin','strict-origin-when-cross-origin','same-origin'))".into(), Some((Warning, Low)), "No secure Referrer-Policy header."),
+                f("All", "u.is_html = 1".into(), None, "Every HTML page."),
+                f("HTTP URLs", "u.is_html = 1 AND u.address LIKE 'http://%'".into(), Some((Issue, High)), "Pages served over insecure HTTP."),
+                f("HTTPS URLs", "u.is_html = 1 AND u.address LIKE 'https://%'".into(), None, "Pages served over HTTPS."),
+                f("Mixed Content", format!("u.is_html = 1 AND u.address LIKE 'https://%' AND {}", has_link("l.kind IN ('Image','CSS','JavaScript','Iframe') AND l.target LIKE 'http://%'")), Some((Issue, High)), "HTTPS pages loading resources over HTTP."),
+                f("Form URL Insecure", "u.is_html = 1 AND u.form_action_insecure = 1".into(), Some((Issue, High)), "A form posts to an HTTP URL."),
+                f("Form on HTTP URL", "u.is_html = 1 AND u.form_on_http = 1".into(), Some((Issue, High)), "A form sits on an HTTP page."),
+                f("Unsafe Cross-Origin Links", "u.is_html = 1 AND ".to_string() + &has_link("l.internal = 0 AND l.target_attr = '_blank' AND lower(l.rel) NOT LIKE '%noopener%' AND lower(l.rel) NOT LIKE '%noreferrer%'"), Some((Warning, Low)), "External links opening in a new tab without rel=\"noopener\" or \"noreferrer\"."),
+                f("Protocol-Relative Resource Links", "u.is_html = 1 AND ".to_string() + &has_link("l.path_type = 'Protocol-Relative' AND l.kind IN ('Image','CSS','JavaScript','Iframe')"), Some((Warning, Low)), "Resources loaded with protocol-relative (//) URLs."),
+                f("Missing HSTS Header", "u.is_html = 1 AND u.address LIKE 'https://%' AND u.hsts IS NULL".into(), Some((Warning, Low)), "No Strict-Transport-Security header."),
+                f("Missing Content-Security-Policy Header", "u.is_html = 1 AND u.csp IS NULL".into(), Some((Warning, Low)), "No Content-Security-Policy header."),
+                f("Missing X-Content-Type-Options Header", "u.is_html = 1 AND (u.x_content_type_options IS NULL OR lower(u.x_content_type_options) <> 'nosniff')".into(), Some((Warning, Low)), "X-Content-Type-Options is not 'nosniff'."),
+                f("Missing X-Frame-Options Header", "u.is_html = 1 AND (u.x_frame_options IS NULL OR upper(u.x_frame_options) NOT IN ('DENY','SAMEORIGIN'))".into(), Some((Warning, Low)), "X-Frame-Options is not DENY or SAMEORIGIN."),
+                f("Missing Secure Referrer-Policy Header", "u.is_html = 1 AND (u.referrer_policy IS NULL OR lower(u.referrer_policy) NOT IN ('no-referrer','strict-origin','strict-origin-when-cross-origin','same-origin'))".into(), Some((Warning, Low)), "No secure Referrer-Policy header."),
+                f("Bad Content Type", "u.bad_content_type = 1".into(), Some((Warning, Low)), "The Content-Type header isn't a valid MIME type, or doesn't match the file (an HTML page served as an image, an image served as text/html)."),
             ],
         },
         TabDef {
@@ -558,6 +578,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Internal Search", "u.url_internal_search = 1".into(), Some((Warning, Low)), "URL looks like an internal search results page."),
                 f("Parameters", "u.query_params > 0".into(), Some((Warning, Low)), "URL contains query parameters."),
                 f("GA Tracking Parameters", "u.url_ga_params = 1".into(), Some((Warning, Low)), "URL contains utm_, _ga or _gl parameters."),
+                f("Broken Bookmark", "u.status_code = 200 AND EXISTS (SELECT 1 FROM bookmarks b WHERE b.target = u.address AND instr(coalesce(u.anchor_ids, ''), char(10) || b.fragment || char(10)) = 0)".into(), Some((Warning, Low)), "Pages linked to with a #fragment that matches no id or named anchor on the page (see Reports > Broken Bookmarks)."),
                 f(&format!("Over {} Characters", p.url_max_chars), format!("u.url_length > {}", p.url_max_chars), Some((Opportunity, Low)), "URL is longer than the preference."),
             ],
         },
@@ -671,6 +692,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f(&format!("Over {} kB", p.image_max_kb), format!("u.size > {}", p.image_max_kb as u64 * 1024), Some((Opportunity, Medium)), "Large images slow pages down."),
                 f("Missing Alt Text", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt = '')".into(), Some((Issue, Low)), "Images with an empty alt attribute."),
                 f("Missing Alt Attribute", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.alt IS NULL AND coalesce(l.rel, '') <> 'background-image')".into(), Some((Issue, Low)), "Images with no alt attribute at all."),
+                f("Missing Size Attributes", "EXISTS (SELECT 1 FROM unsized_images x WHERE x.src = u.address)".into(), Some((Opportunity, Low)), "Images placed with an <img> that has no width or height attribute, which lets the layout shift as they load."),
                 f("Background Images", "EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND l.rel = 'background-image')".into(), None, "Images used as CSS backgrounds (found by JavaScript rendering). They have no alt text and aren't indexed as page images."),
                 f("Incorrectly Sized Images", incorrectly_sized.clone(), Some((Opportunity, Medium)), "Images much larger than the size they're displayed at (found by JavaScript rendering): resize them, or serve responsive sizes with srcset."),
                 f(&format!("Alt Text Over {} Characters", p.alt_text_max_chars), format!("EXISTS (SELECT 1 FROM links l WHERE l.target_id = u.id AND l.kind = 'Image' AND length(l.alt) > {})", p.alt_text_max_chars), Some((Opportunity, Low)), "Alt text longer than the preference."),
@@ -769,6 +791,21 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
         javascript_tab(html, ix),
         accessibility_tab(html),
         TabDef {
+            name: "Mobile",
+            base: html.into(),
+            extra_columns: vec![],
+            columns: vec!["Address", "Indexability", "Indexability Status", "Viewport", "Wider Than Viewport", "Text Under 12px %"],
+            filters: vec![
+                all(),
+                f("Viewport Not Set", "u.has_viewport = 0".into(), Some((Issue, High)), "No <meta name=\"viewport\">, so mobile browsers lay the page out at desktop width."),
+                f("Target Size", "EXISTS (SELECT 1 FROM accessibility a WHERE a.url_id = u.id AND a.rule = 'target-size')".into(), Some((Warning, Medium)), "Tap targets too small or too close together (the axe-core target-size rule: needs JavaScript rendering and Accessibility)."),
+                f("Content Not Sized Correctly", "u.content_too_wide = 1".into(), Some((Issue, Medium)), "The page is wider than the viewport it was rendered in, so users scroll sideways (needs JavaScript rendering)."),
+                f("Illegible Font Size", "u.small_text_pct > 40".into(), Some((Warning, Medium)), "More than 40% of the visible text is under 12px (needs JavaScript rendering)."),
+                f("Contains Unsupported Plugins", has_link("l.kind = 'SWF'"), Some((Warning, High)), "Content in <embed> or <object>, such as Flash, which mobile browsers don't run."),
+                f("Mobile Alternate Link", has_link("l.kind = 'Mobile Alternate'"), Some((Warning, Low)), "A rel=\"alternate\" media link to a separate mobile site (needs Spider > Crawl > Mobile Alternate: Store). Google recommends one responsive URL instead."),
+            ],
+        },
+        TabDef {
             name: "Links",
             base: html.into(),
             extra_columns: vec![],
@@ -797,13 +834,16 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             // HTML checks plus oversized resources: internal URLs that returned 200.
             base: "u.is_internal = 1 AND u.status_code = 200".into(),
             extra_columns: vec![],
-            columns: vec!["Address", "Content Type", "Status Code", "Status", "Indexability", "Indexability Status", "Size (bytes)"],
+            columns: vec!["Address", "Content Type", "Status Code", "Status", "Indexability", "Indexability Status", "Size (bytes)", "Invalid <head> Elements"],
             filters: vec![
                 f("All", "u.is_html = 1".into(), None, "Every HTML page."),
                 f("Missing <head> Tag", "u.is_html = 1 AND u.head_tags = 0".into(), Some((Issue, High)), "No head element in the source."),
                 f("Multiple <head> Tags", "u.is_html = 1 AND u.head_tags > 1".into(), Some((Issue, High)), "More than one head element."),
                 f("Missing <body> Tag", "u.is_html = 1 AND u.body_tags = 0".into(), Some((Issue, High)), "No body element in the source."),
                 f("Multiple <body> Tags", "u.is_html = 1 AND u.body_tags > 1".into(), Some((Issue, High)), "More than one body element."),
+                f("<head> Not First In <html> Element", "u.is_html = 1 AND u.head_not_first = 1".into(), Some((Issue, High)), "In the source, another element comes before the head inside the html element."),
+                f("<body> Element Preceding <html>", "u.is_html = 1 AND u.body_before_html = 1".into(), Some((Issue, High)), "In the source, a body tag comes before the html tag."),
+                f("Invalid HTML Elements in <head>", "u.is_html = 1 AND u.invalid_head_elements IS NOT NULL".into(), Some((Issue, High)), "Elements that don't belong in the head (anything but title, meta, link, script, style, base, noscript and template). Browsers and Google end the head at the first one, so anything after it is read as body."),
                 f(&format!("HTML Document Over {}MB", p.html_max_mb), format!("u.is_html = 1 AND u.size > {}", p.html_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "HTML larger than the preference."),
                 f(&format!("Resource Over {}MB", p.resource_max_mb), format!("u.is_html = 0 AND u.size > {}", p.resource_max_mb as u64 * 1024 * 1024), Some((Issue, High)), "A CSS, JavaScript, image or other file larger than the preference."),
                 f("High Carbon Rating", format!("u.is_html = 1 AND u.carbon_rating = 'F'{ix}"), Some((Opportunity, Low)), "Carbon Rating F: over 0.359 g CO2 per page view (Sustainable Web Design model). With JavaScript rendering this counts every resource the page loads."),
@@ -833,6 +873,10 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
             filters: vec![
                 all(),
                 f("Contains Structured Data", "u.sd_count > 0".into(), None, "Has JSON-LD, Microdata or RDFa."),
+                f("Rich Result Feature Detected", {
+                    let types: Vec<String> = toad_core::structured::rich_result_types().iter().map(|t| format!("', ' || i.types || ', ' LIKE '%, {t}, %'")).collect();
+                    format!("EXISTS (SELECT 1 FROM sd_items i WHERE i.url_id = u.id AND ({}))", types.join(" OR "))
+                }, None, "Has an item of a type Google shows as a rich result (see Reports > Google Rich Results Features Summary)."),
                 f("Missing", format!("u.sd_count = 0 AND u.sd_parse_errors = 0{ix}"), Some((Opportunity, Low)), "No structured data."),
                 f("Validation Errors", "u.sd_errors > 0".into(), Some((Issue, High)), "Schema.org types or properties that don't exist, or properties not allowed on the type."),
                 f("Validation Warnings", "u.sd_warnings > 0".into(), Some((Opportunity, Low)), "Schema.org issues worth fixing, such as a missing @context or names in the wrong case."),
@@ -855,10 +899,12 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
     ];
     // PageSpeed, Search Console, Analytics, Link Metrics and AI.
     tabs.extend(crate::api::api_tabs(cfg, html, "(SELECT value FROM meta WHERE key = 'start_url')"));
-    if cfg.apis.embeddings.enabled {
-        let (filters, cols) = crate::api::embedding_filters(cfg);
-        if let Some(content) = tabs.iter_mut().find(|t| t.name == "Content") {
-            content.filters.extend(filters);
+    // Semantically Similar and Low Relevance Content are always listed, so
+    // their names resolve; they're empty unless Embeddings are on.
+    let (filters, cols) = crate::api::embedding_filters(cfg);
+    if let Some(content) = tabs.iter_mut().find(|t| t.name == "Content") {
+        content.filters.extend(filters);
+        if cfg.apis.embeddings.enabled {
             content.extra_columns.extend(cols);
         }
     }

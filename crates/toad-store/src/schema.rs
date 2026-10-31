@@ -104,7 +104,15 @@ CREATE TABLE IF NOT EXISTS urls (
     carbon_rating TEXT,
     ajax_fragment_meta INTEGER NOT NULL DEFAULT 0,
     a11y_checked INTEGER NOT NULL DEFAULT 0,
-    a11y_score REAL
+    a11y_score REAL,
+    bad_content_type INTEGER NOT NULL DEFAULT 0,
+    body_before_html INTEGER NOT NULL DEFAULT 0,
+    head_not_first INTEGER NOT NULL DEFAULT 0,
+    invalid_head_elements TEXT,
+    anchor_ids TEXT,
+    content_too_wide INTEGER,
+    small_text_pct REAL,
+    chrome_issues INTEGER
 );
 
 -- Structured data items and validation issues per URL.
@@ -215,6 +223,17 @@ CREATE TABLE IF NOT EXISTS blocked_resources (
     url_id INTEGER NOT NULL,
     resource TEXT NOT NULL
 );
+-- Images whose <img> has no width or height attribute.
+CREATE TABLE IF NOT EXISTS unsized_images (
+    url_id INTEGER NOT NULL,
+    src TEXT NOT NULL
+);
+-- Links to a #fragment: the target page (without it) and the fragment.
+CREATE TABLE IF NOT EXISTS bookmarks (
+    url_id INTEGER NOT NULL,
+    target TEXT NOT NULL,
+    fragment TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS html (
     url_id INTEGER PRIMARY KEY,
@@ -291,6 +310,9 @@ CREATE INDEX IF NOT EXISTS console_log_url ON console_log(url_id);
 CREATE INDEX IF NOT EXISTS blocked_resources_url ON blocked_resources(url_id);
 CREATE INDEX IF NOT EXISTS accessibility_url ON accessibility(url_id);
 CREATE INDEX IF NOT EXISTS rendered_images_src ON rendered_images(src);
+CREATE INDEX IF NOT EXISTS blocked_resources_resource ON blocked_resources(resource);
+CREATE INDEX IF NOT EXISTS unsized_images_src ON unsized_images(src);
+CREATE INDEX IF NOT EXISTS bookmarks_target ON bookmarks(target);
 "#;
 
 /// Columns added to `urls` after the first release, as (name, type). Older
@@ -325,6 +347,14 @@ pub const ADDED_URL_COLUMNS: &[(&str, &str)] = &[
     ("ajax_fragment_meta", "INTEGER NOT NULL DEFAULT 0"),
     ("a11y_checked", "INTEGER NOT NULL DEFAULT 0"),
     ("a11y_score", "REAL"),
+    ("bad_content_type", "INTEGER NOT NULL DEFAULT 0"),
+    ("body_before_html", "INTEGER NOT NULL DEFAULT 0"),
+    ("head_not_first", "INTEGER NOT NULL DEFAULT 0"),
+    ("invalid_head_elements", "TEXT"),
+    ("anchor_ids", "TEXT"),
+    ("content_too_wide", "INTEGER"),
+    ("small_text_pct", "REAL"),
+    ("chrome_issues", "INTEGER"),
 ];
 
 /// Columns added to other tables: (table, column, type).
