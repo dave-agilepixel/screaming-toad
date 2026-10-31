@@ -144,7 +144,21 @@ async fn javascript_rendering() {
     assert!(a11y.rows.iter().any(|r| r[2] == "html-has-lang"), "{:?}", a11y.rows);
     // Every test page lacks lang, so all four crawled pages fail level A.
     assert_eq!(store.count("Accessibility", "WCAG 2.0 A Violations").unwrap(), 4);
+    assert_eq!(store.count("Accessibility", "WCAG 2.0 A Violation").unwrap(), 4, "Screaming Frog's singular name");
     assert_eq!(store.count("Accessibility", "Critical Impact").unwrap(), 1);
+    // One filter per axe rule, under Screaming Frog's labels.
+    assert_eq!(store.count("Accessibility", "Images Require Alternate Text").unwrap(), 1);
+    assert_eq!(store.count("Accessibility", "HTML Element Requires Lang Attribute").unwrap(), 4);
+    assert_eq!(store.count("Accessibility", "Buttons Require Discernible Text").unwrap(), 0);
+    // Every rendered page gets a Lighthouse-style score; failing html-has-lang
+    // (and image-alt on the home page) keeps them all below 100.
+    let score: f64 = field(&home, "a11y_score").parse().unwrap();
+    assert!((50.0..100.0).contains(&score), "{score}");
+    let banded = ["Accessibility Score Good", "Accessibility Score Needs Improvement", "Accessibility Score Poor"]
+        .iter()
+        .map(|f| store.count("Accessibility", f).unwrap())
+        .sum::<u64>();
+    assert_eq!(banded, 4);
     // Custom JavaScript.
     let js = store.rows(&toad_store::RowQuery { tab: "Custom JavaScript".into(), filter: "All".into(), ..Default::default() }).unwrap();
     let col = |name: &str| js.columns.iter().position(|c| c == name).unwrap_or_else(|| panic!("{name} in {:?}", js.columns));

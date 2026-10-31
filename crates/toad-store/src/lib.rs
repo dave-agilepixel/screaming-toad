@@ -3,6 +3,7 @@
 
 mod analysis;
 pub mod api;
+pub mod axe_rules;
 pub mod compare;
 pub mod crawls;
 pub mod export;
@@ -776,6 +777,7 @@ fn url_values(rec: &PageRecord, order: i64, cfg: &toad_core::CrawlConfig) -> Vec
         ("lorem_ipsum", flag(page.is_some_and(|p| p.lorem_ipsum))),
         ("ajax_fragment_meta", flag(page.is_some_and(|p| p.ajax_fragment_meta))),
         ("a11y_checked", flag(rendered.is_some_and(|r| r.accessibility.is_some()))),
+        ("a11y_score", real(rendered.and_then(|r| r.accessibility_score))),
         ("head_tags", page.map(|p| int(p.head_tags)).unwrap_or(Value::Null)),
         ("body_tags", page.map(|p| int(p.body_tags)).unwrap_or(Value::Null)),
         ("hsts", opt(rec.header("strict-transport-security"))),

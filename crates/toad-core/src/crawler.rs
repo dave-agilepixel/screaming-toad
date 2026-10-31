@@ -979,6 +979,7 @@ async fn render_page(
             info.requests = out.requests;
             info.transferred_bytes = out.transferred_bytes;
             info.accessibility = out.accessibility;
+            info.accessibility_score = out.accessibility_score;
             info.custom_js = out.custom_js;
             info.images = out.images;
             // CSS background images: crawled as images, marked by rel.

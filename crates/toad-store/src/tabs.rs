@@ -43,10 +43,39 @@ pub struct TabDef {
 }
 
 impl TabDef {
+    /// A filter by name. Names that differ only cosmetically also match,
+    /// so Screaming Frog's names and Toad's older ones both work: case,
+    /// spaces and punctuation are ignored ("Resource Over 2 MB" and
+    /// "Resource Over 2MB", "(4XX)" and "(4xx)"), so is a final "s"
+    /// ("WCAG 2.0 A Violations"), and a few renames are listed in ALIASES.
     pub fn filter(&self, name: &str) -> Option<&FilterDef> {
-        self.filters.iter().find(|f| f.name.eq_ignore_ascii_case(name))
+        let name = name.trim();
+        if let Some(f) = self.filters.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
+            return Some(f);
+        }
+        let key = loose(name);
+        let aliased = ALIASES
+            .iter()
+            .find(|(tab, from, _)| tab.eq_ignore_ascii_case(self.name) && key.starts_with(&loose(from)))
+            .map(|(_, _, to)| loose(to));
+        let key = aliased.unwrap_or(key);
+        self.filters.iter().find(|f| loose(&f.name) == key)
     }
 }
+
+/// Lowercase letters and digits only, without a final "s".
+fn loose(s: &str) -> String {
+    let k: String = s.chars().filter(char::is_ascii_alphanumeric).map(|c| c.to_ascii_lowercase()).collect();
+    k.strip_suffix('s').map(str::to_string).unwrap_or(k)
+}
+
+/// Filters renamed to Screaming Frog's names: (tab, old name or its
+/// start, new name).
+const ALIASES: &[(&str, &str, &str)] = &[
+    ("URL", "Contains A Space", "Contains Space"),
+    ("Content", "Low Content Pages (under", "Low Content Pages"),
+    ("Sitemaps", "XML Sitemap With Over 50MB", "XML Sitemap over 50MB"),
+];
 
 /// Column header → SQL expression.
 pub fn column_sql(name: &str) -> Option<&'static str> {
@@ -175,6 +204,7 @@ const COLUMNS: &[(&str, &str)] = &[
     ("WCAG 2.2 AA Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.guideline = 'WCAG 2.2 AA') END"),
     ("Critical Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.impact = 'critical') END"),
     ("Serious Violations", "CASE WHEN u.a11y_checked = 1 THEN (SELECT COUNT(DISTINCT a.rule) FROM accessibility a WHERE a.url_id = u.id AND a.impact = 'serious') END"),
+    ("Accessibility Score", "u.a11y_score"),
     ("Carbon Rating", "u.carbon_rating"),
     ("Spelling Errors", "u.spelling_errors"),
     ("Grammar Errors", "u.grammar_errors"),
@@ -332,7 +362,28 @@ fn accessibility_tab(html: &str) -> TabDef {
         ("WCAG 2.2 AA", (Issue, Medium), "WCAG 2.2 level AA additions."),
     ];
     for (g, issue, description) in levels {
-        filters.push(FilterDef { name: format!("{g} Violations"), sql: has(&format!(" AND a.guideline = '{g}'")), issue: Some(issue), description: description.into() });
+        filters.push(FilterDef { name: format!("{g} Violation"), sql: has(&format!(" AND a.guideline = '{g}'")), issue: Some(issue), description: description.into() });
+    }
+    // Lighthouse's bands, on the weighted share of axe rules passed.
+    let scored = "u.a11y_score IS NOT NULL";
+    filters.extend([
+        FilterDef { name: "Accessibility Score Good".into(), sql: format!("{scored} AND u.a11y_score >= 90"), issue: None, description: "Accessibility score 90-100: the weighted share of axe-core rules the page passes, as Lighthouse scores it.".into() },
+        FilterDef { name: "Accessibility Score Needs Improvement".into(), sql: format!("{scored} AND u.a11y_score >= 50 AND u.a11y_score < 90"), issue: Some((Warning, Medium)), description: "Accessibility score 50-89.".into() },
+        FilterDef { name: "Accessibility Score Poor".into(), sql: format!("{scored} AND u.a11y_score < 50"), issue: Some((Issue, High)), description: "Accessibility score below 50.".into() },
+    ]);
+    // One filter per axe-core rule, with Screaming Frog's labels.
+    for rule in crate::axe_rules::AXE_RULES {
+        let priority = match rule.impact {
+            "critical" => High,
+            "serious" => Medium,
+            _ => Low,
+        };
+        filters.push(FilterDef {
+            name: rule.label.into(),
+            sql: has(&format!(" AND a.rule = '{}'", rule.id)),
+            issue: Some((if rule.advisory { Warning } else { Issue }, priority)),
+            description: format!("Pages failing the axe-core rule '{}' ({} impact).", rule.id, rule.impact),
+        });
     }
     for (impact, label) in [("critical", "Critical"), ("serious", "Serious"), ("moderate", "Moderate"), ("minor", "Minor")] {
         filters.push(FilterDef {
@@ -347,7 +398,7 @@ fn accessibility_tab(html: &str) -> TabDef {
         base: html.into(),
         extra_columns: vec![],
         columns: vec![
-            "Address", "Indexability", "Indexability Status", "All Violations", "Critical Violations", "Serious Violations",
+            "Address", "Indexability", "Indexability Status", "Accessibility Score", "All Violations", "Critical Violations", "Serious Violations",
             "Best Practice Violations", "WCAG 2.0 A Violations", "WCAG 2.0 AA Violations", "WCAG 2.0 AAA Violations",
             "WCAG 2.1 A Violations", "WCAG 2.1 AA Violations", "WCAG 2.2 AA Violations",
         ],

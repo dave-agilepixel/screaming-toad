@@ -185,6 +185,8 @@ pub struct RenderInfo {
     pub images: Vec<crate::render::RenderedImage>,
     /// axe-core violations (Accessibility); None when not checked.
     pub accessibility: Option<Vec<crate::render::A11yViolation>>,
+    /// Lighthouse-style accessibility score 0-100 (Accessibility).
+    pub accessibility_score: Option<f64>,
     /// Rendering failed; the original HTML was used instead.
     pub error: Option<String>,
 }
