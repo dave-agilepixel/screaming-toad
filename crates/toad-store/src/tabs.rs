@@ -579,7 +579,7 @@ fn build_tabs(cfg: &CrawlConfig) -> Vec<TabDef> {
                 f("Duplicate", dup("h2_1"), Some((Opportunity, Low)), "The same first H2 on more than one page."),
                 f(&format!("Over {} Characters", p.h2_max_chars), format!("u.h2_1_length > {}{ix}", p.h2_max_chars), Some((Opportunity, Low)), "H2 is longer than the preference."),
                 f("Multiple", format!("u.h2_count > 1{ix}"), Some((Warning, Low)), "More than one H2."),
-                f("Non-sequential", format!("u.h2_non_sequential = 1{ix}"), Some((Warning, Low)), "An H2 appears before any H1."),
+                f("Non-sequential", format!("u.h2_non_sequential = 1{ix}"), Some((Warning, Low)), "The heading after the H1 isn't an H2: an H2 comes before the H1, or an H3-H6 sits between the H1 and the first H2."),
             ],
         },
         TabDef {

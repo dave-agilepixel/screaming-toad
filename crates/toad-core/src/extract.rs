@@ -162,14 +162,14 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
             }
             "img" => {
                 let alt = v.attr("alt").map(|a| a.trim().to_string());
-                if let Some(src) = v.attr("src") {
+                if let Some(src) = image_src(&el) {
                     if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                         link.alt = alt.clone();
                         p.links.push(link);
                     }
                 }
                 if cfg.extract_images_from_srcset {
-                    for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                    for src in srcset_urls(image_srcset(&el)) {
                         if let Some(mut link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                             link.alt = alt.clone();
                             p.links.push(link);
@@ -192,7 +192,7 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
                 }
             }
             "source" if cfg.extract_images_from_srcset && el.parent().and_then(ElementRef::wrap).is_some_and(|m| m.value().name() == "picture") => {
-                for src in srcset_urls(v.attr("srcset").unwrap_or("")) {
+                for src in srcset_urls(image_srcset(&el)) {
                     if let Some(link) = make_link(LinkKind::Image, src, &el, &base, cfg) {
                         p.links.push(link);
                     }
@@ -241,11 +241,9 @@ pub fn extract(html: &str, page_url: &Url, cfg: &CrawlConfig, rules: &CustomRule
         }
     }
 
-    p.h1_non_sequential = heading_levels.first().is_some_and(|&l| l != 1);
-    p.h2_non_sequential = heading_levels
-        .iter()
-        .position(|&l| l == 2)
-        .is_some_and(|i| i == 0 || heading_levels[..i].iter().all(|&l| l > 2));
+    let (h1_non_sequential, h2_non_sequential) = heading_order(&heading_levels);
+    p.h1_non_sequential = h1_non_sequential;
+    p.h2_non_sequential = h2_non_sequential;
 
     // Content area text: word count, readability, duplicates.
     let mut content = String::new();
@@ -329,6 +327,22 @@ pub fn text_metrics(p: &mut PageData, content: &str) {
     p.lorem_ipsum = content.to_ascii_lowercase().contains("lorem ipsum");
 }
 
+/// H1 and H2 Non-Sequential from the heading levels in document order.
+/// H1: the page has an H1, but it isn't the first heading. H2: the page has
+/// an H2, but the heading level after the H1 isn't 2: an H2 comes before
+/// any H1, or the H1 is followed by an H3-H6 before the first H2.
+fn heading_order(levels: &[u8]) -> (bool, bool) {
+    let h1 = levels.iter().position(|&l| l == 1);
+    let h2 = levels.iter().position(|&l| l == 2);
+    let h1_non_sequential = h1.is_some_and(|i| i > 0);
+    let h2_non_sequential = match (h1, h2) {
+        (_, None) => false,
+        (None, Some(_)) => true,
+        (Some(i), Some(j)) => j < i || levels[i + 1..j].iter().any(|&l| l > 2),
+    };
+    (h1_non_sequential, h2_non_sequential)
+}
+
 fn tag_regexes() -> &'static (Regex, Regex) {
     static RE: OnceLock<(Regex, Regex)> = OnceLock::new();
     RE.get_or_init(|| {
@@ -365,6 +379,30 @@ fn make_link(kind: LinkKind, href: &str, el: &ElementRef, base: &Url, cfg: &Craw
         hreflang: None,
         origin: String::new(),
     })
+}
+
+/// Lazy-load plugins (LiteSpeed, WP Rocket, lazysizes) keep the real image
+/// in data-src or data-lazy-src and put a placeholder (often a data: URI) in src.
+const LAZY_SRC: [&str; 2] = ["data-src", "data-lazy-src"];
+const LAZY_SRCSET: [&str; 2] = ["data-srcset", "data-lazy-srcset"];
+
+/// An image's real src: src, unless it is missing or a data: placeholder
+/// and a lazy-load attribute holds a URL.
+fn image_src<'a>(el: &ElementRef<'a>) -> Option<&'a str> {
+    let v = el.value();
+    let src = v.attr("src").filter(|s| !s.trim().is_empty());
+    let placeholder = src.is_none_or(|s| s.trim_start().get(..5).is_some_and(|p| p.eq_ignore_ascii_case("data:")));
+    let lazy = LAZY_SRC.iter().find_map(|a| v.attr(a)).filter(|s| !s.trim().is_empty());
+    if placeholder { lazy.or(src) } else { src }
+}
+
+/// An image's srcset, falling back to the lazy-load attributes.
+fn image_srcset<'a>(el: &ElementRef<'a>) -> &'a str {
+    let v = el.value();
+    v.attr("srcset")
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| LAZY_SRCSET.iter().find_map(|a| v.attr(a)))
+        .unwrap_or("")
 }
 
 /// The URLs in a srcset attribute ("a.jpg 1x, b.jpg 2x" or "a.jpg 480w, ...").
@@ -606,6 +644,50 @@ mod tests {
         assert_eq!(img.alt, None);
         assert!(!p.links.iter().any(|l| l.href.starts_with("mailto")));
         assert_eq!(p.head_tags, 1);
+    }
+
+    #[test]
+    fn lazy_loaded_images_use_the_real_url() {
+        let html = r#"<html><body>
+            <img src="data:image/svg+xml;base64,PHN2Zz4=" data-src="/real.webp" alt="">
+            <img src="data:image/gif;base64,R0lGOD" data-lazy-src="/wp.jpg" data-lazy-srcset="/wp-2x.jpg 2x" alt="WP Rocket">
+            <img data-src="/no-src.png">
+            <img src="/plain.png" data-src="/ignored.png" alt="Plain">
+            <nav><img src="data:image/svg+xml,x" data-src="/logo.png" data-srcset="/logo-2x.png 2x"></nav>
+          </body></html>"#;
+        let url = Url::parse("https://x.com/").unwrap();
+        let p = extract(html, &url, &CrawlConfig { extract_images_from_srcset: true, ..CrawlConfig::default() }, &CustomRules::default());
+        let img = |to: &str| p.links.iter().find(|l| l.kind == LinkKind::Image && l.to == format!("https://x.com{to}"));
+        assert_eq!(img("/real.webp").unwrap().alt.as_deref(), Some(""), "empty alt kept: Missing Alt Text");
+        assert_eq!(img("/wp.jpg").unwrap().alt.as_deref(), Some("WP Rocket"));
+        assert!(img("/wp-2x.jpg").is_some(), "data-lazy-srcset");
+        assert_eq!(img("/no-src.png").unwrap().alt, None, "no alt attribute: Missing Alt Attribute");
+        assert!(img("/plain.png").is_some() && img("/ignored.png").is_none(), "a real src wins");
+        assert_eq!(img("/logo.png").unwrap().position, "Navigation");
+        assert!(img("/logo-2x.png").is_some(), "data-srcset");
+        assert!(!p.links.iter().any(|l| l.to.starts_with("data:")));
+    }
+
+    #[test]
+    fn heading_order_matches_screaming_frog() {
+        // (levels, H1 Non-Sequential, H2 Non-Sequential)
+        let cases: [(&[u8], bool, bool); 9] = [
+            (&[1, 2, 3, 2], false, false),
+            (&[1, 3, 2], false, true),   // H3 between the H1 and the first H2
+            (&[1, 4, 4, 2], false, true),
+            (&[2, 1, 2], true, true),    // H2 before the H1
+            (&[3, 1, 2], true, false),   // H1 not first, but H2 follows it
+            (&[2, 3], false, true),      // H2 with no H1
+            (&[1, 3, 4], false, false),  // no H2: H2 Missing, not Non-Sequential
+            (&[3, 4], false, false),     // no H1: H1 Missing, not Non-Sequential
+            (&[1, 1, 2], false, false),
+        ];
+        for (levels, h1, h2) in cases {
+            assert_eq!(heading_order(levels), (h1, h2), "{levels:?}");
+        }
+        let url = Url::parse("https://x.com/").unwrap();
+        let p = extract("<html><body><h1>A</h1><h3>B</h3><h2>C</h2></body></html>", &url, &CrawlConfig::default(), &CustomRules::default());
+        assert!(!p.h1_non_sequential && p.h2_non_sequential);
     }
 
     #[test]
