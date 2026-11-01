@@ -560,7 +560,7 @@ fn viz_content_clusters(state: State<'_, AppState>, limit: usize, neighbours: us
 /// Export > Multi Export into a folder.
 #[tauri::command]
 fn multi_export(state: State<'_, AppState>, spec: toad_store::export::MultiExport, dir: String) -> CmdResult<Vec<String>> {
-    with_store(&state, |s| Ok(s.multi_export(&spec, std::path::Path::new(&dir))?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect()))
+    with_store(&state, |s| Ok(s.multi_export(&spec, std::path::Path::new(&dir))?.written.into_iter().map(|p| p.to_string_lossy().into_owned()).collect()))
 }
 
 #[tauri::command]
